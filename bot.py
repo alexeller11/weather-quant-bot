@@ -210,7 +210,7 @@ while True:
                             print(f"  🚫 EV={ev:+.3f} acima do cap ({MAX_EV}). Pulando.")
                             continue
 
-                        event_slug = market.get("event_slug", f"{city}_{market.get('market_date','')}")
+                        event_slug = f"{city}_{market.get('market_date', '')}"
 
                         candidatos.append({
                             "market":        market,
