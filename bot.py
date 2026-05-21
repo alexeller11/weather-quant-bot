@@ -110,15 +110,16 @@ while True:
             history  = bankroll["history"]
 
             current_exposure = open_exposure(history)
-            max_allowed      = MAX_TOTAL_EXPOSURE
+            remaining_capacity = MAX_TOTAL_EXPOSURE - current_exposure
 
             print(
                 f"\n[{city.upper()}] "
                 f"Saldo: ${balance:.2f} | "
-                f"Exposição: ${current_exposure:.2f} / ${max_allowed:.2f}"
+                f"Exposição: ${current_exposure:.2f} / ${MAX_TOTAL_EXPOSURE:.2f} | "
+                f"Livre: ${remaining_capacity:.2f}"
             )
 
-            if current_exposure >= max_allowed:
+            if remaining_capacity <= 0:
                 print(f"  Exposição máxima atingida. Pulando {city}.")
                 continue
 
@@ -127,10 +128,6 @@ while True:
                 print(f"  Mercados encontrados: {len(markets)}")
 
                 # ── PRÉ-SELEÇÃO: 1 trade por evento (cidade+data) ────────────
-                # Passo 1: avalia TODOS os mercados e calcula edge/EV
-                # Passo 2: por event_slug, mantém só o de MAIOR EV
-                # Isso garante que Seoul 23°C e 24°C nunca entram juntos
-
                 candidatos = []
 
                 for market in markets:
@@ -146,7 +143,8 @@ while True:
                             print(f"  ⚠️  Liquidez baixa (price={market_price:.3f}). Pulando.")
                             continue
 
-                        market_id   = market.get("market_id")
+                        # FIX: normaliza market_id para string para comparação consistente
+                        market_id   = str(market.get("market_id", ""))
                         condition   = market.get("condition", "ABOVE").upper()
                         unit        = market.get("unit", "C")
                         target      = float(market.get("target", 0))
@@ -166,8 +164,9 @@ while True:
                             print(f"  ⚠️  Erro data: {e}")
                             continue
 
-                        # Anti-duplicata
-                        if already_traded(history, market_id):
+                        # Anti-duplicata — compara como string em ambos os lados
+                        history_ids = [str(t.get("market_id", "")) for t in history]
+                        if market_id in history_ids:
                             continue
 
                         # Horizonte de forecast
@@ -210,6 +209,7 @@ while True:
                             print(f"  🚫 EV={ev:+.3f} acima do cap ({MAX_EV}). Pulando.")
                             continue
 
+                        # FIX: slug sempre local — garante 1 trade por cidade+data
                         event_slug = f"{city}_{market.get('market_date', '')}"
 
                         candidatos.append({
@@ -230,7 +230,7 @@ while True:
                     except Exception as e:
                         print(f"  Erro avaliando market: {e}")
 
-                # Passo 2: por event_slug, mantém só o de maior EV
+                # Por event_slug, mantém só o de maior EV
                 melhor_por_evento: dict = {}
                 for c in candidatos:
                     slug = c["event_slug"]
@@ -242,6 +242,9 @@ while True:
                 descartados = len(candidatos) - len(selecionados)
                 if descartados > 0:
                     print(f"  ✂️  Sobreposição: {descartados} outcome(s) descartado(s) — {len(selecionados)} selecionado(s)")
+
+                if not selecionados:
+                    print(f"  Nenhum candidato válido para {city}.")
 
                 # ── EXECUÇÃO dos trades selecionados ─────────────────────────
                 for cand in selecionados:
@@ -264,13 +267,14 @@ while True:
                         balance  = bankroll["balance"]
                         history  = bankroll["history"]
 
-                        # Anti-duplicata (pode ter sido executado em ciclo anterior)
-                        if already_traded(history, market_id):
+                        # Anti-duplicata fresco (pode ter sido executado em ciclo anterior)
+                        history_ids = [str(t.get("market_id", "")) for t in history]
+                        if market_id in history_ids:
                             continue
 
                         # Capacidade restante
                         current_exposure   = open_exposure(history)
-                        remaining_capacity = max_allowed - current_exposure
+                        remaining_capacity = MAX_TOTAL_EXPOSURE - current_exposure
                         if remaining_capacity <= 0:
                             print(f"  Capacidade esgotada para {city}.")
                             break
@@ -279,6 +283,7 @@ while True:
 
                         stake = kelly_stake(balance, model_prob, market_price)
                         if stake <= 0:
+                            print(f"  ⚠️  Kelly stake=0. Pulando.")
                             continue
 
                         stake = min(stake, remaining_capacity)
@@ -287,6 +292,7 @@ while True:
 
                         shares    = int(stake / market_price)
                         if shares <= 0:
+                            print(f"  ⚠️  Shares=0 (stake=${stake:.2f}, price={market_price:.3f}). Pulando.")
                             continue
                         real_cost = round(shares * market_price, 2)
                         stake     = real_cost
@@ -349,11 +355,12 @@ while True:
                             print(f"  ⚠️  validacao.py erro: {e}")
 
                         print(
-                            f"  >>> TRADE EXECUTADO\n"
+                            f"  >>> TRADE REGISTRADO\n"
                             f"  {city_display} | {condition} | Target:{target}°{unit}\n"
                             f"  Model:{model_prob:.3f} Mkt:{market_price:.3f} "
                             f"Edge:{edge:+.3f} EV:{ev:+.3f}\n"
-                            f"  Shares:{shares} Stake:${stake:.2f} Saldo:${balance:.2f}"
+                            f"  Shares:{shares} Stake:${stake:.2f} Saldo:${balance:.2f} "
+                            f"Exposição:${open_exposure(history):.2f}"
                         )
 
                         try:
