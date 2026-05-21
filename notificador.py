@@ -25,6 +25,11 @@ TELEGRAM_API = (
     f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 )
 
+BANKROLL_PATH = os.path.join(
+    BOT_DIR,
+    "bankroll.json"
+)
+
 # =========================================================
 # TELEGRAM
 # =========================================================
@@ -35,7 +40,11 @@ def enviar_mensagem(
 ):
 
     if not TELEGRAM_TOKEN or not CHAT_ID:
-        print("Telegram não configurado")
+
+        print(
+            "Telegram não configurado"
+        )
+
         return False
 
     try:
@@ -47,16 +56,45 @@ def enviar_mensagem(
                 "text": texto,
                 "parse_mode": parse_mode
             },
-            timeout=10
+            timeout=15
         )
 
         return r.status_code == 200
 
     except Exception as e:
 
-        print(f"Erro Telegram: {e}")
+        print(
+            f"Erro Telegram: {e}"
+        )
 
         return False
+
+# =========================================================
+# LOAD BANKROLL
+# =========================================================
+
+def _load_bankroll():
+
+    try:
+
+        with open(
+            BANKROLL_PATH,
+            "r",
+            encoding="utf-8"
+        ) as f:
+
+            return json.load(f)
+
+    except Exception as e:
+
+        print(
+            f"Erro bankroll: {e}"
+        )
+
+        return {
+            "balance": 0,
+            "history": []
+        }
 
 # =========================================================
 # KELLY
@@ -105,7 +143,7 @@ def _kelly_math(
     }
 
 # =========================================================
-# TRADE
+# NOTIFICAÇÃO TRADE
 # =========================================================
 
 def notificar_entrada_trade(
@@ -132,20 +170,20 @@ def notificar_entrada_trade(
         if market_price > 0 else 0
     )
 
-    msg = (
-        f"<b>NOVO TRADE</b>\n\n"
+    texto = (
+        f"<b>🚨 NOVO TRADE</b>\n\n"
         f"<b>Cidade:</b> {city}\n"
         f"<b>Data:</b> {market_date}\n"
         f"<b>Target:</b> {target}°{unit}\n"
         f"<b>Stake:</b> ${stake:.2f}\n\n"
-        f"Modelo: "
-        f"<b>{model_prob*100:.1f}%</b>\n"
-        f"Mercado: "
-        f"<b>{market_price*100:.1f}%</b>\n"
-        f"Edge: "
-        f"<b>+{edge:.1f}%</b>\n"
-        f"EV: "
-        f"<b>+{ev_pct:.1f}%</b>"
+        f"<b>Modelo:</b> "
+        f"{model_prob*100:.1f}%\n"
+        f"<b>Mercado:</b> "
+        f"{market_price*100:.1f}%\n"
+        f"<b>Edge:</b> "
+        f"+{edge:.1f}%\n"
+        f"<b>EV:</b> "
+        f"+{ev_pct:.1f}%"
     )
 
     if balance:
@@ -156,39 +194,21 @@ def notificar_entrada_trade(
             market_price
         )
 
-        msg += (
+        texto += (
             f"\n\n<b>Kelly</b>\n"
             f"Half Kelly: "
             f"{km['kelly_pct']}%"
         )
 
-    enviar_mensagem(msg)
+    enviar_mensagem(texto)
 
 # =========================================================
-# IA CONTEXTO
+# CONTEXTO IA
 # =========================================================
 
 def _build_context():
 
-    try:
-
-        with open(
-            os.path.join(
-                BOT_DIR,
-                "bankroll.json"
-            ),
-            "r",
-            encoding="utf-8"
-        ) as f:
-
-            bankroll = json.load(f)
-
-    except Exception:
-
-        bankroll = {
-            "balance": 0,
-            "history": []
-        }
+    bankroll = _load_bankroll()
 
     history = bankroll.get(
         "history",
@@ -200,6 +220,11 @@ def _build_context():
         0
     )
 
+    abertos = [
+        t for t in history
+        if t.get("result") == "OPEN"
+    ]
+
     fechados = [
         t for t in history
         if t.get("result")
@@ -209,6 +234,11 @@ def _build_context():
     wins = [
         t for t in fechados
         if t.get("result") == "WIN"
+    ]
+
+    losses = [
+        t for t in fechados
+        if t.get("result") == "LOSS"
     ]
 
     pnl = sum(
@@ -226,21 +256,104 @@ def _build_context():
         if fechados else 0
     )
 
+    exposicao = sum(
+        t.get("stake", 0)
+        for t in abertos
+    )
+
+    trades_abertos = ""
+
+    for t in abertos[:25]:
+
+        trades_abertos += (
+            f"\n"
+            f"- Cidade: {t.get('city')}\n"
+            f"  Data: {t.get('market_date')}\n"
+            f"  Stake: ${t.get('stake',0):.2f}\n"
+            f"  Modelo: {t.get('model_prob',0)*100:.1f}%\n"
+            f"  Mercado: {t.get('market_price',0)*100:.1f}%\n"
+            f"  Edge: {t.get('edge',0):+.1f}%\n"
+        )
+
+    trades_fechados = ""
+
+    for t in fechados[-30:]:
+
+        trades_fechados += (
+            f"\n"
+            f"- Cidade: {t.get('city')}\n"
+            f"  Resultado: {t.get('result')}\n"
+            f"  Stake: ${t.get('stake',0):.2f}\n"
+            f"  PnL: ${t.get('pnl',0):+.2f}\n"
+            f"  Modelo: {t.get('model_prob',0)*100:.1f}%\n"
+            f"  Mercado: {t.get('market_price',0)*100:.1f}%\n"
+        )
+
     return f"""
-BOT WEATHER QUANT
+Você é o analista oficial do WEATHER QUANT.
+
+O WEATHER QUANT é um sistema quantitativo
+de probabilidades climáticas.
+
+Você NÃO é um assistente genérico.
+
+Você DEVE responder como:
+- trader quantitativo
+- analista estatístico
+- especialista em probabilidades
+- especialista em weather markets
+
+Você possui acesso COMPLETO
+aos dados reais do bot abaixo.
+
+===================================
+STATUS GERAL
+===================================
 
 Saldo: ${balance:.2f}
-PnL: ${pnl:+.2f}
+
+PnL Total: ${pnl:+.2f}
+
 Win Rate: {wr}%
 
-Responda em português.
+Wins: {len(wins)}
+
+Losses: {len(losses)}
+
+Trades abertos: {len(abertos)}
+
+Exposição: ${exposicao:.2f}
+
+===================================
+TRADES ABERTOS
+===================================
+
+{trades_abertos if trades_abertos else "Nenhum"}
+
+===================================
+ÚLTIMOS TRADES FECHADOS
+===================================
+
+{trades_fechados if trades_fechados else "Nenhum"}
+
+===================================
+REGRAS
+===================================
+
+- Responda SEMPRE em português.
+- Seja analítico.
+- Use os dados reais acima.
+- Nunca diga que não possui acesso.
+- Nunca diga que é IA genérica.
+- Fale como gestor quantitativo.
+- Máximo 4 parágrafos.
 """
 
 # =========================================================
-# GROQ IA
+# GROQ
 # =========================================================
 
-def _perguntar_grok(
+def _perguntar_ia(
     pergunta_usuario
 ):
 
@@ -279,15 +392,15 @@ def _perguntar_grok(
                         "content": pergunta_usuario
                     }
                 ],
-                "temperature": 0.7,
-                "max_tokens": 500
+                "temperature": 0.4,
+                "max_tokens": 700
             },
-            timeout=30
+            timeout=45
         )
 
         print("\n===== GROQ DEBUG =====")
         print("STATUS:", r.status_code)
-        print("TEXT:", r.text[:1000])
+        print("TEXT:", r.text[:2000])
         print("======================\n")
 
         try:
@@ -298,7 +411,7 @@ def _perguntar_grok(
 
             return (
                 "❌ Resposta inválida:\n\n"
-                f"{r.text[:300]}"
+                f"{r.text[:500]}"
             )
 
         if (
@@ -319,7 +432,7 @@ def _perguntar_grok(
     except requests.exceptions.Timeout:
 
         return (
-            "⏱️ Timeout da API."
+            "⏱️ Timeout da IA."
         )
 
     except Exception as e:
@@ -351,8 +464,27 @@ def processar_comando(
 
     elif cmd == "/status":
 
+        bankroll = _load_bankroll()
+
+        balance = bankroll.get(
+            "balance",
+            0
+        )
+
+        history = bankroll.get(
+            "history",
+            []
+        )
+
+        abertos = [
+            t for t in history
+            if t.get("result") == "OPEN"
+        ]
+
         enviar_mensagem(
-            "✅ Bot online."
+            f"<b>STATUS</b>\n\n"
+            f"Saldo: ${balance:.2f}\n"
+            f"Trades abertos: {len(abertos)}"
         )
 
     elif cmd == "/settlement":
@@ -370,7 +502,7 @@ def processar_comando(
                 ],
                 capture_output=True,
                 text=True,
-                timeout=60,
+                timeout=120,
                 cwd=BOT_DIR,
             )
 
@@ -384,7 +516,7 @@ def processar_comando(
 
                 enviar_mensagem(
                     f"Erro:\n\n"
-                    f"{res.stderr}"
+                    f"{res.stderr[:1500]}"
                 )
 
         except Exception as e:
@@ -395,7 +527,7 @@ def processar_comando(
 
     else:
 
-        resposta = _perguntar_grok(
+        resposta = _perguntar_ia(
             texto
         )
 
@@ -456,7 +588,9 @@ def iniciar_listener():
 
                         if texto:
 
-                            print(texto)
+                            print(
+                                f"Telegram: {texto}"
+                            )
 
                             processar_comando(
                                 texto
@@ -488,7 +622,7 @@ if __name__ == "__main__":
     )
 
     ok = enviar_mensagem(
-        "✅ Notificador iniciado!"
+        "✅ WEATHER QUANT online."
     )
 
     print(
