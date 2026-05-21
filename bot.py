@@ -22,9 +22,6 @@ from config import (
     CITY_MIN_SIGMA,
 )
 
-# FIX: import do notificador.py (renomeado de telegram.py para evitar
-# colisão com o pacote pip 'python-telegram-bot').
-# Sem try/except silencioso — se falhar, queremos saber o motivo.
 from notificador import notificar_entrada_trade, iniciar_listener
 from validacao import registrar_previsao
 
@@ -32,11 +29,7 @@ from validacao import registrar_previsao
 # CONFIGURAÇÃO
 # ==========================================
 
-MAX_POSITION_DOLARES = 5.0   # Máximo $5 por trade
-
-# ==========================================
-# INICIALIZAÇÃO
-# ==========================================
+MAX_POSITION_DOLARES = 10.0  # Máximo $10 por trade
 
 # ==========================================
 # AGENDAMENTO AUTOMÁTICO
@@ -66,14 +59,13 @@ def _rodar_settlement():
 def iniciar_scheduler():
     """
     Roda settlement automaticamente todo dia às 08:00 UTC e às 20:00 UTC.
-    Roda em thread daemon — não bloqueia o loop principal.
     """
     from threading import Thread
 
     def loop():
-        HORARIOS_UTC = {8, 20}   # horas UTC para rodar settlement
-        ultimo_dia  = None
-        ultima_hora = None
+        HORARIOS_UTC = {8, 20}
+        ultimo_dia   = None
+        ultima_hora  = None
 
         print("[scheduler] Agendador iniciado — settlement às 08:00 e 20:00 UTC")
         while True:
@@ -89,13 +81,11 @@ def iniciar_scheduler():
                     print(f"[scheduler] Disparando settlement — {agora.strftime('%Y-%m-%d %H:%M UTC')}")
                     _rodar_settlement()
 
-            time.sleep(60)  # checar a cada minuto
+            time.sleep(60)
 
     Thread(target=loop, daemon=True).start()
 
 
-# FIX: listener de comandos Telegram iniciado aqui.
-# Sem isso, /status /settlement /help nunca funcionam.
 iniciar_listener()
 iniciar_scheduler()
 
@@ -115,13 +105,11 @@ while True:
 
         for city in CITY_SLUGS:
 
-            # Recarrega bankroll a cada cidade
             bankroll = load_bankroll()
             balance  = bankroll["balance"]
             history  = bankroll["history"]
 
             current_exposure = open_exposure(history)
-            # MAX_TOTAL_EXPOSURE agora é valor fixo em USD ($40), não fração
             max_allowed      = MAX_TOTAL_EXPOSURE
 
             print(
@@ -138,36 +126,24 @@ while True:
                 markets = fetch_markets(city)
                 print(f"  Mercados encontrados: {len(markets)}")
 
-                # ── Filtro de sobreposição: 1 trade por evento por ciclo ──────
-                # Guarda o outcome de maior EV por event_slug.
-                # Evita entrar em 27°C e 28°C do mesmo evento (Milan D+1).
-                # BUG CORRIGIDO: antes era populado como lista na pré-passagem,
-                # então isinstance(prev_best, tuple) nunca era True e o filtro
-                # nunca disparava — todos os outcomes com edge entravam.
-                # Agora começa vazio e é preenchido como tupla no loop abaixo.
-                best_ev_per_event: dict = {}   # event_slug → (ev, market_id)
+                # ── PRÉ-SELEÇÃO: 1 trade por evento (cidade+data) ────────────
+                # Passo 1: avalia TODOS os mercados e calcula edge/EV
+                # Passo 2: por event_slug, mantém só o de MAIOR EV
+                # Isso garante que Seoul 23°C e 24°C nunca entram juntos
+
+                candidatos = []
 
                 for market in markets:
-
                     try:
-                        market_price = float(
-                            market.get("yes_price", market.get("price", 0))
-                        )
+                        market_price = float(market.get("yes_price", market.get("price", 0)))
 
-                        # Filtros de preço básico (saudabilidade do mercado)
-                        if market_price < MIN_MARKET_PRICE:
+                        if market_price < MIN_MARKET_PRICE or market_price > MAX_MARKET_PRICE:
                             continue
-                        if market_price > MAX_MARKET_PRICE:
-                            continue
-
-                        # Filtro de liquidez: mercados muito baratos/caros têm
-                        # spread bid/ask enorme — o EV calculado é ilusório.
-                        # Ex: Toronto 17°C a $0.055 → EV +943% irreal.
                         if market_price < MIN_LIQUIDITY_PRICE:
-                            print(f"  ⚠️  Liquidez insuficiente (price={market_price:.3f} < {MIN_LIQUIDITY_PRICE}). Pulando.")
+                            print(f"  ⚠️  Liquidez baixa (price={market_price:.3f}). Pulando.")
                             continue
                         if market_price > MAX_LIQUIDITY_PRICE:
-                            print(f"  ⚠️  Liquidez insuficiente (price={market_price:.3f} > {MAX_LIQUIDITY_PRICE}). Pulando.")
+                            print(f"  ⚠️  Liquidez baixa (price={market_price:.3f}). Pulando.")
                             continue
 
                         market_id   = market.get("market_id")
@@ -178,58 +154,38 @@ while True:
                         if target_high is not None:
                             target_high = float(target_high)
 
-                        # ── Filtro D1+ — só entra para amanhã+ ──────────────
+                        # Filtro D1+: só entra para amanhã ou depois
                         try:
                             market_date_obj = datetime.strptime(
                                 market.get("market_date", ""), "%Y-%m-%d"
                             ).date()
-                            today_date = utcnow().date()
-
-                            if market_date_obj <= today_date:
-                                print(
-                                    f"  ⏭️  Pulando {market.get('question', '')[:40]} "
-                                    f"({market.get('market_date')} ≤ {today_date})"
-                                )
+                            if market_date_obj <= utcnow().date():
+                                print(f"  ⏭️  Pulando {market.get('question','')[:40]} (hoje ou passado)")
                                 continue
                         except Exception as e:
-                            print(f"  ⚠️  Erro ao processar data: {e}")
+                            print(f"  ⚠️  Erro data: {e}")
                             continue
 
                         # Anti-duplicata
                         if already_traded(history, market_id):
                             continue
 
-                        # Capacidade de exposição restante
-                        current_exposure   = open_exposure(history)
-                        remaining_capacity = max_allowed - current_exposure
-
-                        if remaining_capacity <= 0:
-                            print(f"  Capacidade esgotada para {city}.")
-                            break
-
                         # Horizonte de forecast
                         try:
-                            mdate        = datetime.strptime(
-                                market.get("market_date", ""), "%Y-%m-%d"
-                            ).date()
-                            today        = utcnow().date()
-                            forecast_day = max(0, min((mdate - today).days, 3))
+                            mdate        = datetime.strptime(market.get("market_date", ""), "%Y-%m-%d").date()
+                            forecast_day = max(0, min((mdate - utcnow().date()).days, 3))
                         except Exception:
                             forecast_day = 1
 
-                        # ── Modelo probabilístico ────────────────────────────
-                        # FIX: passando target, unit e condition corretamente.
-                        # Antes: market_date e question eram passados como kwargs
-                        # inexistentes → target ficava 0, model calculava
-                        # P(temp > 0°C) ≈ 100% — edge completamente falso.
+                        # Modelo probabilístico
                         try:
                             model_prob = calculate_probability(
                                 city=city,
                                 target=target,
                                 unit=unit,
                                 forecast_day=forecast_day,
-                                condition=condition.lower(),  # 'above','below','exact','range'
-                                target_high=target_high,      # só relevante para 'range'
+                                condition=condition.lower(),
+                                target_high=target_high,
                             )
                         except Exception as e:
                             print(f"  ⚠️  Erro no modelo: {e}")
@@ -242,7 +198,7 @@ while True:
                         ev   = expected_value(model_prob, market_price)
 
                         print(
-                            f"  {market.get('question', '')[:60]} | "
+                            f"  {market.get('question','')[:60]} | "
                             f"Model:{model_prob:.3f} Mkt:{market_price:.3f} "
                             f"Edge:{edge:+.3f} EV:{ev:+.3f} [{unit}]"
                         )
@@ -250,51 +206,90 @@ while True:
                         if edge < EDGE_THRESHOLD:
                             continue
 
-                        # Rejeita EVs impossíveis — sinal de mercado ilíquido
-                        # ou bug no modelo. EV > MAX_EV não é alfa real.
                         if ev > MAX_EV:
-                            print(f"  🚫 EV={ev:+.3f} acima do cap ({MAX_EV}). "
-                                  f"Provável modelo mal calibrado. Pulando.")
+                            print(f"  🚫 EV={ev:+.3f} acima do cap ({MAX_EV}). Pulando.")
                             continue
 
-                        # ── Filtro de sobreposição por evento ────────────────
-                        # Só o outcome de maior EV por evento entra no ciclo.
-                        # Evita apostas em 27°C e 28°C do mesmo evento (risco duplicado).
-                        event_slug = market.get("event_slug", market.get("market_date", ""))
-                        prev_best  = best_ev_per_event.get(event_slug)
-                        if isinstance(prev_best, tuple):
-                            prev_ev, prev_id = prev_best
-                            if ev <= prev_ev:
-                                print(f"  ⏩ Sobreposição: EV={ev:+.3f} < melhor do evento ({prev_ev:+.3f}). Pulando.")
-                                continue
-                            else:
-                                # Este é melhor — o anterior será ignorado (já não executa mais)
-                                print(f"  🔄 Novo melhor EV para o evento: {ev:+.3f} > {prev_ev:+.3f}")
-                        # Registra este como melhor até agora para o evento
-                        best_ev_per_event[event_slug] = (ev, market.get("market_id"))
+                        event_slug = market.get("event_slug", f"{city}_{market.get('market_date','')}")
 
-                        print("  → EDGE POSITIVO — calculando stake Kelly")
+                        candidatos.append({
+                            "market":        market,
+                            "market_price":  market_price,
+                            "model_prob":    model_prob,
+                            "edge":          edge,
+                            "ev":            ev,
+                            "event_slug":    event_slug,
+                            "condition":     condition,
+                            "unit":          unit,
+                            "target":        target,
+                            "target_high":   target_high,
+                            "forecast_day":  forecast_day,
+                            "market_id":     market_id,
+                        })
+
+                    except Exception as e:
+                        print(f"  Erro avaliando market: {e}")
+
+                # Passo 2: por event_slug, mantém só o de maior EV
+                melhor_por_evento: dict = {}
+                for c in candidatos:
+                    slug = c["event_slug"]
+                    if slug not in melhor_por_evento or c["ev"] > melhor_por_evento[slug]["ev"]:
+                        melhor_por_evento[slug] = c
+
+                selecionados = list(melhor_por_evento.values())
+
+                descartados = len(candidatos) - len(selecionados)
+                if descartados > 0:
+                    print(f"  ✂️  Sobreposição: {descartados} outcome(s) descartado(s) — {len(selecionados)} selecionado(s)")
+
+                # ── EXECUÇÃO dos trades selecionados ─────────────────────────
+                for cand in selecionados:
+
+                    try:
+                        market       = cand["market"]
+                        market_price = cand["market_price"]
+                        model_prob   = cand["model_prob"]
+                        edge         = cand["edge"]
+                        ev           = cand["ev"]
+                        condition    = cand["condition"]
+                        unit         = cand["unit"]
+                        target       = cand["target"]
+                        target_high  = cand["target_high"]
+                        forecast_day = cand["forecast_day"]
+                        market_id    = cand["market_id"]
+
+                        # Recarrega bankroll fresco antes de cada execução
+                        bankroll = load_bankroll()
+                        balance  = bankroll["balance"]
+                        history  = bankroll["history"]
+
+                        # Anti-duplicata (pode ter sido executado em ciclo anterior)
+                        if already_traded(history, market_id):
+                            continue
+
+                        # Capacidade restante
+                        current_exposure   = open_exposure(history)
+                        remaining_capacity = max_allowed - current_exposure
+                        if remaining_capacity <= 0:
+                            print(f"  Capacidade esgotada para {city}.")
+                            break
+
+                        print(f"  → SELECIONADO: {market.get('question','')[:60]}")
 
                         stake = kelly_stake(balance, model_prob, market_price)
-
                         if stake <= 0:
                             continue
 
-                        # Cap pela capacidade de exposição restante
                         stake = min(stake, remaining_capacity)
-
-                        # Garantir máximo de $5
                         if stake > MAX_POSITION_DOLARES:
                             stake = MAX_POSITION_DOLARES
 
-                        # FIX: dimensionamento correto — calcular shares inteiros
-                        # a partir do stake em USD, depois derivar custo real.
-                        # Evita acúmulo de erro de arredondamento em preços baixos.
                         shares    = int(stake / market_price)
                         if shares <= 0:
                             continue
                         real_cost = round(shares * market_price, 2)
-                        stake     = real_cost  # custo efetivo, não estimado
+                        stake     = real_cost
 
                         if stake <= 0:
                             continue
@@ -311,8 +306,8 @@ while True:
                             "type":         condition,
                             "unit":         unit,
                             "target":       target,
-                            "target_high":  target_high,  # None exceto em 'range'
-                            "shares":       shares,          # novo campo
+                            "target_high":  target_high,
+                            "shares":       shares,
                             "forecast_day": forecast_day,
                             "model_prob":   round(model_prob, 4),
                             "market_price": round(market_price, 4),
@@ -332,7 +327,6 @@ while True:
 
                         save_bankroll(bankroll)
 
-                        # Registrar previsão no sistema de validação
                         try:
                             registrar_previsao(
                                 market_id=market_id,
@@ -354,17 +348,14 @@ while True:
                         except Exception as e:
                             print(f"  ⚠️  validacao.py erro: {e}")
 
-                        msg = (
-                            f"[TRADE] {city_display.upper()} | {condition}\n"
-                            f"Q: {market.get('question', '')}\n"
-                            f"Model: {model_prob:.3f} | Market: {market_price:.3f}\n"
-                            f"Edge: {edge:+.3f} | EV: {ev:+.3f} | Unit: {unit}\n"
-                            f"Target: {target} | Shares: {shares} | "
-                            f"Stake: ${stake:.2f} | Saldo: ${balance:.2f}"
+                        print(
+                            f"  >>> TRADE EXECUTADO\n"
+                            f"  {city_display} | {condition} | Target:{target}°{unit}\n"
+                            f"  Model:{model_prob:.3f} Mkt:{market_price:.3f} "
+                            f"Edge:{edge:+.3f} EV:{ev:+.3f}\n"
+                            f"  Shares:{shares} Stake:${stake:.2f} Saldo:${balance:.2f}"
                         )
-                        print(f"  >>> TRADE EXECUTADO\n{msg}")
 
-                        # 📱 Notificar Telegram
                         try:
                             notificar_entrada_trade(
                                 city=city_display,
@@ -382,7 +373,7 @@ while True:
                             print(f"  ⚠️  Erro Telegram: {e}")
 
                     except Exception as e:
-                        print(f"  Erro market: {e}")
+                        print(f"  Erro executando trade: {e}")
                         import traceback
                         traceback.print_exc()
 
