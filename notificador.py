@@ -237,7 +237,7 @@ Responda em português.
 """
 
 # =========================================================
-# GROK
+# GROQ IA
 # =========================================================
 
 def _perguntar_grok(
@@ -246,35 +246,29 @@ def _perguntar_grok(
 
     contexto = _build_context()
 
-    grok_key = (
-        os.environ.get(
-            "GROK_API_KEY"
-        )
-        or
-        os.environ.get(
-            "GROQ_API_KEY"
-        )
-        or ""
+    groq_key = os.environ.get(
+        "GROQ_API_KEY",
+        ""
     )
 
-    if not grok_key:
+    if not groq_key:
 
         return (
-            "❌ API KEY não configurada."
+            "❌ GROQ_API_KEY não configurada."
         )
 
     try:
 
         r = requests.post(
-            "https://api.x.ai/v1/chat/completions",
+            "https://api.groq.com/openai/v1/chat/completions",
             headers={
                 "Authorization":
-                f"Bearer {grok_key}",
+                f"Bearer {groq_key}",
                 "Content-Type":
                 "application/json",
             },
             json={
-                "model": "grok-3-mini",
+                "model": "llama-3.3-70b-versatile",
                 "messages": [
                     {
                         "role": "system",
@@ -291,7 +285,7 @@ def _perguntar_grok(
             timeout=30
         )
 
-        print("\n===== GROK DEBUG =====")
+        print("\n===== GROQ DEBUG =====")
         print("STATUS:", r.status_code)
         print("TEXT:", r.text[:1000])
         print("======================\n")
