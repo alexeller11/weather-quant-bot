@@ -13,6 +13,10 @@ from config import (
     KELLY_FRACTION
 )
 
+# =========================================================
+# CONFIG
+# =========================================================
+
 BOT_DIR = os.path.dirname(
     os.path.abspath(__file__)
 )
@@ -161,7 +165,7 @@ def notificar_entrada_trade(
     enviar_mensagem(msg)
 
 # =========================================================
-# IA
+# IA CONTEXTO
 # =========================================================
 
 def _build_context():
@@ -222,7 +226,7 @@ def _build_context():
         if fechados else 0
     )
 
-    return f'''
+    return f"""
 BOT WEATHER QUANT
 
 Saldo: ${balance:.2f}
@@ -230,7 +234,11 @@ PnL: ${pnl:+.2f}
 Win Rate: {wr}%
 
 Responda em português.
-'''
+"""
+
+# =========================================================
+# GROK
+# =========================================================
 
 def _perguntar_grok(
     pergunta_usuario
@@ -266,7 +274,7 @@ def _perguntar_grok(
                 "application/json",
             },
             json={
-                "model": "grok-beta",
+                "model": "grok-3-mini",
                 "messages": [
                     {
                         "role": "system",
@@ -283,10 +291,21 @@ def _perguntar_grok(
             timeout=30
         )
 
-        print(r.status_code)
-        print(r.text)
+        print("\n===== GROK DEBUG =====")
+        print("STATUS:", r.status_code)
+        print("TEXT:", r.text[:1000])
+        print("======================\n")
 
-        data = r.json()
+        try:
+
+            data = r.json()
+
+        except Exception:
+
+            return (
+                "❌ Resposta inválida:\n\n"
+                f"{r.text[:300]}"
+            )
 
         if (
             r.status_code == 200
@@ -299,13 +318,21 @@ def _perguntar_grok(
             )
 
         return (
-            f"Erro API:\n\n{data}"
+            f"❌ Erro API:\n\n"
+            f"{data}"
+        )
+
+    except requests.exceptions.Timeout:
+
+        return (
+            "⏱️ Timeout da API."
         )
 
     except Exception as e:
 
         return (
-            f"Erro:\n\n{str(e)}"
+            f"❌ Erro:\n\n"
+            f"{str(e)}"
         )
 
 # =========================================================
@@ -324,13 +351,14 @@ def processar_comando(
             "<b>COMANDOS</b>\n\n"
             "/status\n"
             "/settlement\n"
-            "/help"
+            "/help\n\n"
+            "💬 Você pode conversar livremente."
         )
 
     elif cmd == "/status":
 
         enviar_mensagem(
-            "✅ Bot online"
+            "✅ Bot online."
         )
 
     elif cmd == "/settlement":
@@ -355,7 +383,7 @@ def processar_comando(
             if res.returncode == 0:
 
                 enviar_mensagem(
-                    "✅ Settlement executado"
+                    "✅ Settlement executado."
                 )
 
             else:
@@ -434,9 +462,7 @@ def iniciar_listener():
 
                         if texto:
 
-                            print(
-                                texto
-                            )
+                            print(texto)
 
                             processar_comando(
                                 texto
