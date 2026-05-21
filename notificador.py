@@ -1,23 +1,28 @@
 """
 NOTIFICADOR TELEGRAM — WEATHER QUANT
-Notificações com matemática Kelly completa + tabela de validação.
+Notificações automáticas + IA Grok para conversa natural.
 """
 
-import os, requests, json, subprocess, time
-from datetime import datetime
+import os
+import requests
+import json
+import subprocess
+import time
+from datetime import datetime, timezone
 from threading import Thread
+
 from config import TELEGRAM_TOKEN, CHAT_ID, MAX_POSITION, KELLY_FRACTION
 
 BOT_DIR      = os.path.dirname(os.path.abspath(__file__))
 TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
 # ──────────────────────────────────────────────────────────────
-# BASE
+# ENVIO BASE
 # ──────────────────────────────────────────────────────────────
 
 def enviar_mensagem(texto, parse_mode="HTML"):
     if not TELEGRAM_TOKEN or not CHAT_ID:
-        print("⚠️  Telegram: TELEGRAM_TOKEN ou CHAT_ID não configurados no .env")
+        print("⚠️  Telegram: token ou chat_id não configurados")
         return False
     try:
         r = requests.post(
@@ -25,13 +30,11 @@ def enviar_mensagem(texto, parse_mode="HTML"):
             json={"chat_id": CHAT_ID, "text": texto, "parse_mode": parse_mode},
             timeout=10,
         )
-        if r.status_code != 200:
-            print(f"⚠️  Telegram HTTP {r.status_code}: {r.text[:200]}")
-            return False
-        return True
+        return r.status_code == 200
     except Exception as e:
         print(f"⚠️  Telegram erro: {e}")
         return False
+
 
 # ──────────────────────────────────────────────────────────────
 # KELLY MATH HELPER
@@ -58,6 +61,7 @@ def _kelly_math(balance, model_prob, market_price):
         "desperdicio_pct":desp,
     }
 
+
 # ──────────────────────────────────────────────────────────────
 # TABELA DE VALIDAÇÃO
 # ──────────────────────────────────────────────────────────────
@@ -75,23 +79,19 @@ def _tabela_validacao(target, unit, model_prob, real_temp_c, resultado):
         real_str = f"{real_temp_c:.1f}C"
         tgt_str  = f"{target}C"
         acertou  = abs(real_temp_c - float(target)) < 0.5
-
-    icone_t = ("✅ EXATO" if acertou else ("✅ CORRETO" if resultado=="WIN" else "❌ ERRADO"))
-    icone_p = "✅ CORRETO" if resultado=="WIN" else "❌ ERRADO"
+    icone_t = "EXATO" if acertou else ("CORRETO" if resultado=="WIN" else "ERRADO")
+    icone_p = "CORRETO" if resultado=="WIN" else "ERRADO"
     brier   = round((model_prob - (1.0 if resultado=="WIN" else 0.0))**2, 4)
     b_label = "Excelente" if brier < 0.1 else ("Bom" if brier < 0.25 else "Ruim")
-
     return (
-        f"\n\n<b>🧪 Validacao Realizada</b>\n"
+        f"\n\n<b>Validacao</b>\n"
         f"<pre>"
-        f"Parametro    | Previsao | Real\n"
-        f"-------------|----------|-------------------\n"
-        f"Temperatura  | {tgt_str:<8} | {real_str}\n"
-        f"             | {icone_t}\n"
-        f"Probabilid.  | {model_prob*100:.0f}%      | {icone_p}\n"
-        f"Brier Score  | --       | {brier} ({b_label})"
+        f"Temp    | {tgt_str:<8} | {real_str} | {icone_t}\n"
+        f"Modelo  | {model_prob*100:.0f}%      | {icone_p}\n"
+        f"Brier   | --       | {brier} ({b_label})"
         f"</pre>"
     )
+
 
 # ──────────────────────────────────────────────────────────────
 # NOTIFICAÇÕES DE TRADE
@@ -100,45 +100,34 @@ def _tabela_validacao(target, unit, model_prob, real_temp_c, resultado):
 def notificar_entrada_trade(city, market_date, target, unit, stake,
                              model_prob, market_price, edge,
                              balance=None, shares=None):
-    ev_pct     = round((model_prob / market_price - 1) * 100, 1) if market_price > 0 else 0
-    shares_ln  = f"\n<b>Shares:</b> {shares}" if shares is not None else ""
+    ev_pct    = round((model_prob / market_price - 1) * 100, 1) if market_price > 0 else 0
+    shares_ln = f"\n<b>Shares:</b> {shares}" if shares is not None else ""
 
     kelly_block = ""
     if balance is not None and balance > 0:
         km = _kelly_math(balance, model_prob, market_price)
         kelly_block = (
-            f"\n\n<b>A matematica completa</b>\n"
-            f"{city} — o Kelly puro diz apostar <b>{km['kelly_puro_pct']}%</b> do bankroll. "
-            f"O half-Kelly diz <b>{km['half_kelly_pct']}%</b>. "
-            f"Voce capeou em <b>{km['cap_pct']}%</b> — correto.\n"
+            f"\n\n<b>Matematica Kelly</b>\n"
+            f"Kelly puro: <b>{km['kelly_puro_pct']}%</b> | "
+            f"Half-Kelly: <b>{km['half_kelly_pct']}%</b> | "
+            f"Cap: <b>{km['cap_pct']}%</b>\n"
+            f"Teorico: ${km['stake_teorico']:.2f} → Real: ${km['custo_real']:.2f}"
         )
         if km["desperdicio_pct"] > 5:
-            kelly_block += (
-                f"O arredondamento de shares consumiu "
-                f"<b>{km['desperdicio_pct']}%</b> do stake calculado "
-                f"(teorico ${km['stake_teorico']:.2f} → real ${km['custo_real']:.2f})."
-            )
-        else:
-            kelly_block += (
-                f"Granularidade OK — teorico ${km['stake_teorico']:.2f} "
-                f"→ real ${km['custo_real']:.2f} ({km['desperdicio_pct']}% perdido)."
-            )
+            kelly_block += f" ({km['desperdicio_pct']}% perdido)"
 
-    msg = (
+    enviar_mensagem(
         f"<b>NOVO TRADE</b>\n\n"
         f"<b>Cidade:</b> {city}\n"
         f"<b>Data:</b> {market_date}\n"
         f"<b>Target:</b> {target}°{unit}\n"
         f"<b>Aposta:</b> <b>${stake:.2f}</b>{shares_ln}\n\n"
-        f"<b>Probabilidades</b>\n"
-        f"Modelo:   <b>{model_prob*100:.1f}%</b>\n"
-        f"Mercado:  <b>{market_price*100:.1f}%</b>\n"
-        f"Edge:     <b>+{edge:.1f}%</b>\n"
-        f"EV:       <b>+{ev_pct:.1f}%</b>"
+        f"Modelo: <b>{model_prob*100:.1f}%</b> | "
+        f"Mercado: <b>{market_price*100:.1f}%</b>\n"
+        f"Edge: <b>+{edge:.1f}%</b> | EV: <b>+{ev_pct:.1f}%</b>"
         f"{kelly_block}\n\n"
         f"Aguardando resolucao..."
     )
-    enviar_mensagem(msg)
 
 
 def notificar_settlement_win(city, market_date, target, unit, stake, pnl, saldo,
@@ -146,12 +135,10 @@ def notificar_settlement_win(city, market_date, target, unit, stake, pnl, saldo,
     tabela = _tabela_validacao(target, unit, model_prob, real_temp_c, "WIN")
     enviar_mensagem(
         f"<b>VITORIA!</b>\n\n"
-        f"<b>Cidade:</b> {city}\n<b>Data:</b> {market_date}\n"
+        f"<b>Cidade:</b> {city} | <b>Data:</b> {market_date}\n"
         f"<b>Target:</b> {target}°{unit}\n"
-        f"<b>Aposta:</b> ${stake:.2f}\n"
-        f"<b>Ganho:</b> <b>+${pnl:.2f}</b>"
-        f"{tabela}\n\n"
-        f"Saldo: <b>${saldo:.2f}</b>"
+        f"<b>Aposta:</b> ${stake:.2f} | <b>Ganho: +${pnl:.2f}</b>"
+        f"{tabela}\n\nSaldo: <b>${saldo:.2f}</b>"
     )
 
 
@@ -160,12 +147,10 @@ def notificar_settlement_loss(city, market_date, target, unit, stake, pnl, saldo
     tabela = _tabela_validacao(target, unit, model_prob, real_temp_c, "LOSS")
     enviar_mensagem(
         f"<b>DERROTA</b>\n\n"
-        f"<b>Cidade:</b> {city}\n<b>Data:</b> {market_date}\n"
+        f"<b>Cidade:</b> {city} | <b>Data:</b> {market_date}\n"
         f"<b>Target:</b> {target}°{unit}\n"
-        f"<b>Aposta:</b> ${stake:.2f}\n"
-        f"<b>Perda:</b> <b>-${abs(pnl):.2f}</b>"
-        f"{tabela}\n\n"
-        f"Saldo: <b>${saldo:.2f}</b>"
+        f"<b>Aposta:</b> ${stake:.2f} | <b>Perda: -${abs(pnl):.2f}</b>"
+        f"{tabela}\n\nSaldo: <b>${saldo:.2f}</b>"
     )
 
 
@@ -174,19 +159,140 @@ def notificar_settlement_resumo(total_resolved, wins, losses, total_pnl, saldo):
     emoji = "🟢" if total_pnl >= 0 else "🔴"
     enviar_mensagem(
         f"<b>SETTLEMENT CONCLUIDO</b>\n\n"
-        f"<b>Resolvidos:</b> {total_resolved}\n"
-        f"{wins} vitorias | {losses} derrotas\n"
-        f"<b>Win rate:</b> {taxa:.1f}%\n\n"
-        f"{emoji} <b>PnL sessao:</b> ${total_pnl:+.2f}\n"
-        f"Saldo atual: <b>${saldo:.2f}</b>"
+        f"Resolvidos: {total_resolved} | "
+        f"{wins}W / {losses}L | WR: {taxa:.1f}%\n\n"
+        f"{emoji} PnL: <b>${total_pnl:+.2f}</b> | Saldo: <b>${saldo:.2f}</b>"
     )
 
+
 # ──────────────────────────────────────────────────────────────
-# LISTENER DE COMANDOS
+# IA — GROK COMO ANALISTA DO BOT
 # ──────────────────────────────────────────────────────────────
 
-def processar_comando(comando):
-    cmd = comando.lower().strip()
+def _build_context():
+    """Monta o contexto do bot para o Grok analisar."""
+    try:
+        bankroll_path = os.path.join(BOT_DIR, "bankroll.json")
+        with open(bankroll_path, "r", encoding="utf-8") as f:
+            bankroll = json.load(f)
+    except Exception:
+        bankroll = {"balance": 0, "history": []}
+
+    history  = bankroll.get("history", [])
+    balance  = bankroll.get("balance", 0)
+    abertos  = [t for t in history if t.get("result") == "OPEN"]
+    fechados = [t for t in history if t.get("result") in ("WIN","LOSS")]
+    wins     = [t for t in fechados if t.get("result") == "WIN"]
+    pnl      = sum(t.get("pnl", 0) for t in fechados)
+    win_rate = round(len(wins)/len(fechados)*100,1) if fechados else 0
+    exposicao = sum(t.get("stake",0) for t in abertos)
+
+    # Top trades fechados
+    ultimos = fechados[-5:] if fechados else []
+    trades_str = ""
+    for t in ultimos:
+        trades_str += (
+            f"\n- {t.get('city')} {t.get('market_date')} | "
+            f"{t.get('result')} | Stake ${t.get('stake',0):.2f} | "
+            f"PnL ${t.get('pnl',0):+.2f} | "
+            f"Model {t.get('model_prob',0)*100:.0f}% vs Mkt {t.get('market_price',0)*100:.0f}%"
+        )
+
+    abertos_str = ""
+    for t in abertos[:8]:
+        abertos_str += (
+            f"\n- {t.get('city')} {t.get('market_date')} | "
+            f"Stake ${t.get('stake',0):.2f} | "
+            f"Model {t.get('model_prob',0)*100:.0f}% vs Mkt {t.get('market_price',0)*100:.0f}% | "
+            f"Edge {t.get('edge',0):+.1f}%"
+        )
+
+    validacao_str = ""
+    if fechados and any(t.get("model_prob") for t in fechados):
+        brier_scores = [
+            (t.get("model_prob", 0) - (1.0 if t.get("result") == "WIN" else 0))**2
+            for t in fechados if t.get("model_prob")
+        ]
+        if brier_scores:
+            brier_mean = round(sum(brier_scores) / len(brier_scores), 4)
+            validacao_str = f"\n- Brier Score médio: {brier_mean}"
+
+    return f"""CONTEXTO DO BOT DE APOSTA — WEATHER QUANTITATIVO:
+
+SITUACAO ATUAL:
+- Saldo: ${balance:.2f}
+- PnL total: ${pnl:+.2f}
+- Win rate: {win_rate}% ({len(wins)}W/{len(fechados)-len(wins)}L)
+- Trades abertos: {len(abertos)} (exposição ${exposicao:.2f})
+- Total fechados: {len(fechados)}{validacao_str}
+
+TRADES ABERTOS:{abertos_str if abertos_str else ' Nenhum'}
+
+ÚLTIMOS TRADES FECHADOS:{trades_str if trades_str else ' Nenhum'}
+
+SOBRE O BOT:
+- Usa ensemble meteorológico Open-Meteo (50 membros) para calcular probabilidades
+- Aposta quando edge (modelo - mercado) > 5%
+- Kelly fraction 0.5 (half-Kelly), cap $10 por trade
+- Settlement automático às 08:00 e 20:00 UTC
+- 1 trade por evento (cidade+data) — sem múltiplos buckets
+
+Responda de forma concisa e direta em português. Seja analítico, honesto sobre riscos e 
+baseie suas análises nos dados reais acima. Máximo 3 parágrafos."""
+
+
+def _perguntar_grok(pergunta_usuario):
+    """
+    Envia pergunta EXCLUSIVAMENTE para Grok (xAI).
+    Sem fallbacks — apenas Grok.
+    """
+    contexto = _build_context()
+    
+    grok_key = os.environ.get("GROK_API_KEY", "")
+    
+    if not grok_key:
+        return "❌ GROK_API_KEY não configurada!\n\nAdicione a variável de ambiente com sua chave Grok."
+    
+    try:
+        r = requests.post(
+            "https://api.x.ai/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {grok_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "grok-2",
+                "max_tokens": 600,
+                "messages": [
+                    {"role": "system", "content": contexto},
+                    {"role": "user",   "content": pergunta_usuario},
+                ],
+            },
+            timeout=30,
+        )
+        data = r.json()
+        if r.status_code == 200:
+            return data["choices"][0]["message"]["content"]
+        else:
+            erro = data.get("error", {}).get("message", str(data))
+            return f"❌ Erro Grok {r.status_code}: {erro}"
+    except requests.exceptions.Timeout:
+        return "⏱️  Timeout — Grok demorou muito para responder. Tente novamente."
+    except Exception as e:
+        return f"❌ Erro ao conectar com Grok: {str(e)}"
+
+
+# Aliases para compatibilidade
+_perguntar_ia = _perguntar_grok
+_perguntar_claude = _perguntar_grok
+
+
+# ──────────────────────────────────────────────────────────────
+# COMANDOS DO TELEGRAM
+# ──────────────────────────────────────────────────────────────
+
+def processar_comando(texto):
+    cmd = texto.lower().strip()
 
     if cmd == "/settlement":
         enviar_mensagem("Executando settlement...")
@@ -196,44 +302,43 @@ def processar_comando(comando):
                 capture_output=True, text=True, timeout=60, cwd=BOT_DIR,
             )
             if res.returncode == 0:
-                enviar_mensagem("Settlement executado com sucesso!")
+                enviar_mensagem("Settlement executado!")
             else:
-                erro = res.stderr[:500] if res.stderr else "sem detalhes"
+                erro = res.stderr[:400] if res.stderr else "sem detalhes"
                 enviar_mensagem(f"Erro no settlement:\n<pre>{erro}</pre>")
         except subprocess.TimeoutExpired:
-            enviar_mensagem("Timeout: settlement demorou mais de 60s")
+            enviar_mensagem("Timeout no settlement (>60s)")
         except Exception as e:
-            enviar_mensagem(f"Erro ao executar settlement: {e}")
+            enviar_mensagem(f"Erro: {e}")
 
     elif cmd == "/status":
         try:
-            with open(os.path.join(BOT_DIR, "bankroll.json"), "r", encoding="utf-8") as f:
+            with open(os.path.join(BOT_DIR, "bankroll.json"), "r") as f:
                 data = json.load(f)
-            saldo     = data.get("balance", 0)
-            history   = data.get("history", [])
-            abertos   = [t for t in history if t.get("result") == "OPEN"]
-            fechados  = [t for t in history if t.get("result") in ("WIN", "LOSS")]
-            wins_lst  = [t for t in history if t.get("result") == "WIN"]
-            taxa      = (len(wins_lst) / len(fechados) * 100) if fechados else 0
-            pnl_total = sum(t.get("pnl", 0) for t in fechados)
-            exposicao = sum(t.get("stake", 0) for t in abertos)
-            emoji     = "🟢" if pnl_total >= 0 else "🔴"
+            saldo    = data.get("balance", 0)
+            history  = data.get("history", [])
+            abertos  = [t for t in history if t.get("result") == "OPEN"]
+            fechados = [t for t in history if t.get("result") in ("WIN","LOSS")]
+            wins     = [t for t in fechados if t.get("result") == "WIN"]
+            taxa     = round(len(wins)/len(fechados)*100,1) if fechados else 0
+            pnl      = sum(t.get("pnl",0) for t in fechados)
+            expo     = sum(t.get("stake",0) for t in abertos)
+            emoji    = "🟢" if pnl >= 0 else "🔴"
+
             det = "".join(
                 f"\n  • {t.get('city','?')} {t.get('market_date','?')} "
                 f"${t.get('stake',0):.2f} @ {t.get('model_prob',0)*100:.0f}%"
-                for t in abertos[:5]
+                for t in abertos[:6]
             )
+
             enviar_mensagem(
-                f"<b>STATUS DO BOT</b>\n\n"
-                f"Saldo: <b>${saldo:.2f}</b>\n"
-                f"Exposicao: ${exposicao:.2f}\n"
-                f"Trades abertos: {len(abertos)}{det}\n"
-                f"Fechados: {len(fechados)} ({len(wins_lst)}W / {len(fechados)-len(wins_lst)}L)\n"
-                f"Win rate: {taxa:.1f}%\n"
-                f"{emoji} PnL total: <b>${pnl_total:+.2f}</b>"
+                f"<b>STATUS</b>\n\n"
+                f"Saldo: <b>${saldo:.2f}</b> | Exposicao: ${expo:.2f}\n"
+                f"Abertos: {len(abertos)}{det}\n"
+                f"Fechados: {len(fechados)} ({len(wins)}W/{len(fechados)-len(wins)}L)\n"
+                f"Win rate: {taxa}%\n"
+                f"{emoji} PnL: <b>${pnl:+.2f}</b>"
             )
-        except FileNotFoundError:
-            enviar_mensagem("bankroll.json nao encontrado")
         except Exception as e:
             enviar_mensagem(f"Erro ao ler status: {e}")
 
@@ -242,19 +347,34 @@ def processar_comando(comando):
             from validacao import gerar_relatorio
             gerar_relatorio(enviar_telegram=True)
         except Exception as e:
-            enviar_mensagem(f"Erro ao gerar validacao: {e}")
+            enviar_mensagem(f"Erro na validacao: {e}")
 
     elif cmd == "/help":
         enviar_mensagem(
-            "<b>COMANDOS DISPONIVEIS</b>\n\n"
-            "<b>/settlement</b> — Rodar settlement manualmente\n"
-            "<b>/status</b>     — Ver saldo, exposicao e trades abertos\n"
-            "<b>/validacao</b>  — Relatorio de validacao do modelo\n"
-            "<b>/help</b>       — Esta mensagem"
+            "<b>COMANDOS</b>\n\n"
+            "/status     — Saldo e trades abertos\n"
+            "/validacao  — Relatorio de validacao do modelo\n"
+            "/settlement — Rodar settlement agora\n"
+            "/help       — Esta mensagem\n\n"
+            "<b>💬 GROK - Interação livre</b>\n"
+            "<i>Mande qualquer pergunta em texto livre — "
+            "o Grok vai analisar o bot e responder!</i>\n\n"
+            "Exemplos:\n"
+            "• Como está o bot?\n"
+            "• Qual o win rate?\n"
+            "• Vale abrir novo trade agora?"
         )
-    else:
-        enviar_mensagem(f"Comando desconhecido: <code>{comando}</code>\nUse /help.")
 
+    else:
+        # Qualquer texto que não seja comando → Grok analisa
+        print(f"[Grok] Processando: {texto[:50]}...")
+        resposta = _perguntar_grok(texto)
+        enviar_mensagem(resposta)
+
+
+# ──────────────────────────────────────────────────────────────
+# LISTENER LONG-POLLING
+# ──────────────────────────────────────────────────────────────
 
 def iniciar_listener():
     def listen():
@@ -272,9 +392,10 @@ def iniciar_listener():
                     if dados.get("ok") and dados.get("result"):
                         for update in dados["result"]:
                             offset = update["update_id"] + 1
-                            texto  = update.get("message", {}).get("text", "")
-                            if texto.startswith("/"):
-                                print(f"Comando: {texto}")
+                            msg    = update.get("message", {})
+                            texto  = msg.get("text", "").strip()
+                            if texto:
+                                print(f"Telegram: {texto[:60]}")
                                 processar_comando(texto)
                 time.sleep(1)
             except Exception as e:
@@ -286,5 +407,5 @@ def iniciar_listener():
 
 if __name__ == "__main__":
     print("Testando Telegram...")
-    ok = enviar_mensagem("Notificador OK! Bot conectado.")
-    print("OK" if ok else "Falhou — verifique .env")
+    ok = enviar_mensagem("Notificador OK!")
+    print("OK" if ok else "Falhou")
