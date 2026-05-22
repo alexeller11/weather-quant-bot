@@ -1,5 +1,5 @@
 # =========================================================
-# WEATHER QUANT BOT — BOT.PY COMPLETO
+# WEATHER QUANT BOT — BOT.PY
 # =========================================================
 
 import os
@@ -73,10 +73,6 @@ from notificador import (
     iniciar_listener,
 )
 
-from validacao import (
-    registrar_previsao
-)
-
 # =========================================================
 # CONFIG
 # =========================================================
@@ -144,11 +140,6 @@ def _rodar_settlement():
             print(
                 f"[scheduler] "
                 f"Settlement ERRO: {erro}"
-            )
-
-            enviar_mensagem(
-                f"Erro no settlement diário:\n"
-                f"<pre>{erro}</pre>"
             )
 
     except Exception as e:
@@ -228,16 +219,8 @@ def exact_market_guard(
     ev,
 ):
 
-    # =========================================
-    # SOMENTE EXACT
-    # =========================================
-
     if condition.upper() != "EXACT":
         return True
-
-    # =========================================
-    # EXACT CARO DEMAIS
-    # =========================================
 
     if market_price > 0.25:
 
@@ -246,10 +229,6 @@ def exact_market_guard(
         )
 
         return False
-
-    # =========================================
-    # PROBABILIDADE ALTA DEMAIS
-    # =========================================
 
     if model_prob > 0.25:
 
@@ -260,10 +239,6 @@ def exact_market_guard(
 
         return False
 
-    # =========================================
-    # EV ABSURDO
-    # =========================================
-
     if ev > MAX_EV:
 
         print(
@@ -273,10 +248,6 @@ def exact_market_guard(
 
         return False
 
-    # =========================================
-    # PREÇO MUITO BAIXO
-    # =========================================
-
     if market_price < 0.10:
 
         print(
@@ -285,10 +256,6 @@ def exact_market_guard(
         )
 
         return False
-
-    # =========================================
-    # EDGE MÍNIMO
-    # =========================================
 
     exact_edge = (
         model_prob
@@ -303,10 +270,6 @@ def exact_market_guard(
         )
 
         return False
-
-    # =========================================
-    # DISTORÇÃO
-    # =========================================
 
     ratio = (
         model_prob
@@ -412,10 +375,6 @@ while True:
                             )
                         )
 
-                        # =====================
-                        # FILTER PRICE
-                        # =====================
-
                         if (
                             market_price
                             < MIN_MARKET_PRICE
@@ -424,10 +383,6 @@ while True:
                             > MAX_MARKET_PRICE
                         ):
                             continue
-
-                        # =====================
-                        # LIQUIDEZ
-                        # =====================
 
                         if (
                             market_price
@@ -467,10 +422,6 @@ while True:
                             )
                         )
 
-                        # =====================
-                        # DATA
-                        # =====================
-
                         try:
 
                             market_date_obj = (
@@ -492,10 +443,6 @@ while True:
                         except:
                             continue
 
-                        # =====================
-                        # DUPLICADO
-                        # =====================
-
                         history_ids = [
 
                             str(
@@ -513,10 +460,6 @@ while True:
                             in history_ids
                         ):
                             continue
-
-                        # =====================
-                        # FORECAST DAY
-                        # =====================
 
                         try:
 
@@ -547,10 +490,6 @@ while True:
 
                             forecast_day = 1
 
-                        # =====================
-                        # FORECAST
-                        # =====================
-
                         forecast_c, raw_sigma = (
                             get_forecast(
                                 city,
@@ -576,10 +515,6 @@ while True:
                             f"sigma={raw_sigma:.2f}"
                         )
 
-                        # =====================
-                        # SIGMA
-                        # =====================
-
                         sigma_total = (
                             build_sigma(
                                 city_slug=city,
@@ -593,10 +528,6 @@ while True:
                             f"  [Sigma] "
                             f"{sigma_total:.2f}"
                         )
-
-                        # =====================
-                        # MODEL
-                        # =====================
 
                         model_prob = (
                             calculate_probability(
@@ -624,10 +555,6 @@ while True:
                         ):
                             continue
 
-                        # =====================
-                        # EDGE / EV
-                        # =====================
-
                         edge = round(
                             (
                                 model_prob
@@ -640,10 +567,6 @@ while True:
                             model_prob,
                             market_price
                         )
-
-                        # =====================
-                        # EXACT GUARD
-                        # =====================
 
                         if not exact_market_guard(
                             condition,
@@ -695,6 +618,10 @@ while True:
 
                             "forecast_day": forecast_day,
 
+                            "forecast_c": forecast_c,
+
+                            "sigma_total": sigma_total,
+
                             "market_id": market_id,
                         })
 
@@ -703,10 +630,6 @@ while True:
                         print(
                             f"Erro market: {e}"
                         )
-
-                # =============================
-                # EXECUÇÃO
-                # =============================
 
                 for cand in candidatos:
 
@@ -736,6 +659,14 @@ while True:
                             "market_id"
                         ]
 
+                        forecast_c = cand[
+                            "forecast_c"
+                        ]
+
+                        sigma_total = cand[
+                            "sigma_total"
+                        ]
+
                         bankroll = load_bankroll()
 
                         balance = bankroll[
@@ -759,10 +690,6 @@ while True:
                             f"  → TRADE "
                             f"{market.get('question','')[:60]}"
                         )
-
-                        # =====================
-                        # STAKE
-                        # =====================
 
                         stake = kelly_stake(
                             balance,
@@ -846,6 +773,12 @@ while True:
                             "target":
                             target,
 
+                            "forecast_c":
+                            forecast_c,
+
+                            "sigma_total":
+                            sigma_total,
+
                             "shares":
                             shares,
 
@@ -892,10 +825,6 @@ while True:
                             f"REGISTRADO "
                             f"${stake:.2f}"
                         )
-
-                        # =====================
-                        # TELEGRAM
-                        # =====================
 
                         try:
 
@@ -952,10 +881,10 @@ while True:
                 )
 
         print(
-            "\nPróximo ciclo em 15min..."
+            "\nPróximo ciclo em 5min..."
         )
 
-        time.sleep(900)
+        time.sleep(300)
 
     except Exception as e:
 
