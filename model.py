@@ -133,13 +133,29 @@ def calculate_probability(city, target, unit="C", forecast_day=1,
 
     if forecast_c is not None and sigma is not None:
         # Aplica inflation de incerteza por horizonte de previsão.
-        # O sigma bruto do ensemble subestima variabilidade real em D+2/D+3.
         raw_sigma = sigma
         inflation = SIGMA_ENSEMBLE_INFLATION.get(forecast_day, DEFAULT_INFLATION)
         sigma = round(sigma * inflation, 2)
 
-        # Aplica sigma mínimo por cidade — cidades costeiras/altitude têm
-        # variabilidade real que o ensemble subestima sistematicamente.
+        # Sigma mínimo por condição:
+        # EXACT exige sigma alto porque o ensemble subestima muito a incerteza
+        # real de acertar um bucket de 1°C. RMSE real de D+1 é 2-3°C — para
+        # bucket ±0.5°C isso implica sigma efetivo de 4-5°C.
+        # ABOVE/BELOW: sigma mínimo mais baixo pois são apostas direcionais.
+        if condition == "exact":
+            SIGMA_MIN_EXACT = {0: 3.0, 1: 4.0, 2: 5.0, 3: 6.0}
+            sigma_floor = SIGMA_MIN_EXACT.get(forecast_day, 6.0)
+        elif condition in ("above", "below"):
+            SIGMA_MIN_DIR = {0: 1.5, 1: 2.0, 2: 3.0, 3: 4.0}
+            sigma_floor = SIGMA_MIN_DIR.get(forecast_day, 4.0)
+        else:
+            sigma_floor = 2.0
+
+        if sigma < sigma_floor:
+            print(f"  [SigmaFloor] {city} {condition}: sigma {sigma:.2f}→{sigma_floor:.2f}°C (floor D+{forecast_day})")
+            sigma = sigma_floor
+
+        # Aplica sigma mínimo adicional por cidade (configurável em config.py)
         city_slug = city.lower().replace(" ", "-")
         min_sigma = CITY_MIN_SIGMA.get(city_slug, 0.0)
         if sigma < min_sigma:
