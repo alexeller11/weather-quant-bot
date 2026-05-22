@@ -457,16 +457,21 @@ while True:
 
                         raw_sigma = market.get(
                             "raw_sigma",
-                            1.5
+                            1.8
                         )
+
+                        # ==================================
+                        # FALLBACK TEMPORÁRIO
+                        # ==================================
 
                         if forecast_c is None:
 
-                            print(
-                                "  ⚠️ forecast_c ausente"
-                            )
+                            forecast_c = target
 
-                            continue
+                            print(
+                                f"  ⚠️ forecast_c ausente "
+                                f"→ fallback target={target}"
+                            )
 
                         sigma_total = build_sigma(
                             city_slug=city,
@@ -853,10 +858,6 @@ while True:
 
                         save_bankroll(bankroll)
 
-                        # ==================================
-                        # VALIDAÇÃO
-                        # ==================================
-
                         try:
 
                             registrar_previsao(
@@ -901,10 +902,6 @@ while True:
                                 f"  ⚠️ validacao.py erro: {e}"
                             )
 
-                        # ==================================
-                        # LOG
-                        # ==================================
-
                         print(
                             f"  >>> TRADE REGISTRADO\n"
                             f"  {city_display} | "
@@ -920,10 +917,6 @@ while True:
                             f"Exposição:"
                             f"${open_exposure(history):.2f}"
                         )
-
-                        # ==================================
-                        # TELEGRAM
-                        # ==================================
 
                         try:
 
