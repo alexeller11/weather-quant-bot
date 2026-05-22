@@ -3,107 +3,143 @@
 # =========================================================
 
 from config import (
-    MAX_POSITION,
-    KELLY_FRACTION,
-    MAX_TOTAL_EXPOSURE,
-    MAX_POSITION_DOLARES,
-    EXACT_STAKE_MULTIPLIER,
+    MAX_TOTAL_EXPOSURE
 )
 
 # =========================================================
 # KELLY
 # =========================================================
 
-def kelly_stake(current_balance: float,
-                 model_prob: float,
-                 market_price: float) -> float:
+def kelly_stake(
 
-    if market_price <= 0 or market_price >= 1:
-        return 0.0
+    bankroll,
 
-    if current_balance <= 0:
-        return 0.0
+    prob,
 
-    p = float(model_prob)
-    q = 1.0 - p
+    market_price,
+):
 
-    b = (1.0 / float(market_price)) - 1.0
+    try:
 
-    if b <= 0:
-        return 0.0
+        b = (
+            (1.0 / market_price)
+            - 1.0
+        )
 
-    f_star = (p * b - q) / b
+        p = prob
 
-    if f_star <= 0:
-        return 0.0
+        q = 1.0 - p
 
-    fraction = min(
-        f_star * KELLY_FRACTION,
-        MAX_POSITION
-    )
+        kelly = (
+            ((b * p) - q)
+            / b
+        )
 
-    stake = current_balance * fraction
+        # =====================================
+        # HALF KELLY
+        # =====================================
 
-    return round(max(stake, 0.0), 2)
+        kelly *= 0.50
+
+        if kelly <= 0:
+            return 0
+
+        stake = bankroll * kelly
+
+        return round(
+            max(stake, 0),
+            2
+        )
+
+    except:
+        return 0
 
 # =========================================================
 # EV
 # =========================================================
 
-def expected_value(model_prob: float,
-                   market_price: float) -> float:
+def expected_value(
+    prob,
+    market_price
+):
 
-    if market_price <= 0:
-        return 0.0
+    try:
 
-    ev = (float(model_prob) / float(market_price)) - 1.0
+        payout = (
+            1.0
+            - market_price
+        )
 
-    return round(ev, 4)
+        loss = market_price
+
+        ev = (
+            (prob * payout)
+            - ((1 - prob) * loss)
+        )
+
+        return round(ev, 4)
+
+    except:
+        return 0
 
 # =========================================================
-# EXPOSIÇÃO
+# EXPOSURE
 # =========================================================
 
-def open_exposure(history: list) -> float:
+def open_exposure(history):
 
-    total = 0.0
+    total = 0
 
     for trade in history:
+
         if trade.get("result") == "OPEN":
-            total += float(trade.get("stake", 0.0))
+
+            total += float(
+                trade.get(
+                    "stake",
+                    0
+                )
+            )
 
     return round(total, 2)
 
 # =========================================================
-# CAPACIDADE
+# REMAINING
 # =========================================================
 
-def remaining_capacity(history: list) -> float:
+def remaining_capacity(history):
 
-    exposure = open_exposure(history)
-
-    remaining = MAX_TOTAL_EXPOSURE - exposure
-
-    return round(max(remaining, 0.0), 2)
-
-# =========================================================
-# CAP DE STAKE
-# =========================================================
-
-def cap_stake_by_type(stake: float,
-                      trade_type: str) -> float:
-
-    stake = min(
-        float(stake),
-        float(MAX_POSITION_DOLARES)
+    exposure = open_exposure(
+        history
     )
 
-    if str(trade_type).upper() == "EXACT":
-        exact_cap = (
-            float(MAX_POSITION_DOLARES)
-            * float(EXACT_STAKE_MULTIPLIER)
-        )
+    return round(
+        max(
+            MAX_TOTAL_EXPOSURE
+            - exposure,
+            0
+        ),
+        2
+    )
 
-        stake = min(stake, exact_cap)
+# =========================================================
+# STAKE CAP
+# =========================================================
 
-    return round(max(stake, 0.0), 2)
+def cap_stake_by_type(
+    stake,
+    condition
+):
+
+    if condition.upper() == "EXACT":
+
+        stake *= 0.40
+
+    else:
+
+        stake *= 0.75
+
+    return round(
+        max(stake, 0),
+        2
+    )
