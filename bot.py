@@ -13,6 +13,7 @@ from risk import kelly_stake, expected_value, open_exposure
 from config import (
     CITY_SLUGS,
     EDGE_THRESHOLD,
+    EDGE_THRESHOLD_EXACT,
     MAX_TOTAL_EXPOSURE,
     MIN_MARKET_PRICE,
     MAX_MARKET_PRICE,
@@ -202,7 +203,9 @@ while True:
                             f"Edge:{edge:+.3f} EV:{ev:+.3f} [{unit}]"
                         )
 
-                        if edge < EDGE_THRESHOLD:
+                        # Edge mínimo por condição: EXACT exige threshold maior
+                        edge_min = EDGE_THRESHOLD_EXACT if condition == "EXACT" else EDGE_THRESHOLD
+                        if edge < edge_min:
                             continue
 
                         if ev > MAX_EV:
