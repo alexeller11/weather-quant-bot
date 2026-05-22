@@ -93,6 +93,16 @@ CITY_SLUGS = [
     "denver",
 
     "seattle",
+
+    "chicago",
+
+    "phoenix",
+
+    "miami",
+
+    "atlanta",
+
+    "boston",
 ]
 
 # =========================================================
@@ -128,6 +138,16 @@ CITY_DISPLAY = {
     "denver": "Denver",
 
     "seattle": "Seattle",
+
+    "chicago": "Chicago",
+
+    "phoenix": "Phoenix",
+
+    "miami": "Miami",
+
+    "atlanta": "Atlanta",
+
+    "boston": "Boston",
 }
 
 # =========================================================
@@ -163,6 +183,16 @@ CITY_SLUG_NORMALIZE = {
     "Denver": "denver",
 
     "Seattle": "seattle",
+
+    "Chicago": "chicago",
+
+    "Phoenix": "phoenix",
+
+    "Miami": "miami",
+
+    "Atlanta": "atlanta",
+
+    "Boston": "boston",
 }
 
 # =========================================================
@@ -215,6 +245,16 @@ CITY_SIGMA_CLIMO = {
     "denver": 3.4,
 
     "seattle": 2.9,
+
+    "chicago": 3.8,
+
+    "phoenix": 3.0,
+
+    "miami": 3.4,
+
+    "atlanta": 3.1,
+
+    "boston": 3.3,
 }
 
 # =========================================================
@@ -232,4 +272,10 @@ CITY_MIN_SIGMA = {
     "austin": 3.0,
 
     "denver": 3.2,
+
+    "chicago": 3.5,
+
+    "miami": 3.2,
+
+    "boston": 3.2,
 }
