@@ -7,7 +7,7 @@ import time
 import subprocess
 import traceback
 
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 
 # =========================================================
 # UTCNOW
@@ -50,7 +50,6 @@ from config import (
     MIN_LIQUIDITY_PRICE,
     MAX_LIQUIDITY_PRICE,
     MAX_EV,
-    CITY_MIN_SIGMA,
 )
 
 from notificador import (
@@ -79,12 +78,11 @@ if os.getenv("RESET_BANKROLL") == "1":
     print("✅ BANKROLL RESETADO")
 
 # =========================================================
-# AGENDAMENTO AUTOMÁTICO
+# SETTLEMENT
 # =========================================================
 
 def _rodar_settlement():
 
-    import os
     from notificador import enviar_mensagem
 
     try:
@@ -196,7 +194,7 @@ def exact_market_guard(
         return True
 
     # =====================================================
-    # PROB ABSURDA
+    # PROBABILIDADE ABSURDA
     # =====================================================
 
     if model_prob > 0.25:
@@ -297,10 +295,6 @@ while True:
                     f"{len(markets)}"
                 )
 
-                # ==========================================
-                # CANDIDATOS
-                # ==========================================
-
                 candidatos = []
 
                 for market in markets:
@@ -315,7 +309,7 @@ while True:
                         )
 
                         # ==================================
-                        # PRICE FILTER
+                        # FILTER PRICE
                         # ==================================
 
                         if (
@@ -352,10 +346,6 @@ while True:
                             )
 
                             continue
-
-                        # ==================================
-                        # CAMPOS
-                        # ==================================
 
                         market_id = str(
                             market.get("market_id", "")
@@ -422,7 +412,7 @@ while True:
                             continue
 
                         # ==================================
-                        # DUPLICATA
+                        # DUPLICADO
                         # ==================================
 
                         history_ids = [
@@ -475,7 +465,6 @@ while True:
 
                             model_prob = (
                                 calculate_probability(
-                                    city=city,
                                     target=target,
                                     unit=unit,
                                     forecast_day=forecast_day,
@@ -514,7 +503,7 @@ while True:
                         )
 
                         # ==================================
-                        # EXACT GUARD
+                        # GUARD EXACT
                         # ==================================
 
                         if not exact_market_guard(
@@ -539,10 +528,6 @@ while True:
                             f"[{condition}]"
                         )
 
-                        # ==================================
-                        # EDGE FILTER
-                        # ==================================
-
                         edge_min = (
                             EDGE_THRESHOLD_EXACT
                             if condition == "EXACT"
@@ -551,10 +536,6 @@ while True:
 
                         if edge < edge_min:
                             continue
-
-                        # ==================================
-                        # EV CAP
-                        # ==================================
 
                         if ev > MAX_EV:
 
@@ -565,10 +546,6 @@ while True:
                             )
 
                             continue
-
-                        # ==================================
-                        # EVENT SLUG
-                        # ==================================
 
                         event_slug = (
                             f"{city}_"
@@ -680,10 +657,6 @@ while True:
 
                         market_id = cand["market_id"]
 
-                        # ==================================
-                        # RELOAD
-                        # ==================================
-
                         bankroll = load_bankroll()
 
                         balance = bankroll["balance"]
@@ -787,10 +760,6 @@ while True:
                         city_display = normalize_city(
                             city
                         )
-
-                        # ==================================
-                        # TRADE
-                        # ==================================
 
                         trade = {
 
