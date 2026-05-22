@@ -3,6 +3,82 @@
 # =========================================================
 
 # =========================================================
+# BANKROLL
+# =========================================================
+
+START_BALANCE = 50.0
+
+# =========================================================
+# CITY DISPLAY
+# =========================================================
+
+CITY_DISPLAY = {
+
+    "new-york": "New York",
+
+    "london": "London",
+
+    "paris": "Paris",
+
+    "hong-kong": "Hong Kong",
+
+    "tokyo": "Tokyo",
+
+    "seoul": "Seoul",
+
+    "beijing": "Beijing",
+
+    "sao-paulo": "São Paulo",
+
+    "milan": "Milan",
+
+    "los-angeles": "Los Angeles",
+
+    "houston": "Houston",
+
+    "austin": "Austin",
+
+    "denver": "Denver",
+
+    "seattle": "Seattle",
+}
+
+# =========================================================
+# NORMALIZE
+# =========================================================
+
+CITY_SLUG_NORMALIZE = {
+
+    "New York": "new-york",
+
+    "London": "london",
+
+    "Paris": "paris",
+
+    "Hong Kong": "hong-kong",
+
+    "Tokyo": "tokyo",
+
+    "Seoul": "seoul",
+
+    "Beijing": "beijing",
+
+    "São Paulo": "sao-paulo",
+
+    "Milan": "milan",
+
+    "Los Angeles": "los-angeles",
+
+    "Houston": "houston",
+
+    "Austin": "austin",
+
+    "Denver": "denver",
+
+    "Seattle": "seattle",
+}
+
+# =========================================================
 # CIDADES
 # =========================================================
 
