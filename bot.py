@@ -1,5 +1,5 @@
 # =========================================================
-# WEATHER QUANT BOT — BOT.PY
+# WEATHER QUANT BOT — BOT.PY COMPLETO
 # =========================================================
 
 import os
@@ -228,8 +228,28 @@ def exact_market_guard(
     ev,
 ):
 
+    # =========================================
+    # SOMENTE EXACT
+    # =========================================
+
     if condition.upper() != "EXACT":
         return True
+
+    # =========================================
+    # EXACT CARO DEMAIS
+    # =========================================
+
+    if market_price > 0.25:
+
+        print(
+            "  🚫 EXACT caro demais"
+        )
+
+        return False
+
+    # =========================================
+    # PROBABILIDADE ALTA DEMAIS
+    # =========================================
 
     if model_prob > 0.25:
 
@@ -240,6 +260,10 @@ def exact_market_guard(
 
         return False
 
+    # =========================================
+    # EV ABSURDO
+    # =========================================
+
     if ev > MAX_EV:
 
         print(
@@ -249,11 +273,51 @@ def exact_market_guard(
 
         return False
 
+    # =========================================
+    # PREÇO MUITO BAIXO
+    # =========================================
+
     if market_price < 0.10:
 
         print(
             f"  🚫 EXACT bloqueado "
             f"(price={market_price:.3f})"
+        )
+
+        return False
+
+    # =========================================
+    # EDGE MÍNIMO
+    # =========================================
+
+    exact_edge = (
+        model_prob
+        - market_price
+    )
+
+    if exact_edge < 0.10:
+
+        print(
+            f"  🚫 EXACT edge fraco "
+            f"({exact_edge:.3f})"
+        )
+
+        return False
+
+    # =========================================
+    # DISTORÇÃO
+    # =========================================
+
+    ratio = (
+        model_prob
+        / max(market_price, 0.01)
+    )
+
+    if ratio > 3.5:
+
+        print(
+            f"  🚫 EXACT distorcido "
+            f"(ratio={ratio:.2f})"
         )
 
         return False
@@ -484,7 +548,7 @@ while True:
                             forecast_day = 1
 
                         # =====================
-                        # FORECAST REAL
+                        # FORECAST
                         # =====================
 
                         forecast_c, raw_sigma = (
@@ -531,7 +595,7 @@ while True:
                         )
 
                         # =====================
-                        # PROB
+                        # MODEL
                         # =====================
 
                         model_prob = (
@@ -829,6 +893,10 @@ while True:
                             f"${stake:.2f}"
                         )
 
+                        # =====================
+                        # TELEGRAM
+                        # =====================
+
                         try:
 
                             notificar_entrada_trade(
@@ -857,6 +925,10 @@ while True:
                                 ],
 
                                 shares=shares,
+                            )
+
+                            print(
+                                "  Telegram enviado"
                             )
 
                         except Exception as e:
