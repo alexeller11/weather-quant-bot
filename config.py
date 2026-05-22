@@ -63,6 +63,7 @@ MIN_MARKET_PRICE = 0.05
 MAX_MARKET_PRICE = 0.95
 
 MIN_LIQUIDITY_PRICE = 0.07
+MAX_LIQUIDITY_PRICE = 0.95
 
 # =========================================================
 # SIGMA / MODELO
