@@ -6,11 +6,10 @@ import os
 import time
 import subprocess
 import traceback
-
 from datetime import datetime, timezone
 
 # =========================================================
-# UTCNOW
+# UTC
 # =========================================================
 
 def utcnow():
@@ -22,7 +21,10 @@ def utcnow():
 
 from gamma_parser import fetch_markets
 
-from model import calculate_probability
+from model import (
+    calculate_probability,
+    build_sigma,
+)
 
 from bankroll import (
     load_bankroll,
@@ -193,10 +195,6 @@ def exact_market_guard(
     if condition.upper() != "EXACT":
         return True
 
-    # =====================================================
-    # PROBABILIDADE ABSURDA
-    # =====================================================
-
     if model_prob > 0.25:
 
         print(
@@ -206,10 +204,6 @@ def exact_market_guard(
 
         return False
 
-    # =====================================================
-    # EV ABSURDO
-    # =====================================================
-
     if ev > MAX_EV:
 
         print(
@@ -218,10 +212,6 @@ def exact_market_guard(
         )
 
         return False
-
-    # =====================================================
-    # MARKET MUITO BARATO
-    # =====================================================
 
     if market_price < 0.10:
 
@@ -443,19 +433,52 @@ while True:
                             ).date()
 
                             forecast_day = max(
-                                0,
+                                1,
                                 min(
                                     (
                                         mdate
                                         - utcnow().date()
                                     ).days,
-                                    3
+                                    5
                                 )
                             )
 
                         except Exception:
 
                             forecast_day = 1
+
+                        # ==================================
+                        # FORECAST / SIGMA
+                        # ==================================
+
+                        forecast_c = market.get(
+                            "forecast_c"
+                        )
+
+                        raw_sigma = market.get(
+                            "raw_sigma",
+                            1.5
+                        )
+
+                        if forecast_c is None:
+
+                            print(
+                                "  ⚠️ forecast_c ausente"
+                            )
+
+                            continue
+
+                        sigma_total = build_sigma(
+                            city_slug=city,
+                            forecast_day=forecast_day,
+                            raw_sigma=raw_sigma,
+                            condition=condition,
+                        )
+
+                        print(
+                            f"  [Ensemble] {city} "
+                            f"σ_total={sigma_total:.2f}"
+                        )
 
                         # ==================================
                         # MODELO
@@ -465,11 +488,15 @@ while True:
 
                             model_prob = (
                                 calculate_probability(
+                                    forecast_c=float(
+                                        forecast_c
+                                    ),
+                                    sigma=float(
+                                        sigma_total
+                                    ),
                                     target=target,
+                                    condition=condition,
                                     unit=unit,
-                                    forecast_day=forecast_day,
-                                    condition=condition.lower(),
-                                    target_high=target_high,
                                 )
                             )
 
@@ -651,8 +678,6 @@ while True:
 
                         target = cand["target"]
 
-                        target_high = cand["target_high"]
-
                         forecast_day = cand["forecast_day"]
 
                         market_id = cand["market_id"]
@@ -786,8 +811,6 @@ while True:
                             "unit": unit,
 
                             "target": target,
-
-                            "target_high": target_high,
 
                             "shares": shares,
 
