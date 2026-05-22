@@ -247,20 +247,20 @@ def _perguntar_grok(pergunta_usuario):
     """
     contexto = _build_context()
     
-    grok_key = os.environ.get("GROK_API_KEY", "")
+    grok_key = os.environ.get("GROQ_API_KEY", "")
     
     if not grok_key:
-        return "❌ GROK_API_KEY não configurada!\n\nAdicione a variável de ambiente com sua chave Grok."
+        return "❌ GROQ_API_KEY não configurada!\n\nAdicione a variável de ambiente com sua chave Groq."
     
     try:
         r = requests.post(
-            "https://api.x.ai/v1/chat/completions",
+            "https://api.groq.com/openai/v1/chat/completions",
             headers={
                 "Authorization": f"Bearer {grok_key}",
                 "Content-Type": "application/json",
             },
             json={
-                "model": "grok-2",
+                "model": "llama-3.3-70b-versatile",
                 "max_tokens": 600,
                 "messages": [
                     {"role": "system", "content": contexto},
