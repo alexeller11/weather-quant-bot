@@ -9,16 +9,37 @@ from config import CITY_COORDS_BY_SLUG
 SIGMA_BY_DAY = {0: 2.0, 1: 2.5, 2: 3.8, 3: 5.0}
 DEFAULT_SIGMA = 5.0
 
-# ── Inflation de incerteza aplicado ao sigma do ensemble ─────────────────────
-# O ensemble subestima a incerteza real em horizontes maiores porque não captura
-# eventos de mesoescala (frentes frias, brisas costeiras, convecção local).
-# Multiplica o sigma bruto do ensemble por esses fatores antes de calcular a CDF.
-# D+0: confiança alta — sem inflation
-# D+1: pequena margem para erros de fase
-# D+2: frentes podem chegar ±12h antes/depois, erro de 2-4°C comum
-# D+3+: incerteza sinótica plena
+# ── Inflation do sigma do ensemble ───────────────────────────────────────────
 SIGMA_ENSEMBLE_INFLATION = {0: 1.0, 1: 1.2, 2: 1.6, 3: 2.1}
 DEFAULT_INFLATION = 2.5
+
+# ── Sigma climatológico por cidade (RMSE histórico de previsão D+1) ───────────
+# Representa o erro típico de forecast independente do ensemble.
+# Combinado com sigma_ensemble via soma quadrática:
+#   sigma_total = sqrt(sigma_ensemble² + sigma_climatologico²)
+# Fonte: estimativas baseadas em RMSE histórico open-meteo por cidade.
+import math
+SIGMA_CLIMATOLOGICO = {
+    "seoul":        2.2,
+    "tokyo":        1.7,
+    "beijing":      2.5,
+    "hong-kong":    1.5,
+    "paris":        1.8,
+    "london":       1.8,
+    "milan":        1.9,
+    "madrid":       2.1,
+    "berlin":       2.0,
+    "amsterdam":    1.9,
+    "new-york":     2.3,
+    "los-angeles":  1.6,
+    "chicago":      2.6,
+    "toronto":      2.4,
+    "mexico-city":  2.0,
+    "sao-paulo":    1.6,
+    "buenos-aires": 1.8,
+    "austin":       2.3,
+}
+SIGMA_CLIM_DEFAULT = 2.0
 
 def to_celsius(value, unit):
     """Converte target para °C se necessário."""
@@ -132,39 +153,22 @@ def calculate_probability(city, target, unit="C", forecast_day=1,
     forecast_c, sigma = get_forecast_ensemble(city, forecast_day)
 
     if forecast_c is not None and sigma is not None:
-        # Aplica inflation de incerteza por horizonte de previsão.
+        # 1. Infla sigma do ensemble por horizonte (captura erros de fase)
         raw_sigma = sigma
         inflation = SIGMA_ENSEMBLE_INFLATION.get(forecast_day, DEFAULT_INFLATION)
-        sigma = round(sigma * inflation, 2)
+        sigma_ens = round(sigma * inflation, 2)
 
-        # Sigma mínimo por condição:
-        # EXACT exige sigma alto porque o ensemble subestima muito a incerteza
-        # real de acertar um bucket de 1°C. RMSE real de D+1 é 2-3°C — para
-        # bucket ±0.5°C isso implica sigma efetivo de 4-5°C.
-        # ABOVE/BELOW: sigma mínimo mais baixo pois são apostas direcionais.
-        if condition == "exact":
-            SIGMA_MIN_EXACT = {0: 3.0, 1: 4.0, 2: 5.0, 3: 6.0}
-            sigma_floor = SIGMA_MIN_EXACT.get(forecast_day, 6.0)
-        elif condition in ("above", "below"):
-            SIGMA_MIN_DIR = {0: 1.5, 1: 2.0, 2: 3.0, 3: 4.0}
-            sigma_floor = SIGMA_MIN_DIR.get(forecast_day, 4.0)
-        else:
-            sigma_floor = 2.0
-
-        if sigma < sigma_floor:
-            print(f"  [SigmaFloor] {city} {condition}: sigma {sigma:.2f}→{sigma_floor:.2f}°C (floor D+{forecast_day})")
-            sigma = sigma_floor
-
-        # Aplica sigma mínimo adicional por cidade (configurável em config.py)
-        city_slug = city.lower().replace(" ", "-")
-        min_sigma = CITY_MIN_SIGMA.get(city_slug, 0.0)
-        if sigma < min_sigma:
-            sigma = min_sigma
-            print(f"  [SigmaFloor] {city}: sigma aumentado para {sigma:.2f}°C (mínimo da cidade)")
+        # 2. Combina com sigma climatológico via soma quadrática:
+        #    sigma_total = sqrt(sigma_ensemble_inflado² + sigma_climatologico²)
+        #    O sigma_climatologico representa o RMSE histórico de forecast da cidade
+        #    — erros que o ensemble não captura (mesoescala, efeito urbano, etc.)
+        city_slug = city.lower().replace(" ", "-").replace(" ", "-")
+        sigma_clim = SIGMA_CLIMATOLOGICO.get(city_slug, SIGMA_CLIM_DEFAULT)
+        sigma = round(math.sqrt(sigma_ens**2 + sigma_clim**2), 2)
 
         print(f"  [Ensemble] {city} day={forecast_day}: "
-              f"mean={forecast_c:.1f}°C sigma_raw={raw_sigma:.2f}°C "
-              f"sigma_inflated={sigma:.2f}°C (x{inflation})")
+              f"mean={forecast_c:.1f}°C σ_raw={raw_sigma:.2f} σ_ens={sigma_ens:.2f} "
+              f"σ_clim={sigma_clim:.2f} σ_total={sigma:.2f}°C")
     else:
         forecast_c = get_forecast_simple(city, forecast_day)
         if forecast_c is None:
