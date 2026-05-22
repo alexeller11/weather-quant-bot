@@ -1,25 +1,33 @@
 # =========================================================
-# WEATHER QUANT BOT — BOT.PY COMPLETO
+# WEATHER QUANT BOT — BOT.PY
 # =========================================================
 
 import os
 import time
 import subprocess
 import traceback
-from datetime import datetime, timezone
+
+from datetime import (
+    datetime,
+    timezone,
+)
 
 # =========================================================
 # UTC
 # =========================================================
 
 def utcnow():
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return datetime.now(
+        timezone.utc
+    ).replace(tzinfo=None)
 
 # =========================================================
 # IMPORTS
 # =========================================================
 
 from gamma_parser import fetch_markets
+
+from forecast import get_forecast
 
 from model import (
     calculate_probability,
@@ -30,7 +38,6 @@ from bankroll import (
     load_bankroll,
     save_bankroll,
     normalize_city,
-    already_traded,
     reset_bankroll,
 )
 
@@ -43,14 +50,21 @@ from risk import (
 )
 
 from config import (
+
     CITY_SLUGS,
+
     EDGE_THRESHOLD,
+
     EDGE_THRESHOLD_EXACT,
+
     MAX_TOTAL_EXPOSURE,
+
     MIN_MARKET_PRICE,
     MAX_MARKET_PRICE,
+
     MIN_LIQUIDITY_PRICE,
     MAX_LIQUIDITY_PRICE,
+
     MAX_EV,
 )
 
@@ -59,7 +73,9 @@ from notificador import (
     iniciar_listener,
 )
 
-from validacao import registrar_previsao
+from validacao import (
+    registrar_previsao
+)
 
 # =========================================================
 # CONFIG
@@ -68,16 +84,20 @@ from validacao import registrar_previsao
 MAX_POSITION_DOLARES = 10.0
 
 # =========================================================
-# RESET AUTOMÁTICO
+# RESET
 # =========================================================
 
 if os.getenv("RESET_BANKROLL") == "1":
 
-    print("⚠️ RESETANDO BANKROLL...")
+    print(
+        "⚠️ RESETANDO BANKROLL..."
+    )
 
     reset_bankroll(50.0)
 
-    print("✅ BANKROLL RESETADO")
+    print(
+        "✅ BANKROLL RESETADO"
+    )
 
 # =========================================================
 # SETTLEMENT
@@ -85,7 +105,9 @@ if os.getenv("RESET_BANKROLL") == "1":
 
 def _rodar_settlement():
 
-    from notificador import enviar_mensagem
+    from notificador import (
+        enviar_mensagem
+    )
 
     try:
 
@@ -103,7 +125,9 @@ def _rodar_settlement():
 
         if res.returncode == 0:
 
-            print("[scheduler] Settlement OK")
+            print(
+                "[scheduler] Settlement OK"
+            )
 
             enviar_mensagem(
                 "Settlement diário executado com sucesso!"
@@ -118,7 +142,8 @@ def _rodar_settlement():
             )
 
             print(
-                f"[scheduler] Settlement ERRO: {erro}"
+                f"[scheduler] "
+                f"Settlement ERRO: {erro}"
             )
 
             enviar_mensagem(
@@ -128,7 +153,9 @@ def _rodar_settlement():
 
     except Exception as e:
 
-        print(f"[scheduler] Exceção: {e}")
+        print(
+            f"[scheduler] Exceção: {e}"
+        )
 
 # =========================================================
 # SCHEDULER
@@ -140,14 +167,17 @@ def iniciar_scheduler():
 
     def loop():
 
-        HORARIOS_UTC = {8, 20}
+        HORARIOS_UTC = {
+            8,
+            20
+        }
 
         ultimo_dia = None
         ultima_hora = None
 
         print(
-            "[scheduler] Agendador iniciado "
-            "— settlement às 08:00 e 20:00 UTC"
+            "[scheduler] "
+            "Agendador iniciado"
         )
 
         while True:
@@ -159,17 +189,23 @@ def iniciar_scheduler():
 
             if hora in HORARIOS_UTC:
 
-                chave = (dia, hora)
+                chave = (
+                    dia,
+                    hora
+                )
 
-                if chave != (ultimo_dia, ultima_hora):
+                if chave != (
+                    ultimo_dia,
+                    ultima_hora
+                ):
 
                     ultimo_dia = dia
                     ultima_hora = hora
 
                     print(
                         f"[scheduler] "
-                        f"Disparando settlement — "
-                        f"{agora.strftime('%Y-%m-%d %H:%M UTC')}"
+                        f"Settlement "
+                        f"{agora.strftime('%Y-%m-%d %H:%M')}"
                     )
 
                     _rodar_settlement()
@@ -199,7 +235,7 @@ def exact_market_guard(
 
         print(
             f"  🚫 EXACT bloqueado "
-            f"(model_prob={model_prob:.3f})"
+            f"(prob={model_prob:.3f})"
         )
 
         return False
@@ -208,7 +244,7 @@ def exact_market_guard(
 
         print(
             f"  🚫 EXACT bloqueado "
-            f"(EV={ev:.3f})"
+            f"(ev={ev:.3f})"
         )
 
         return False
@@ -232,7 +268,7 @@ iniciar_listener()
 iniciar_scheduler()
 
 # =========================================================
-# LOOP PRINCIPAL
+# LOOP
 # =========================================================
 
 while True:
@@ -240,10 +276,17 @@ while True:
     try:
 
         print("\n=======================")
-        print("WEATHER QUANT CYCLE")
+
         print(
-            f"  {utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC"
+            "WEATHER QUANT CYCLE"
         )
+
+        print(
+            utcnow().strftime(
+                "%Y-%m-%d %H:%M:%S UTC"
+            )
+        )
+
         print("=======================")
 
         for city in CITY_SLUGS:
@@ -251,37 +294,41 @@ while True:
             bankroll = load_bankroll()
 
             balance = bankroll["balance"]
+
             history = bankroll["history"]
 
-            current_exposure = open_exposure(history)
+            current_exposure = (
+                open_exposure(history)
+            )
 
-            remaining = remaining_capacity(history)
+            remaining = (
+                remaining_capacity(history)
+            )
 
             print(
                 f"\n[{city.upper()}] "
-                f"Saldo: ${balance:.2f} | "
-                f"Exposição: "
-                f"${current_exposure:.2f} "
-                f"/ "
-                f"${MAX_TOTAL_EXPOSURE:.2f} | "
-                f"Livre: ${remaining:.2f}"
+                f"Saldo:${balance:.2f} "
+                f"Exposição:"
+                f"${current_exposure:.2f}/"
+                f"${MAX_TOTAL_EXPOSURE:.2f}"
             )
 
             if remaining <= 0:
 
                 print(
-                    f"  Exposição máxima atingida. "
-                    f"Pulando {city}."
+                    "  Exposição máxima"
                 )
 
                 continue
 
             try:
 
-                markets = fetch_markets(city)
+                markets = fetch_markets(
+                    city
+                )
 
                 print(
-                    f"  Mercados encontrados: "
+                    f"  Markets:"
                     f"{len(markets)}"
                 )
 
@@ -294,79 +341,71 @@ while True:
                         market_price = float(
                             market.get(
                                 "yes_price",
-                                market.get("price", 0)
+                                market.get(
+                                    "price",
+                                    0
+                                )
                             )
                         )
 
-                        # ==================================
+                        # =====================
                         # FILTER PRICE
-                        # ==================================
+                        # =====================
 
                         if (
-                            market_price < MIN_MARKET_PRICE
+                            market_price
+                            < MIN_MARKET_PRICE
                             or
-                            market_price > MAX_MARKET_PRICE
+                            market_price
+                            > MAX_MARKET_PRICE
                         ):
                             continue
 
-                        # ==================================
+                        # =====================
                         # LIQUIDEZ
-                        # ==================================
+                        # =====================
 
                         if (
                             market_price
                             < MIN_LIQUIDITY_PRICE
                         ):
-
-                            print(
-                                f"  ⚠️ Liquidez baixa "
-                                f"(price={market_price:.3f})"
-                            )
-
                             continue
 
                         if (
                             market_price
                             > MAX_LIQUIDITY_PRICE
                         ):
-
-                            print(
-                                f"  ⚠️ Liquidez baixa "
-                                f"(price={market_price:.3f})"
-                            )
-
                             continue
 
                         market_id = str(
-                            market.get("market_id", "")
+                            market.get(
+                                "market_id",
+                                ""
+                            )
                         )
 
                         condition = (
                             market.get(
                                 "condition",
                                 "ABOVE"
-                            )
-                            .upper()
+                            ).upper()
                         )
 
-                        unit = market.get("unit", "C")
+                        unit = market.get(
+                            "unit",
+                            "C"
+                        )
 
                         target = float(
-                            market.get("target", 0)
-                        )
-
-                        target_high = market.get(
-                            "target_high"
-                        )
-
-                        if target_high is not None:
-                            target_high = float(
-                                target_high
+                            market.get(
+                                "target",
+                                0
                             )
+                        )
 
-                        # ==================================
+                        # =====================
                         # DATA
-                        # ==================================
+                        # =====================
 
                         try:
 
@@ -384,56 +423,53 @@ while True:
                                 market_date_obj
                                 <= utcnow().date()
                             ):
-
-                                print(
-                                    f"  ⏭️ Pulando "
-                                    f"{market.get('question','')[:40]} "
-                                    f"(hoje/passado)"
-                                )
-
                                 continue
 
-                        except Exception as e:
-
-                            print(
-                                f"  ⚠️ Erro data: {e}"
-                            )
-
+                        except:
                             continue
 
-                        # ==================================
+                        # =====================
                         # DUPLICADO
-                        # ==================================
+                        # =====================
 
                         history_ids = [
+
                             str(
                                 t.get(
                                     "market_id",
                                     ""
                                 )
                             )
+
                             for t in history
                         ]
 
-                        if market_id in history_ids:
+                        if (
+                            market_id
+                            in history_ids
+                        ):
                             continue
 
-                        # ==================================
+                        # =====================
                         # FORECAST DAY
-                        # ==================================
+                        # =====================
 
                         try:
 
-                            mdate = datetime.strptime(
-                                market.get(
-                                    "market_date",
-                                    ""
-                                ),
-                                "%Y-%m-%d"
-                            ).date()
+                            mdate = (
+                                datetime.strptime(
+                                    market.get(
+                                        "market_date",
+                                        ""
+                                    ),
+                                    "%Y-%m-%d"
+                                ).date()
+                            )
 
                             forecast_day = max(
+
                                 1,
+
                                 min(
                                     (
                                         mdate
@@ -443,89 +479,96 @@ while True:
                                 )
                             )
 
-                        except Exception:
+                        except:
 
                             forecast_day = 1
 
-                        # ==================================
-                        # FORECAST / SIGMA
-                        # ==================================
+                        # =====================
+                        # FORECAST REAL
+                        # =====================
 
-                        forecast_c = market.get(
-                            "forecast_c"
+                        forecast_c, raw_sigma = (
+                            get_forecast(
+                                city,
+                                forecast_day
+                            )
                         )
 
-                        raw_sigma = market.get(
-                            "raw_sigma",
-                            1.8
-                        )
-
-                        # ==================================
-                        # FALLBACK TEMPORÁRIO
-                        # ==================================
-
-                        if forecast_c is None:
-
-                            forecast_c = target
+                        if (
+                            forecast_c is None
+                        ):
 
                             print(
-                                f"  ⚠️ forecast_c ausente "
-                                f"→ fallback target={target}"
+                                "  Forecast indisponível"
                             )
 
-                        sigma_total = build_sigma(
-                            city_slug=city,
-                            forecast_day=forecast_day,
-                            raw_sigma=raw_sigma,
-                            condition=condition,
+                            continue
+
+                        print(
+                            f"  [Forecast] "
+                            f"{city} "
+                            f"day={forecast_day} "
+                            f"temp={forecast_c:.1f}C "
+                            f"sigma={raw_sigma:.2f}"
+                        )
+
+                        # =====================
+                        # SIGMA
+                        # =====================
+
+                        sigma_total = (
+                            build_sigma(
+                                city_slug=city,
+                                forecast_day=forecast_day,
+                                raw_sigma=raw_sigma,
+                                condition=condition,
+                            )
                         )
 
                         print(
-                            f"  [Ensemble] {city} "
-                            f"σ_total={sigma_total:.2f}"
+                            f"  [Sigma] "
+                            f"{sigma_total:.2f}"
                         )
 
-                        # ==================================
-                        # MODELO
-                        # ==================================
+                        # =====================
+                        # PROB
+                        # =====================
 
-                        try:
+                        model_prob = (
+                            calculate_probability(
 
-                            model_prob = (
-                                calculate_probability(
-                                    forecast_c=float(
-                                        forecast_c
-                                    ),
-                                    sigma=float(
-                                        sigma_total
-                                    ),
-                                    target=target,
-                                    condition=condition,
-                                    unit=unit,
-                                )
+                                forecast_c=float(
+                                    forecast_c
+                                ),
+
+                                sigma=float(
+                                    sigma_total
+                                ),
+
+                                target=target,
+
+                                condition=condition,
+
+                                unit=unit,
                             )
-
-                        except Exception as e:
-
-                            print(
-                                f"  ⚠️ Erro modelo: {e}"
-                            )
-
-                            continue
+                        )
 
                         if (
-                            not model_prob
-                            or model_prob <= 0
-                            or model_prob >= 1
+                            model_prob <= 0
+                            or
+                            model_prob >= 1
                         ):
                             continue
 
-                        # ==================================
+                        # =====================
                         # EDGE / EV
-                        # ==================================
+                        # =====================
 
                         edge = round(
-                            model_prob - market_price,
+                            (
+                                model_prob
+                                - market_price
+                            ),
                             4
                         )
 
@@ -534,9 +577,9 @@ while True:
                             market_price
                         )
 
-                        # ==================================
-                        # GUARD EXACT
-                        # ==================================
+                        # =====================
+                        # EXACT GUARD
+                        # =====================
 
                         if not exact_market_guard(
                             condition,
@@ -546,17 +589,15 @@ while True:
                         ):
                             continue
 
-                        # ==================================
-                        # LOG
-                        # ==================================
-
                         print(
-                            f"  {market.get('question','')[:60]} | "
-                            f"Model:{model_prob:.3f} "
-                            f"Mkt:{market_price:.3f} "
-                            f"Edge:{edge:+.3f} "
-                            f"EV:{ev:+.3f} "
-                            f"[{unit}] "
+                            f"  Model:"
+                            f"{model_prob:.3f} "
+                            f"Mkt:"
+                            f"{market_price:.3f} "
+                            f"Edge:"
+                            f"{edge:+.3f} "
+                            f"EV:"
+                            f"{ev:+.3f} "
                             f"[{condition}]"
                         )
 
@@ -570,19 +611,7 @@ while True:
                             continue
 
                         if ev > MAX_EV:
-
-                            print(
-                                f"  🚫 EV={ev:+.3f} "
-                                f"acima do cap "
-                                f"({MAX_EV})"
-                            )
-
                             continue
-
-                        event_slug = (
-                            f"{city}_"
-                            f"{market.get('market_date', '')}"
-                        )
 
                         candidatos.append({
 
@@ -596,15 +625,9 @@ while True:
 
                             "ev": ev,
 
-                            "event_slug": event_slug,
-
                             "condition": condition,
 
-                            "unit": unit,
-
                             "target": target,
-
-                            "target_high": target_high,
 
                             "forecast_day": forecast_day,
 
@@ -614,123 +637,68 @@ while True:
                     except Exception as e:
 
                         print(
-                            f"  Erro avaliando market: {e}"
+                            f"Erro market: {e}"
                         )
 
-                # ==========================================
-                # MELHOR POR EVENTO
-                # ==========================================
-
-                melhor_por_evento = {}
-
-                for c in candidatos:
-
-                    slug = c["event_slug"]
-
-                    if (
-                        slug not in melhor_por_evento
-                        or
-                        c["ev"]
-                        > melhor_por_evento[slug]["ev"]
-                    ):
-
-                        melhor_por_evento[slug] = c
-
-                selecionados = list(
-                    melhor_por_evento.values()
-                )
-
-                descartados = (
-                    len(candidatos)
-                    - len(selecionados)
-                )
-
-                if descartados > 0:
-
-                    print(
-                        f"  ✂️ Sobreposição: "
-                        f"{descartados} descartado(s)"
-                    )
-
-                if not selecionados:
-
-                    print(
-                        f"  Nenhum candidato válido "
-                        f"para {city}."
-                    )
-
-                # ==========================================
+                # =============================
                 # EXECUÇÃO
-                # ==========================================
+                # =============================
 
-                for cand in selecionados:
+                for cand in candidatos:
 
                     try:
 
                         market = cand["market"]
 
-                        market_price = cand["market_price"]
+                        market_price = cand[
+                            "market_price"
+                        ]
 
-                        model_prob = cand["model_prob"]
+                        model_prob = cand[
+                            "model_prob"
+                        ]
 
                         edge = cand["edge"]
 
                         ev = cand["ev"]
 
-                        condition = cand["condition"]
-
-                        unit = cand["unit"]
+                        condition = cand[
+                            "condition"
+                        ]
 
                         target = cand["target"]
 
-                        forecast_day = cand["forecast_day"]
-
-                        market_id = cand["market_id"]
+                        market_id = cand[
+                            "market_id"
+                        ]
 
                         bankroll = load_bankroll()
 
-                        balance = bankroll["balance"]
-
-                        history = bankroll["history"]
-
-                        history_ids = [
-                            str(
-                                t.get(
-                                    "market_id",
-                                    ""
-                                )
-                            )
-                            for t in history
+                        balance = bankroll[
+                            "balance"
                         ]
 
-                        if market_id in history_ids:
-                            continue
-
-                        current_exposure = (
-                            open_exposure(history)
-                        )
+                        history = bankroll[
+                            "history"
+                        ]
 
                         remaining = (
-                            remaining_capacity(history)
+                            remaining_capacity(
+                                history
+                            )
                         )
 
                         if remaining <= 0:
-
-                            print(
-                                f"  Capacidade esgotada "
-                                f"para {city}."
-                            )
-
                             break
 
                         print(
-                            f"  → SELECIONADO: "
+                            f"  → TRADE "
                             f"{market.get('question','')[:60]}"
                         )
 
-                        # ==================================
+                        # =====================
                         # STAKE
-                        # ==================================
+                        # =====================
 
                         stake = kelly_stake(
                             balance,
@@ -738,17 +706,14 @@ while True:
                             market_price
                         )
 
-                        stake = cap_stake_by_type(
-                            stake,
-                            condition
+                        stake = (
+                            cap_stake_by_type(
+                                stake,
+                                condition
+                            )
                         )
 
                         if stake <= 0:
-
-                            print(
-                                f"  ⚠️ Kelly stake=0"
-                            )
-
                             continue
 
                         stake = min(
@@ -769,81 +734,83 @@ while True:
                         )
 
                         if shares <= 0:
-
-                            print(
-                                f"  ⚠️ Shares=0 "
-                                f"(stake=${stake:.2f})"
-                            )
-
                             continue
 
                         real_cost = round(
-                            shares * market_price,
+                            shares
+                            * market_price,
                             2
                         )
 
                         stake = real_cost
 
-                        if stake <= 0:
-                            continue
-
-                        city_display = normalize_city(
-                            city
+                        city_display = (
+                            normalize_city(
+                                city
+                            )
                         )
 
                         trade = {
 
-                            "market_id": market_id,
+                            "market_id":
+                            market_id,
 
-                            "city": city_display,
+                            "city":
+                            city_display,
 
-                            "question": market.get(
+                            "question":
+                            market.get(
                                 "question",
                                 ""
                             ),
 
-                            "market_date": market.get(
+                            "market_date":
+                            market.get(
                                 "market_date",
                                 ""
                             ),
 
-                            "entry_time": utcnow().isoformat(),
+                            "entry_time":
+                            utcnow().isoformat(),
 
-                            "exit_time": None,
+                            "exit_time":
+                            None,
 
-                            "type": condition,
+                            "type":
+                            condition,
 
-                            "unit": unit,
+                            "target":
+                            target,
 
-                            "target": target,
+                            "shares":
+                            shares,
 
-                            "shares": shares,
-
-                            "forecast_day": forecast_day,
-
-                            "model_prob": round(
+                            "model_prob":
+                            round(
                                 model_prob,
                                 4
                             ),
 
-                            "market_price": round(
+                            "market_price":
+                            round(
                                 market_price,
                                 4
                             ),
 
-                            "edge": edge,
+                            "edge":
+                            edge,
 
-                            "ev": ev,
+                            "ev":
+                            ev,
 
-                            "stake": stake,
+                            "stake":
+                            stake,
 
-                            "result": "OPEN",
+                            "result":
+                            "OPEN",
 
-                            "pnl": 0,
-
-                            "fee": 0,
-
-                            "real_temp_c": None,
+                            "pnl":
+                            0,
                         }
 
                         bankroll["history"].append(
@@ -852,70 +819,14 @@ while True:
 
                         bankroll["balance"] -= stake
 
-                        balance = bankroll["balance"]
-
-                        history = bankroll["history"]
-
-                        save_bankroll(bankroll)
-
-                        try:
-
-                            registrar_previsao(
-
-                                market_id=market_id,
-
-                                city=city_display,
-
-                                market_date=market.get(
-                                    "market_date",
-                                    ""
-                                ),
-
-                                target=target,
-
-                                unit=unit,
-
-                                condition=condition,
-
-                                model_prob=model_prob,
-
-                                market_price=market_price,
-
-                                forecast_mean_c=None,
-
-                                sigma_c=None,
-
-                                edge=edge,
-
-                                ev=ev,
-
-                                stake=stake,
-
-                                real_cost=real_cost,
-
-                                shares=shares,
-                            )
-
-                        except Exception as e:
-
-                            print(
-                                f"  ⚠️ validacao.py erro: {e}"
-                            )
+                        save_bankroll(
+                            bankroll
+                        )
 
                         print(
-                            f"  >>> TRADE REGISTRADO\n"
-                            f"  {city_display} | "
-                            f"{condition} | "
-                            f"Target:{target}°{unit}\n"
-                            f"  Model:{model_prob:.3f} "
-                            f"Mkt:{market_price:.3f} "
-                            f"Edge:{edge:+.3f} "
-                            f"EV:{ev:+.3f}\n"
-                            f"  Shares:{shares} "
-                            f"Stake:${stake:.2f} "
-                            f"Saldo:${balance:.2f} "
-                            f"Exposição:"
-                            f"${open_exposure(history):.2f}"
+                            f"  >>> TRADE "
+                            f"REGISTRADO "
+                            f"${stake:.2f}"
                         )
 
                         try:
@@ -931,7 +842,7 @@ while True:
 
                                 target=target,
 
-                                unit=unit,
+                                unit="C",
 
                                 stake=stake,
 
@@ -941,7 +852,9 @@ while True:
 
                                 edge=edge * 100,
 
-                                balance=balance,
+                                balance=bankroll[
+                                    "balance"
+                                ],
 
                                 shares=shares,
                             )
@@ -949,33 +862,35 @@ while True:
                         except Exception as e:
 
                             print(
-                                f"  ⚠️ Telegram erro: {e}"
+                                f"Telegram erro: {e}"
                             )
 
                     except Exception as e:
 
                         print(
-                            f"  Erro executando trade: {e}"
+                            f"Erro trade: {e}"
                         )
 
                         traceback.print_exc()
 
-                time.sleep(1)
-
             except Exception as e:
 
-                print(f"Erro city {city}: {e}")
+                print(
+                    f"Erro city {city}: {e}"
+                )
 
-        print("\nAguardando próximo ciclo (15min)...")
+        print(
+            "\nPróximo ciclo em 15min..."
+        )
 
         time.sleep(900)
 
     except Exception as e:
 
-        print(f"ERRO CRÍTICO LOOP: {e}")
+        print(
+            f"ERRO LOOP: {e}"
+        )
 
         traceback.print_exc()
-
-        print("Reiniciando em 30s...")
 
         time.sleep(30)
