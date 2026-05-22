@@ -5,7 +5,7 @@
 import requests
 
 # =========================================================
-# COORDENADAS
+# COORDS
 # =========================================================
 
 CITY_COORDS = {
@@ -40,6 +40,12 @@ CITY_COORDS = {
 }
 
 # =========================================================
+# CACHE
+# =========================================================
+
+_FORECAST_CACHE = {}
+
+# =========================================================
 # FORECAST
 # =========================================================
 
@@ -47,6 +53,14 @@ def get_forecast(
     city_slug,
     forecast_day=1
 ):
+
+    cache_key = (
+        city_slug,
+        forecast_day
+    )
+
+    if cache_key in _FORECAST_CACHE:
+        return _FORECAST_CACHE[cache_key]
 
     if city_slug not in CITY_COORDS:
 
@@ -125,7 +139,7 @@ def get_forecast(
         )
 
         # =================================================
-        # SIGMA DINÂMICO
+        # SIGMA BASE
         # =================================================
 
         base_sigma = 2.2
@@ -136,7 +150,7 @@ def get_forecast(
         )
 
         # =================================================
-        # AJUSTES POR CIDADE
+        # AJUSTES
         # =================================================
 
         if city_slug in [
@@ -165,7 +179,14 @@ def get_forecast(
             f"sigma={sigma:.2f}"
         )
 
-        return forecast_c, sigma
+        result = (
+            forecast_c,
+            sigma
+        )
+
+        _FORECAST_CACHE[cache_key] = result
+
+        return result
 
     except Exception as e:
 
