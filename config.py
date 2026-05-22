@@ -30,9 +30,9 @@ START_BALANCE = 50.0
 
 KELLY_FRACTION = 0.50
 
-MAX_POSITION = 5.0
+MAX_POSITION = 10.0
 
-MAX_TOTAL_EXPOSURE = 20.0
+MAX_TOTAL_EXPOSURE = 50.0
 
 # =========================================================
 # EDGE
