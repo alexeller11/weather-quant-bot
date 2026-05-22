@@ -25,6 +25,18 @@ CITY_COORDS = {
     "beijing": (39.9042, 116.4074),
 
     "sao-paulo": (-23.5505, -46.6333),
+
+    "milan": (45.4642, 9.1900),
+
+    "los-angeles": (34.0522, -118.2437),
+
+    "houston": (29.7604, -95.3698),
+
+    "austin": (30.2672, -97.7431),
+
+    "denver": (39.7392, -104.9903),
+
+    "seattle": (47.6062, -122.3321),
 }
 
 # =========================================================
@@ -72,7 +84,29 @@ def get_forecast(
             timeout=20,
         )
 
+        if r.status_code != 200:
+
+            print(
+                f"[forecast] erro status="
+                f"{r.status_code}"
+            )
+
+            return None, None
+
         data = r.json()
+
+        if (
+            "daily" not in data
+            or
+            "temperature_2m_max"
+            not in data["daily"]
+        ):
+
+            print(
+                "[forecast] resposta inválida"
+            )
+
+            return None, None
 
         temps = data["daily"][
             "temperature_2m_max"
@@ -90,13 +124,45 @@ def get_forecast(
             temps[idx]
         )
 
-        # =====================================
-        # SIGMA BASE
-        # =====================================
+        # =================================================
+        # SIGMA DINÂMICO
+        # =================================================
+
+        base_sigma = 2.2
 
         sigma = (
-            2.5
-            + (forecast_day * 0.4)
+            base_sigma
+            + (forecast_day * 0.7)
+        )
+
+        # =================================================
+        # AJUSTES POR CIDADE
+        # =================================================
+
+        if city_slug in [
+            "hong-kong",
+            "houston",
+            "austin"
+        ]:
+            sigma += 0.4
+
+        if city_slug in [
+            "denver",
+            "seattle",
+            "london"
+        ]:
+            sigma += 0.2
+
+        sigma = round(
+            sigma,
+            2
+        )
+
+        print(
+            f"[forecast] "
+            f"{city_slug} "
+            f"forecast={forecast_c:.1f}C "
+            f"sigma={sigma:.2f}"
         )
 
         return forecast_c, sigma
