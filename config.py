@@ -7,11 +7,11 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
 CHAT_ID        = os.getenv("CHAT_ID", "")
 
 # ── Edge & risk ──────────────────────────────────────────────────────────────
-EDGE_THRESHOLD     = 0.05
+EDGE_THRESHOLD     = 0.05   # edge mínimo para ABOVE/BELOW
+EDGE_THRESHOLD_EXACT = 0.15 # edge mínimo para EXACT — mais alto pois sigma
+                             # real é grande e P verdadeira raramente passa 20%
 MAX_POSITION       = 0.10
 # Exposição máxima total em aberto (USD fixo).
-# Com $5 por trade e ~8 posições simultâneas = $40.
-# Antes era fração do saldo (0.15 * $43 = $6.46), o que bloqueava tudo.
 MAX_TOTAL_EXPOSURE = 40.0
 KELLY_FRACTION     = 0.5
 
