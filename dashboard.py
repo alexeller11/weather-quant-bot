@@ -1,6 +1,13 @@
 """
 DASHBOARD — WEATHER QUANT BOT
 Dashboard profissional com gráficos, mapa-múndi e curva de equity.
+
+FIX: load_data() agora:
+  1. Tenta PostgreSQL — fonte de verdade (atualizada pelo worker/bot.py)
+  2. Tenta GitHub — backup externo
+  3. Se ambos falharem: mostra ERRO explícito, não dados velhos do arquivo local.
+     O arquivo local bankroll.json do processo web (dashboard) NUNCA é o mesmo
+     do worker (bot.py) no Railway — são processos isolados com filesystems distintos.
 """
 
 import os
@@ -9,14 +16,23 @@ import base64
 from datetime import datetime, timezone
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-BANKROLL_FILE = "bankroll.json"
 PORT = int(os.environ.get("PORT", 8765))
 
 # ──────────────────────────────────────────────────────────────
-# LOAD DATA — PostgreSQL → local → GitHub
+# LOAD DATA — PostgreSQL → GitHub → ERRO (sem fallback local)
 # ──────────────────────────────────────────────────────────────
 
 def load_data():
+    """
+    Carrega bankroll APENAS de fontes compartilhadas entre worker e web.
+
+    FIX: Remove fallback para bankroll.json local.
+    No Railway, worker e web são processos separados com filesystems independentes.
+    O JSON local do web nunca reflete o que o worker salvou no banco.
+    """
+    errors = []
+
+    # ── 1. PostgreSQL (fonte principal — atualizada pelo bot.py) ──────────────
     db_url = os.environ.get("DATABASE_URL", "")
     if db_url:
         try:
@@ -27,17 +43,18 @@ def load_data():
                 row = cur.fetchone()
             conn.close()
             if row:
-                return row[0]
+                print(f"[dashboard] Dados carregados do PostgreSQL — "
+                      f"saldo ${row[0].get('balance', 0):.2f}")
+                return row[0], None
+            else:
+                errors.append("PostgreSQL conectado mas sem registros na tabela bankroll")
         except Exception as e:
+            errors.append(f"PostgreSQL erro: {e}")
             print(f"[dashboard] DB erro: {e}")
+    else:
+        errors.append("DATABASE_URL não configurada")
 
-    if os.path.exists(BANKROLL_FILE):
-        try:
-            with open(BANKROLL_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            pass
-
+    # ── 2. GitHub (backup externo) ────────────────────────────────────────────
     try:
         token  = os.environ.get("GITHUB_TOKEN", "")
         repo   = os.environ.get("GITHUB_REPO", "")
@@ -52,11 +69,23 @@ def load_data():
             )
             if r.status_code == 200:
                 conteudo = base64.b64decode(r.json()["content"]).decode()
-                return json.loads(conteudo)
-    except Exception:
-        pass
+                data = json.loads(conteudo)
+                print(f"[dashboard] Dados carregados do GitHub — "
+                      f"saldo ${data.get('balance', 0):.2f}")
+                return data, "⚠️ Dados do GitHub (PostgreSQL indisponível)"
+            else:
+                errors.append(f"GitHub retornou HTTP {r.status_code}")
+        else:
+            errors.append("GITHUB_TOKEN ou GITHUB_REPO não configurados")
+    except Exception as e:
+        errors.append(f"GitHub erro: {e}")
 
-    return {"balance": 0, "history": []}
+    # ── 3. ERRO explícito — sem fallback para arquivo local ───────────────────
+    # NÃO lemos bankroll.json local pois no Railway o arquivo do web process
+    # é diferente do worker process (filesystems isolados por serviço).
+    error_msg = " | ".join(errors)
+    print(f"[dashboard] ERRO: sem fonte de dados disponível — {error_msg}")
+    return None, f"ERRO: {error_msg}"
 
 
 def build_stats(data):
@@ -76,8 +105,7 @@ def build_stats(data):
     for t in history:
         c = t.get("city", "?")
         if c not in city_stats:
-            city_stats[c] = {"wins":0,"losses":0,"pnl":0,"stake":0,"open":0,
-                              "lat":0,"lon":0}
+            city_stats[c] = {"wins":0,"losses":0,"pnl":0,"stake":0,"open":0}
         if t.get("result") == "WIN":
             city_stats[c]["wins"]  += 1
             city_stats[c]["pnl"]   += t.get("pnl", 0)
@@ -176,12 +204,54 @@ CITY_COORDS = {
 }
 
 
-def build_html(stats):
+def build_error_html(error_msg):
+    """Página de erro quando não há dados disponíveis."""
+    return f"""<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="refresh" content="30">
+<title>⚡ Weather Quant — Erro</title>
+<style>
+  body {{ background:#080c10; color:#e6edf3; font-family:'Courier New',monospace;
+         display:flex; align-items:center; justify-content:center; height:100vh; margin:0; }}
+  .box {{ background:#0d1117; border:1px solid #ff4466; border-radius:8px; padding:40px;
+          max-width:600px; text-align:center; }}
+  h1 {{ color:#ff4466; font-size:20px; margin-bottom:16px; }}
+  .msg {{ color:#7d8590; font-size:13px; line-height:1.7; margin-bottom:24px; }}
+  .code {{ background:#161b22; border-radius:4px; padding:12px; font-size:11px;
+           color:#ffaa00; text-align:left; word-break:break-all; }}
+  .retry {{ color:#7d8590; font-size:11px; margin-top:20px; }}
+</style>
+</head>
+<body>
+<div class="box">
+  <h1>⚠️ Sem dados disponíveis</h1>
+  <div class="msg">
+    O dashboard não conseguiu carregar dados de nenhuma fonte.<br>
+    Verifique se o bot está rodando e o PostgreSQL está configurado.
+  </div>
+  <div class="code">{error_msg}</div>
+  <div class="retry">Tentando novamente em 30 segundos...</div>
+</div>
+</body>
+</html>"""
+
+
+def build_html(stats, warning=None):
     city_stats_json = json.dumps(stats["city_stats"])
     equity_json     = json.dumps(stats["equity_curve"])
     coords_json     = json.dumps(CITY_COORDS)
     edges_json      = json.dumps(stats["edges"])
     cal_json        = json.dumps(stats["calibration"])
+
+    warning_bar = ""
+    if warning:
+        warning_bar = f"""
+        <div style="background:#1a1000;border-bottom:1px solid #ffaa00;
+                    padding:8px 32px;font-size:11px;color:#ffaa00;">
+          ⚠️ {warning}
+        </div>"""
 
     open_rows = ""
     for t in stats["open_trades"]:
@@ -251,13 +321,10 @@ def build_html(stats):
 }}
 * {{ box-sizing:border-box; margin:0; padding:0 }}
 body {{ background:var(--bg); color:var(--text); font-family:var(--font-m); font-size:13px; }}
-
-/* SCANLINES */
 body::before {{
   content:''; position:fixed; inset:0; pointer-events:none; z-index:999;
   background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,255,136,0.015) 2px, rgba(0,255,136,0.015) 4px);
 }}
-
 .header {{
   padding:24px 32px 16px;
   border-bottom:1px solid var(--border);
@@ -276,10 +343,7 @@ body::before {{
   animation: pulse 2s infinite; display:inline-block; margin-right:6px;
 }}
 @keyframes pulse {{ 0%,100%{{box-shadow:0 0 0 0 rgba(0,255,136,0.4)}} 50%{{box-shadow:0 0 0 6px rgba(0,255,136,0)}} }}
-
 .main {{ padding:24px 32px; max-width:1400px; margin:0 auto; }}
-
-/* KPI CARDS */
 .kpi-grid {{ display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-bottom:24px; }}
 .kpi {{
   background:var(--bg2); border:1px solid var(--border); border-radius:8px;
@@ -298,12 +362,9 @@ body::before {{
 .red   {{ color:var(--red)   }}
 .amber {{ color:var(--amber) }}
 .blue  {{ color:var(--blue)  }}
-
-/* GRID DE SEÇÕES */
 .grid-2 {{ display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px; }}
 .grid-3 {{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-bottom:16px; }}
 .grid-full {{ margin-bottom:16px; }}
-
 .card {{
   background:var(--bg2); border:1px solid var(--border); border-radius:8px;
   padding:20px;
@@ -317,28 +378,20 @@ body::before {{
 .card-title::before {{
   content:''; width:3px; height:14px; background:var(--green); border-radius:2px;
 }}
-
-/* MAPA */
 #world-map {{
   width:100%; height:340px; position:relative;
   background:var(--bg3); border-radius:6px; overflow:hidden;
 }}
 #map-svg {{ width:100%; height:100%; }}
-.map-dot {{
-  cursor:pointer; transition:r 0.2s;
-}}
+.map-dot {{ cursor:pointer; transition:r 0.2s; }}
 .map-dot:hover {{ r:8; }}
 .map-tooltip {{
   position:absolute; background:#1a2030; border:1px solid var(--green);
   border-radius:6px; padding:8px 12px; font-size:11px; pointer-events:none;
   display:none; z-index:10; white-space:nowrap;
 }}
-
-/* CHARTS */
 .chart-wrap {{ position:relative; height:200px; }}
 .chart-wrap-tall {{ position:relative; height:260px; }}
-
-/* TABELAS */
 .tbl {{ width:100%; border-collapse:collapse; font-size:12px; }}
 .tbl th {{
   text-align:left; padding:8px 10px; color:var(--muted);
@@ -361,20 +414,15 @@ body::before {{
 .pnl-pos {{ color:var(--green); font-weight:700; }}
 .pnl-neg {{ color:var(--red);   font-weight:700; }}
 .question-cell {{ color:var(--muted); font-size:11px; }}
-
 .empty-state {{ color:var(--muted); text-align:center; padding:32px; font-size:12px; }}
-
-/* SCROLLABLE TABLE */
 .tbl-wrap {{ max-height:320px; overflow-y:auto; }}
 .tbl-wrap::-webkit-scrollbar {{ width:4px; }}
 .tbl-wrap::-webkit-scrollbar-track {{ background:var(--bg3); }}
 .tbl-wrap::-webkit-scrollbar-thumb {{ background:var(--border); border-radius:2px; }}
-
 .updated-bar {{
   text-align:center; padding:12px; font-size:10px; color:var(--muted);
   border-top:1px solid var(--border); margin-top:8px;
 }}
-
 @media(max-width:900px) {{
   .kpi-grid {{ grid-template-columns:repeat(2,1fr); }}
   .grid-2, .grid-3 {{ grid-template-columns:1fr; }}
@@ -394,9 +442,10 @@ body::before {{
   </div>
 </div>
 
+{warning_bar}
+
 <div class="main">
 
-  <!-- KPI CARDS -->
   <div class="kpi-grid">
     <div class="kpi">
       <div class="kpi-label">💰 Saldo</div>
@@ -425,39 +474,26 @@ body::before {{
     </div>
   </div>
 
-  <!-- MAPA + EQUITY CURVE -->
   <div class="grid-2">
     <div class="card">
       <div class="card-title">🌍 Mapa de Posições</div>
       <div id="world-map">
         <svg id="map-svg" viewBox="0 0 1000 500" preserveAspectRatio="xMidYMid meet">
-          <!-- Simplified world map paths -->
           <rect width="1000" height="500" fill="#0d1117"/>
-          <!-- Grid lines -->
           <line x1="0" y1="250" x2="1000" y2="250" stroke="#21262d" stroke-width="0.5"/>
           <line x1="500" y1="0" x2="500" y2="500" stroke="#21262d" stroke-width="0.5"/>
-          <!-- Continents simplified -->
-          <!-- North America -->
           <path d="M80,80 L200,70 L230,120 L220,200 L180,220 L150,280 L100,290 L80,240 L60,180 Z" fill="#161b22" stroke="#21262d" stroke-width="0.5"/>
-          <!-- South America -->
           <path d="M160,290 L220,280 L240,320 L230,400 L190,440 L160,420 L140,370 L150,320 Z" fill="#161b22" stroke="#21262d" stroke-width="0.5"/>
-          <!-- Europe -->
           <path d="M440,60 L520,55 L530,90 L510,120 L470,130 L440,110 Z" fill="#161b22" stroke="#21262d" stroke-width="0.5"/>
-          <!-- Africa -->
           <path d="M450,130 L520,120 L550,160 L540,260 L500,310 L460,290 L440,230 L440,160 Z" fill="#161b22" stroke="#21262d" stroke-width="0.5"/>
-          <!-- Asia -->
           <path d="M530,55 L780,60 L800,100 L780,160 L720,180 L680,150 L620,160 L580,140 L540,120 L530,90 Z" fill="#161b22" stroke="#21262d" stroke-width="0.5"/>
-          <!-- Southeast Asia -->
           <path d="M700,180 L760,170 L770,210 L740,240 L700,230 L690,200 Z" fill="#161b22" stroke="#21262d" stroke-width="0.5"/>
-          <!-- Australia -->
           <path d="M730,290 L820,280 L840,340 L800,380 L740,370 L710,330 Z" fill="#161b22" stroke="#21262d" stroke-width="0.5"/>
-          <!-- Middle East -->
           <path d="M540,130 L610,120 L620,160 L590,180 L550,170 Z" fill="#161b22" stroke="#21262d" stroke-width="0.5"/>
         </svg>
         <div class="map-tooltip" id="map-tooltip"></div>
       </div>
     </div>
-
     <div class="card">
       <div class="card-title">📈 Curva de Equity</div>
       <div class="chart-wrap-tall">
@@ -466,32 +502,24 @@ body::before {{
     </div>
   </div>
 
-  <!-- CHARTS ROW -->
   <div class="grid-3">
     <div class="card">
       <div class="card-title">🏙️ PnL por Cidade</div>
-      <div class="chart-wrap">
-        <canvas id="cityChart"></canvas>
-      </div>
+      <div class="chart-wrap"><canvas id="cityChart"></canvas></div>
     </div>
     <div class="card">
       <div class="card-title">🎯 Distribuição de Edge</div>
-      <div class="chart-wrap">
-        <canvas id="edgeChart"></canvas>
-      </div>
+      <div class="chart-wrap"><canvas id="edgeChart"></canvas></div>
     </div>
     <div class="card">
       <div class="card-title">🔬 Calibração do Modelo</div>
-      <div class="chart-wrap">
-        <canvas id="calChart"></canvas>
-      </div>
+      <div class="chart-wrap"><canvas id="calChart"></canvas></div>
     </div>
   </div>
 
-  <!-- OPEN TRADES TABLE -->
   <div class="card grid-full">
     <div class="card-title">⏳ Posições em Aberto ({stats["open_count"]})</div>
-    {'<div class="empty-state">Nenhuma posição aberta. Bot aguardando oportunidades.</div>' if not stats["open_trades"] else f'''
+    {'<div class="empty-state">Nenhuma posição aberta.</div>' if not stats["open_trades"] else f'''
     <div class="tbl-wrap">
     <table class="tbl">
       <thead><tr>
@@ -503,7 +531,6 @@ body::before {{
     </div>'''}
   </div>
 
-  <!-- CLOSED TRADES -->
   <div class="card grid-full">
     <div class="card-title">📋 Trades Recentes</div>
     {'<div class="empty-state">Nenhum trade fechado ainda.</div>' if not stats["closed_trades"] else f'''
@@ -521,7 +548,7 @@ body::before {{
 </div>
 
 <div class="updated-bar">
-  ⚡ Weather Quant Bot · Atualiza automaticamente a cada 15 segundos
+  ⚡ Weather Quant Bot · Fonte: PostgreSQL · Atualiza a cada 15 segundos
 </div>
 
 <script>
@@ -531,16 +558,15 @@ const COORDS      = {coords_json};
 const EDGES       = {edges_json};
 const CALIBRATION = {cal_json};
 
-// ── MAPA ─────────────────────────────────────────────────────
 function latLonToXY(lat, lon) {{
   const x = (lon + 180) / 360 * 1000;
   const y = (90 - lat) / 180 * 500;
   return [x, y];
 }}
 
-const svg       = document.getElementById('map-svg');
-const tooltip   = document.getElementById('map-tooltip');
-const mapEl     = document.getElementById('world-map');
+const svg     = document.getElementById('map-svg');
+const tooltip = document.getElementById('map-tooltip');
+const mapEl   = document.getElementById('world-map');
 
 Object.entries(CITY_STATS).forEach(([city, stats]) => {{
   const coord = COORDS[city];
@@ -552,21 +578,14 @@ Object.entries(CITY_STATS).forEach(([city, stats]) => {{
               : wr >= 0.6 ? '#00ff88'
               : wr >= 0.4 ? '#ffaa00' : '#ff4466';
   const r = Math.max(5, Math.min(12, 4 + stats.wins + stats.losses + stats.open));
-
-  // Glow circle
   const glow = document.createElementNS('http://www.w3.org/2000/svg','circle');
   glow.setAttribute('cx', x); glow.setAttribute('cy', y);
-  glow.setAttribute('r', r + 4);
-  glow.setAttribute('fill', color); glow.setAttribute('opacity','0.15');
+  glow.setAttribute('r', r + 4); glow.setAttribute('fill', color); glow.setAttribute('opacity','0.15');
   svg.appendChild(glow);
-
-  // Main dot
   const circle = document.createElementNS('http://www.w3.org/2000/svg','circle');
   circle.setAttribute('cx', x); circle.setAttribute('cy', y);
-  circle.setAttribute('r', r);
-  circle.setAttribute('fill', color);
-  circle.setAttribute('stroke', '#080c10');
-  circle.setAttribute('stroke-width', '1.5');
+  circle.setAttribute('r', r); circle.setAttribute('fill', color);
+  circle.setAttribute('stroke', '#080c10'); circle.setAttribute('stroke-width', '1.5');
   circle.classList.add('map-dot');
   circle.addEventListener('mouseenter', (e) => {{
     const pnl  = stats.pnl >= 0 ? '+$' + stats.pnl.toFixed(2) : '-$' + Math.abs(stats.pnl).toFixed(2);
@@ -583,88 +602,62 @@ Object.entries(CITY_STATS).forEach(([city, stats]) => {{
   svg.appendChild(circle);
 }});
 
-// ── EQUITY CURVE ─────────────────────────────────────────────
 const eqCtx = document.getElementById('equityChart').getContext('2d');
 if (EQUITY.length > 0) {{
   new Chart(eqCtx, {{
     type: 'line',
     data: {{
       labels: EQUITY.map(p => p.date),
-      datasets: [{{
-        data: EQUITY.map(p => p.balance),
-        borderColor: '#00ff88',
-        backgroundColor: 'rgba(0,255,136,0.08)',
-        fill: true,
-        tension: 0.4,
-        pointRadius: 4,
+      datasets: [{{ data: EQUITY.map(p => p.balance),
+        borderColor: '#00ff88', backgroundColor: 'rgba(0,255,136,0.08)',
+        fill: true, tension: 0.4, pointRadius: 4,
         pointBackgroundColor: EQUITY.map(p => p.result==='WIN'?'#00ff88':'#ff4466'),
-        pointBorderColor: '#080c10',
-        pointBorderWidth: 2,
-      }}]
+        pointBorderColor: '#080c10', pointBorderWidth: 2 }}]
     }},
     options: {{
       responsive:true, maintainAspectRatio:false,
-      plugins:{{ legend:{{display:false}}, tooltip:{{
-        callbacks:{{ label: ctx => ' $' + ctx.parsed.y.toFixed(2) }}
-      }}}},
+      plugins:{{ legend:{{display:false}}, tooltip:{{ callbacks:{{ label: ctx => ' $' + ctx.parsed.y.toFixed(2) }} }} }},
       scales:{{
         x:{{ grid:{{color:'#21262d'}}, ticks:{{color:'#7d8590',font:{{size:10}}}} }},
-        y:{{ grid:{{color:'#21262d'}}, ticks:{{color:'#7d8590',font:{{size:10}},
-          callback: v => '$'+v.toFixed(0) }} }}
+        y:{{ grid:{{color:'#21262d'}}, ticks:{{color:'#7d8590',font:{{size:10}}, callback: v => '$'+v.toFixed(0) }} }}
       }}
     }}
   }});
-}} else {{
-  eqCtx.canvas.parentElement.innerHTML = '<div class="empty-state">Nenhum trade fechado ainda</div>';
-}}
+}} else {{ eqCtx.canvas.parentElement.innerHTML = '<div class="empty-state">Nenhum trade fechado ainda</div>'; }}
 
-// ── PNL POR CIDADE ────────────────────────────────────────────
-const cities = Object.keys(CITY_STATS).filter(c => CITY_STATS[c].wins + CITY_STATS[c].losses > 0);
+const cities  = Object.keys(CITY_STATS).filter(c => CITY_STATS[c].wins + CITY_STATS[c].losses > 0);
 const cityCtx = document.getElementById('cityChart').getContext('2d');
 if (cities.length > 0) {{
   new Chart(cityCtx, {{
     type: 'bar',
     data: {{
       labels: cities,
-      datasets: [{{
-        data: cities.map(c => CITY_STATS[c].pnl),
+      datasets: [{{ data: cities.map(c => CITY_STATS[c].pnl),
         backgroundColor: cities.map(c => CITY_STATS[c].pnl >= 0 ? 'rgba(0,255,136,0.7)' : 'rgba(255,68,102,0.7)'),
         borderColor:     cities.map(c => CITY_STATS[c].pnl >= 0 ? '#00ff88' : '#ff4466'),
-        borderWidth: 1, borderRadius: 4,
-      }}]
+        borderWidth: 1, borderRadius: 4 }}]
     }},
     options: {{
       responsive:true, maintainAspectRatio:false,
       plugins:{{ legend:{{display:false}} }},
       scales:{{
         x:{{ grid:{{display:false}}, ticks:{{color:'#7d8590',font:{{size:10}}}} }},
-        y:{{ grid:{{color:'#21262d'}}, ticks:{{color:'#7d8590',font:{{size:10}},
-          callback: v => '$'+v.toFixed(2) }} }}
+        y:{{ grid:{{color:'#21262d'}}, ticks:{{color:'#7d8590',font:{{size:10}}, callback: v => '$'+v.toFixed(2) }} }}
       }}
     }}
   }});
-}} else {{
-  cityCtx.canvas.parentElement.innerHTML = '<div class="empty-state">Aguardando trades fechados</div>';
-}}
+}} else {{ cityCtx.canvas.parentElement.innerHTML = '<div class="empty-state">Aguardando trades fechados</div>'; }}
 
-// ── EDGE DISTRIBUTION ─────────────────────────────────────────
 const edgeCtx = document.getElementById('edgeChart').getContext('2d');
 if (EDGES.length > 0) {{
   const bins = {{}};
-  EDGES.forEach(e => {{
-    const b = Math.floor(e / 5) * 5;
-    bins[b] = (bins[b] || 0) + 1;
-  }});
+  EDGES.forEach(e => {{ const b = Math.floor(e / 5) * 5; bins[b] = (bins[b] || 0) + 1; }});
   const bLabels = Object.keys(bins).sort((a,b)=>+a-+b).map(b => b+'%');
   const bVals   = Object.keys(bins).sort((a,b)=>+a-+b).map(b => bins[b]);
   new Chart(edgeCtx, {{
     type: 'bar',
-    data: {{
-      labels: bLabels,
-      datasets: [{{ data: bVals,
-        backgroundColor:'rgba(88,166,255,0.6)', borderColor:'#58a6ff',
-        borderWidth:1, borderRadius:4 }}]
-    }},
+    data: {{ labels: bLabels, datasets: [{{ data: bVals,
+      backgroundColor:'rgba(88,166,255,0.6)', borderColor:'#58a6ff', borderWidth:1, borderRadius:4 }}] }},
     options: {{
       responsive:true, maintainAspectRatio:false,
       plugins:{{ legend:{{display:false}} }},
@@ -674,41 +667,28 @@ if (EDGES.length > 0) {{
       }}
     }}
   }});
-}} else {{
-  edgeCtx.canvas.parentElement.innerHTML = '<div class="empty-state">Aguardando dados</div>';
-}}
+}} else {{ edgeCtx.canvas.parentElement.innerHTML = '<div class="empty-state">Aguardando dados</div>'; }}
 
-// ── CALIBRAÇÃO ───────────────────────────────────────────────
-const calCtx = document.getElementById('calChart').getContext('2d');
+const calCtx    = document.getElementById('calChart').getContext('2d');
 const calLabels = Object.keys(CALIBRATION);
 const calPred   = [12.5, 37.5, 62.5, 87.5];
-const calReal   = calLabels.map(k => {{
-  const b = CALIBRATION[k];
-  return b.total > 0 ? b.wins/b.total*100 : null;
-}});
+const calReal   = calLabels.map(k => {{ const b = CALIBRATION[k]; return b.total > 0 ? b.wins/b.total*100 : null; }});
 new Chart(calCtx, {{
   type: 'bar',
-  data: {{
-    labels: calLabels,
-    datasets: [
-      {{ label:'Previsto', data:calPred, backgroundColor:'rgba(255,170,0,0.3)',
-         borderColor:'#ffaa00', borderWidth:1, borderRadius:4 }},
-      {{ label:'Real', data:calReal, backgroundColor:'rgba(0,255,136,0.6)',
-         borderColor:'#00ff88', borderWidth:1, borderRadius:4 }}
-    ]
-  }},
+  data: {{ labels: calLabels, datasets: [
+    {{ label:'Previsto', data:calPred, backgroundColor:'rgba(255,170,0,0.3)', borderColor:'#ffaa00', borderWidth:1, borderRadius:4 }},
+    {{ label:'Real',     data:calReal, backgroundColor:'rgba(0,255,136,0.6)', borderColor:'#00ff88', borderWidth:1, borderRadius:4 }}
+  ] }},
   options: {{
     responsive:true, maintainAspectRatio:false,
     plugins:{{ legend:{{labels:{{color:'#7d8590',font:{{size:10}}}}}} }},
     scales:{{
       x:{{ grid:{{display:false}}, ticks:{{color:'#7d8590',font:{{size:10}}}} }},
-      y:{{ grid:{{color:'#21262d'}}, ticks:{{color:'#7d8590',font:{{size:10}},
-        callback: v => v+'%' }}, max:100 }}
+      y:{{ grid:{{color:'#21262d'}}, ticks:{{color:'#7d8590',font:{{size:10}}, callback: v => v+'%' }}, max:100 }}
     }}
   }}
 }});
 
-// ── AUTO REFRESH ─────────────────────────────────────────────
 setTimeout(() => location.reload(), 15000);
 </script>
 </body>
@@ -721,16 +701,23 @@ setTimeout(() => location.reload(), 15000);
 
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
-        pass  # silencia logs de request
+        pass
 
     def do_GET(self):
         if self.path not in ("/", "/index.html"):
             self.send_response(404); self.end_headers(); return
         try:
-            data  = load_data()
-            stats = build_stats(data)
-            html  = build_html(stats).encode("utf-8")
-            self.send_response(200)
+            data, warning = load_data()
+
+            if data is None:
+                # Sem dados — mostra página de erro em vez de dados velhos
+                html = build_error_html(warning or "Fonte de dados indisponível").encode("utf-8")
+                self.send_response(503)
+            else:
+                stats = build_stats(data)
+                html  = build_html(stats, warning=warning).encode("utf-8")
+                self.send_response(200)
+
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", len(html))
             self.end_headers()
@@ -745,4 +732,5 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     print(f"Dashboard rodando em http://0.0.0.0:{PORT}")
+    print(f"Fonte de dados: PostgreSQL (DATABASE_URL)")
     HTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
