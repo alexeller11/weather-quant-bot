@@ -37,6 +37,16 @@ CITY_COORDS = {
     "denver": (39.7392, -104.9903),
 
     "seattle": (47.6062, -122.3321),
+
+    "chicago": (41.8781, -87.6298),
+
+    "phoenix": (33.4484, -112.0740),
+
+    "miami": (25.7617, -80.1918),
+
+    "atlanta": (33.7490, -84.3880),
+
+    "boston": (42.3601, -71.0589),
 }
 
 # =========================================================
@@ -150,22 +160,29 @@ def get_forecast(
         )
 
         # =================================================
-        # AJUSTES
+        # AJUSTES CLIMÁTICOS
         # =================================================
 
         if city_slug in [
             "hong-kong",
             "houston",
-            "austin"
+            "austin",
+            "miami"
         ]:
             sigma += 0.4
 
         if city_slug in [
             "denver",
             "seattle",
-            "london"
+            "london",
+            "boston"
         ]:
             sigma += 0.2
+
+        if city_slug in [
+            "chicago"
+        ]:
+            sigma += 0.6
 
         sigma = round(
             sigma,
