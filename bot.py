@@ -2,6 +2,7 @@
 # WEATHER QUANT BOT — BOT.PY (COMPLETO)
 # FIX #20: Guardrail model_prob == 0.50 exato
 # FIX #21: balance/history carregados fora do loop de cidades
+# FIX #22: scheduler roda settlement a cada hora (não só 08h/20h)
 # =========================================================
 
 import os
@@ -119,7 +120,7 @@ def _rodar_settlement():
             ["python", "settlement.py"],
             capture_output=True,
             text=True,
-            timeout=90,
+            timeout=120,
             cwd=bot_dir,
         )
 
@@ -129,9 +130,11 @@ def _rodar_settlement():
                 "[scheduler] Settlement OK"
             )
 
-            enviar_mensagem(
-                "Settlement diário executado com sucesso!"
-            )
+            # Só notifica se algo foi resolvido (evita spam)
+            if "Resolvidos agora:  0" not in (res.stdout or ""):
+                enviar_mensagem(
+                    "Settlement executado com sucesso!"
+                )
 
         else:
 
@@ -153,7 +156,12 @@ def _rodar_settlement():
         )
 
 # =========================================================
-# SCHEDULER
+# SCHEDULER — roda settlement a cada hora
+# FIX #22: antes rodava só às 08h e 20h UTC,
+# fazendo trades do mesmo dia nunca serem resolvidos
+# se fossem abertos depois do ciclo das 08h.
+# Agora roda a cada hora para cobrir mercados que
+# fecham ao longo do dia.
 # =========================================================
 
 def iniciar_scheduler():
@@ -162,48 +170,29 @@ def iniciar_scheduler():
 
     def loop():
 
-        HORARIOS_UTC = {
-            8,
-            20
-        }
-
-        ultimo_dia = None
-        ultima_hora = None
+        ultimo_settlement = None
 
         print(
             "[scheduler] "
-            "Agendador iniciado"
+            "Agendador iniciado — settlement a cada hora"
         )
 
         while True:
 
             agora = utcnow()
+            hora_atual = (agora.date(), agora.hour)
 
-            hora = agora.hour
-            dia = agora.date()
+            if hora_atual != ultimo_settlement:
 
-            if hora in HORARIOS_UTC:
+                ultimo_settlement = hora_atual
 
-                chave = (
-                    dia,
-                    hora
+                print(
+                    f"[scheduler] "
+                    f"Settlement "
+                    f"{agora.strftime('%Y-%m-%d %H:%M UTC')}"
                 )
 
-                if chave != (
-                    ultimo_dia,
-                    ultima_hora
-                ):
-
-                    ultimo_dia = dia
-                    ultima_hora = hora
-
-                    print(
-                        f"[scheduler] "
-                        f"Settlement "
-                        f"{agora.strftime('%Y-%m-%d %H:%M')}"
-                    )
-
-                    _rodar_settlement()
+                _rodar_settlement()
 
             time.sleep(60)
 
