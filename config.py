@@ -61,6 +61,12 @@ MIN_LIQUIDITY_PRICE = 0.08
 MAX_LIQUIDITY_PRICE = 0.92
 
 # =========================================================
+# POLYMARKET FEE
+# =========================================================
+
+POLYMARKET_FEE = 0.02
+
+# =========================================================
 # CIDADES
 # =========================================================
 
@@ -172,6 +178,8 @@ CITY_SLUG_NORMALIZE = {
 
     "São Paulo": "sao-paulo",
 
+    "Sao Paulo": "sao-paulo",
+
     "Milan": "milan",
 
     "Los Angeles": "los-angeles",
@@ -193,6 +201,96 @@ CITY_SLUG_NORMALIZE = {
     "Atlanta": "atlanta",
 
     "Boston": "boston",
+}
+
+# =========================================================
+# CITY COORDINATES BY SLUG
+# =========================================================
+
+CITY_COORDS_BY_SLUG = {
+
+    "new-york": (40.7128, -74.0060),
+
+    "london": (51.5072, -0.1276),
+
+    "paris": (48.8566, 2.3522),
+
+    "hong-kong": (22.3193, 114.1694),
+
+    "tokyo": (35.6762, 139.6503),
+
+    "seoul": (37.5665, 126.9780),
+
+    "beijing": (39.9042, 116.4074),
+
+    "sao-paulo": (-23.5505, -46.6333),
+
+    "milan": (45.4642, 9.1900),
+
+    "los-angeles": (34.0522, -118.2437),
+
+    "houston": (29.7604, -95.3698),
+
+    "austin": (30.2672, -97.7431),
+
+    "denver": (39.7392, -104.9903),
+
+    "seattle": (47.6062, -122.3321),
+
+    "chicago": (41.8781, -87.6298),
+
+    "phoenix": (33.4484, -112.0740),
+
+    "miami": (25.7617, -80.1918),
+
+    "atlanta": (33.7490, -84.3880),
+
+    "boston": (42.3601, -71.0589),
+}
+
+# =========================================================
+# CITY TIMEZONE MAPPING
+# =========================================================
+
+CITY_TIMEZONE = {
+
+    "new-york": "America/New_York",
+
+    "london": "Europe/London",
+
+    "paris": "Europe/Paris",
+
+    "hong-kong": "Asia/Hong_Kong",
+
+    "tokyo": "Asia/Tokyo",
+
+    "seoul": "Asia/Seoul",
+
+    "beijing": "Asia/Shanghai",
+
+    "sao-paulo": "America/Sao_Paulo",
+
+    "milan": "Europe/Rome",
+
+    "los-angeles": "America/Los_Angeles",
+
+    "houston": "America/Chicago",
+
+    "austin": "America/Chicago",
+
+    "denver": "America/Denver",
+
+    "seattle": "America/Los_Angeles",
+
+    "chicago": "America/Chicago",
+
+    "phoenix": "America/Phoenix",
+
+    "miami": "America/New_York",
+
+    "atlanta": "America/New_York",
+
+    "boston": "America/New_York",
 }
 
 # =========================================================
@@ -279,3 +377,11 @@ CITY_MIN_SIGMA = {
 
     "boston": 3.2,
 }
+
+# =========================================================
+# CYCLE CONFIGURATION
+# =========================================================
+
+CYCLE_INTERVAL_SECONDS = int(
+    os.getenv("CYCLE_INTERVAL_SECONDS", "300")
+)
