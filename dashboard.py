@@ -13,16 +13,16 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 PORT = int(os.environ.get("PORT", 8765))
 
 # ──────────────────────────────────────────────────────────────
-# LOAD DATA — PostgreSQL → GitHub → ERRO (sem fallback local)
+# LOAD DATA — PostgreSQL → GitHub → ERRO
 # ──────────────────────────────────────────────────────────────
 
 def load_data():
     """
-    Carrega bankroll APENAS de fontes compartilhadas entre worker e web.
+    Carrega bankroll APENAS de fontes compartilhadas.
     """
     errors = []
 
-    # ── 1. PostgreSQL (fonte principal — atualizada pelo bot.py) ──────────────
+    # ── 1. PostgreSQL ──────────────────────────────────────────
     db_url = os.environ.get("DATABASE_URL")
     
     if db_url is None:
@@ -46,7 +46,7 @@ def load_data():
             errors.append(f"PostgreSQL erro: {str(e)[:100]}")
             print(f"[dashboard] DB erro: {e}")
 
-    # ── 2. GitHub (backup externo) ────────────────────────────────────────────
+    # ── 2. GitHub ──────────────────────────────────────────────
     try:
         token  = os.environ.get("GITHUB_TOKEN", "").strip()
         repo   = os.environ.get("GITHUB_REPO", "").strip()
@@ -124,7 +124,7 @@ def build_stats(data):
     # Edge distribution
     edges = [round(t.get("edge",0)*100, 1) for t in history if t.get("edge")]
 
-    # Model prob vs win rate (calibração)
+    # Calibração
     buckets = {"0-25%":{"total":0,"wins":0},"25-50%":{"total":0,"wins":0},
                "50-75%":{"total":0,"wins":0},"75-100%":{"total":0,"wins":0}}
     for t in closed:
@@ -305,13 +305,15 @@ body {{ background:var(--bg); color:var(--text); font-family:monospace; font-siz
 .header-title {{
   font-size:22px; font-weight:800;
   color:var(--green);
+  text-shadow: 0 0 20px rgba(0,255,136,0.3);
 }}
 .main {{ padding:24px 32px; max-width:1400px; margin:0 auto; }}
 .kpi-grid {{ display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-bottom:24px; }}
 .kpi {{
   background:var(--bg2); border:1px solid var(--border); border-radius:8px;
-  padding:16px;
+  padding:16px; transition:border-color 0.2s;
 }}
+.kpi:hover {{ border-color:var(--green); }}
 .kpi-label {{ font-size:10px; color:var(--muted); text-transform:uppercase; margin-bottom:8px; }}
 .kpi-value {{ font-size:26px; font-weight:800; color:var(--green) }}
 .kpi-sub {{ font-size:10px; color:var(--muted); margin-top:4px; }}
@@ -323,7 +325,10 @@ body {{ background:var(--bg); color:var(--text); font-family:monospace; font-siz
 .card-title {{
   font-size:12px; font-weight:600;
   text-transform:uppercase; letter-spacing:0.12em;
-  color:var(--muted); margin-bottom:16px;
+  color:var(--muted); margin-bottom:16px; display:flex; align-items:center; gap:8px;
+}}
+.card-title::before {{
+  content:''; width:3px; height:14px; background:var(--green); border-radius:2px;
 }}
 .chart-wrap {{ position:relative; height:250px; }}
 .tbl {{ width:100%; border-collapse:collapse; font-size:12px; }}
@@ -340,16 +345,22 @@ body {{ background:var(--bg); color:var(--text); font-family:monospace; font-siz
   display:inline-block; padding:2px 8px; border-radius:20px;
   background:rgba(88,166,255,0.1); color:var(--blue); font-size:11px;
 }}
+.prob-cell {{ display:flex; align-items:center; gap:6px; }}
+.prob-bar-wrap {{ width:50px; height:4px; background:var(--bg3); border-radius:2px; overflow:hidden; }}
+.prob-bar {{ height:100%; background:var(--green); border-radius:2px; }}
+.edge-val {{ color:var(--green); font-weight:700; }}
 .pnl-pos {{ color:var(--green); font-weight:700; }}
 .pnl-neg {{ color:var(--red);   font-weight:700; }}
+.question-cell {{ color:var(--muted); font-size:11px; }}
+.empty-state {{ color:var(--muted); text-align:center; padding:32px; }}
 .tbl-wrap {{ max-height:400px; overflow-y:auto; }}
 .tbl-wrap::-webkit-scrollbar {{ width:4px; }}
 .tbl-wrap::-webkit-scrollbar-track {{ background:var(--bg3); }}
-.tbl-wrap::-webkit-scrollbar-thumb {{ background:var(--border); }}
-.empty-state {{ color:var(--muted); text-align:center; padding:32px; }}
+.tbl-wrap::-webkit-scrollbar-thumb {{ background:var(--border); border-radius:2px; }}
 @media(max-width:900px) {{
   .kpi-grid {{ grid-template-columns:repeat(2,1fr); }}
   .grid-2 {{ grid-template-columns:1fr; }}
+  .main {{ padding:16px; }}
 }}
 </style>
 </head>
@@ -440,7 +451,6 @@ body {{ background:var(--bg); color:var(--text); font-family:monospace; font-siz
 <script>
 const CITY_STATS  = {city_stats_json};
 const EQUITY      = {equity_json};
-const EDGES       = {edges_json};
 
 const eqCtx = document.getElementById('equityChart').getContext('2d');
 if (EQUITY.length > 0) {{
@@ -499,7 +509,7 @@ setTimeout(() => location.reload(), 15000);
 
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
-        pass  # Silencioso
+        pass
 
     def do_GET(self):
         if self.path not in ("/", "/index.html"):
