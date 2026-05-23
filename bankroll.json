@@ -326,6 +326,27 @@
             "market_date": "2026-05-25",
             "sigma_total": 6.1658,
             "market_price": 0.29
+        },
+        {
+            "market_id": "2328266",
+            "city": "Sao-Paulo",
+            "question": "Will the highest temperature in Sao Paulo be 25°C or higher on May 24?",
+            "market_date": "2026-05-24",
+            "entry_time": "2026-05-23T07:01:43.928970",
+            "exit_time": null,
+            "type": "ABOVE",
+            "target": 25.0,
+            "forecast_c": 20.1,
+            "sigma_total": 4.5259,
+            "shares": 1,
+            "model_prob": 0.1395,
+            "market_price": 0.088,
+            "edge": 0.0515,
+            "ev": 0.0515,
+            "stake": 0.09,
+            "result": "OPEN",
+            "pnl": 0,
+            "unit": "C"
         }
     ],
     "created_at": "2026-05-23T00:31:38.634156+00:00",
