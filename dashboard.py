@@ -1,35 +1,23 @@
+bash
+
+cat > /mnt/user-data/outputs/dashboard.py << 'PYEOF'
 """
 DASHBOARD — WEATHER QUANT BOT
-Dashboard profissional com gráficos, mapa-múndi e curva de equity.
-CORRIGIDO: f-string SyntaxError na linha 397
+Dashboard de última geração: globo 3D, gráficos interativos, filtros em tempo real.
 """
 
-import os
-import json
-import base64
+import os, json, base64
 from datetime import datetime, timezone
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 PORT = int(os.environ.get("PORT", 8765))
 
-# ──────────────────────────────────────────────────────────────
-# LOAD DATA — PostgreSQL → GitHub → ERRO
-# ──────────────────────────────────────────────────────────────
+# ── Carrega dados ─────────────────────────────────────────────────────────────
 
 def load_data():
-    """
-    Carrega bankroll APENAS de fontes compartilhadas.
-    """
     errors = []
-
-    # ── 1. PostgreSQL ──────────────────────────────────────────
     db_url = os.environ.get("DATABASE_URL")
-    
-    if db_url is None:
-        errors.append("DATABASE_URL não configurada")
-    elif not db_url.strip():
-        errors.append("DATABASE_URL está vazia")
-    else:
+    if db_url and db_url.strip():
         try:
             import psycopg2
             conn = psycopg2.connect(db_url, sslmode="require")
@@ -38,514 +26,898 @@ def load_data():
                 row = cur.fetchone()
             conn.close()
             if row:
-                print(f"[dashboard] Dados carregados do PostgreSQL")
                 return row[0], None
-            else:
-                errors.append("PostgreSQL conectado mas sem registros")
+            errors.append("PostgreSQL: sem registros")
         except Exception as e:
-            errors.append(f"PostgreSQL erro: {str(e)[:100]}")
-            print(f"[dashboard] DB erro: {e}")
+            errors.append(f"PostgreSQL: {str(e)[:80]}")
+    else:
+        errors.append("DATABASE_URL não configurada")
 
-    # ── 2. GitHub ──────────────────────────────────────────────
     try:
         token  = os.environ.get("GITHUB_TOKEN", "").strip()
         repo   = os.environ.get("GITHUB_REPO", "").strip()
         branch = os.environ.get("GITHUB_BRANCH", "main")
-        
         if token and repo:
-            import requests
-            r = requests.get(
+            import requests as req
+            r = req.get(
                 f"https://api.github.com/repos/{repo}/contents/bankroll.json",
                 headers={"Authorization": f"token {token}"},
-                params={"ref": branch},
-                timeout=10,
+                params={"ref": branch}, timeout=10,
             )
             if r.status_code == 200:
-                conteudo = base64.b64decode(r.json()["content"]).decode()
-                data = json.loads(conteudo)
-                print(f"[dashboard] Dados carregados do GitHub")
-                return data, "⚠️ Dados do GitHub (PostgreSQL indisponível)"
-            else:
-                errors.append(f"GitHub HTTP {r.status_code}")
+                data = json.loads(base64.b64decode(r.json()["content"]).decode())
+                return data, "⚠ Dados do GitHub (PostgreSQL indisponível)"
+            errors.append(f"GitHub HTTP {r.status_code}")
         else:
-            if not token:
-                errors.append("GITHUB_TOKEN não configurado")
-            if not repo:
-                errors.append("GITHUB_REPO não configurado")
+            errors.append("GITHUB_TOKEN/REPO não configurados")
     except Exception as e:
-        errors.append(f"GitHub erro: {str(e)[:100]}")
+        errors.append(f"GitHub: {str(e)[:80]}")
 
-    error_msg = " | ".join(errors)
-    print(f"[dashboard] ERRO: {error_msg}")
-    return None, f"ERRO: {error_msg}"
+    return None, " | ".join(errors)
 
 
 def build_stats(data):
-    """Constrói estatísticas para exibição."""
     history  = data.get("history", [])
     balance  = data.get("balance", 0)
+    start    = data.get("start_balance", 50)
     closed   = [t for t in history if t.get("result") in ("WIN","LOSS")]
     open_t   = [t for t in history if t.get("result") == "OPEN"]
-    wins     = [t for t in closed if t.get("result") == "WIN"]
-    losses   = [t for t in closed if t.get("result") == "LOSS"]
-    pnl      = sum(t.get("pnl", 0) for t in closed)
-    staked   = sum(t.get("stake", 0) for t in closed)
-    exposure = sum(t.get("stake", 0) for t in open_t)
-    win_rate = round(len(wins)/len(closed)*100, 1) if closed else 0
+    wins     = [t for t in closed  if t.get("result") == "WIN"]
+    losses   = [t for t in closed  if t.get("result") == "LOSS"]
+    pnl      = sum(t.get("pnl",0) for t in closed)
+    exposure = sum(t.get("stake",0) for t in open_t)
+    win_rate = round(len(wins)/len(closed)*100,1) if closed else 0
 
-    # Por cidade
     city_stats = {}
     for t in history:
-        c = t.get("city", "?")
+        c = t.get("city","?")
         if c not in city_stats:
-            city_stats[c] = {"wins":0,"losses":0,"pnl":0,"stake":0,"open":0}
+            city_stats[c] = {"wins":0,"losses":0,"pnl":0,"stake":0,"open":0,"open_stake":0}
         if t.get("result") == "WIN":
-            city_stats[c]["wins"]  += 1
-            city_stats[c]["pnl"]   += t.get("pnl", 0)
+            city_stats[c]["wins"] += 1
+            city_stats[c]["pnl"]  += t.get("pnl",0)
         elif t.get("result") == "LOSS":
             city_stats[c]["losses"] += 1
-            city_stats[c]["pnl"]    += t.get("pnl", 0)
+            city_stats[c]["pnl"]    += t.get("pnl",0)
         elif t.get("result") == "OPEN":
-            city_stats[c]["open"] += 1
-        city_stats[c]["stake"] += t.get("stake", 0)
+            city_stats[c]["open"]       += 1
+            city_stats[c]["open_stake"] += t.get("stake",0)
+        city_stats[c]["stake"] += t.get("stake",0)
 
-    # Curva de equity
     equity_curve = []
-    running = float(data.get("start_balance", 50))
+    running = float(start)
     for t in sorted(closed, key=lambda x: x.get("exit_time","") or ""):
-        running += t.get("pnl", 0)
+        running += t.get("pnl",0)
         equity_curve.append({
             "date": (t.get("exit_time","") or "")[:10],
-            "balance": round(running, 2),
-            "city": t.get("city",""),
+            "balance": round(running,2),
             "result": t.get("result",""),
+            "city": t.get("city",""),
         })
 
-    # Edge distribution
-    edges = [round(t.get("edge",0)*100, 1) for t in history if t.get("edge")]
+    brier_scores = [
+        (t.get("model_prob",0)-(1.0 if t.get("result")=="WIN" else 0))**2
+        for t in closed if t.get("model_prob")
+    ]
+    brier = round(sum(brier_scores)/len(brier_scores),4) if brier_scores else None
 
-    # Calibração
-    buckets = {"0-25%":{"total":0,"wins":0},"25-50%":{"total":0,"wins":0},
-               "50-75%":{"total":0,"wins":0},"75-100%":{"total":0,"wins":0}}
-    for t in closed:
-        p = t.get("model_prob", 0)
-        if p < 0.25: b = "0-25%"
-        elif p < 0.5: b = "25-50%"
-        elif p < 0.75: b = "50-75%"
-        else: b = "75-100%"
-        buckets[b]["total"] += 1
-        if t.get("result") == "WIN":
-            buckets[b]["wins"] += 1
+    avg_edge = round(sum(t.get("edge",0) for t in history)/len(history)*100,2) if history else 0
 
     return {
-        "balance": round(balance, 2),
-        "pnl": round(pnl, 2),
-        "win_rate": win_rate,
+        "balance":      round(balance,2),
+        "start_balance":round(start,2),
+        "pnl":          round(pnl,2),
+        "win_rate":     win_rate,
         "total_closed": len(closed),
-        "wins": len(wins),
-        "losses": len(losses),
-        "open_count": len(open_t),
-        "exposure": round(exposure, 2),
-        "staked": round(staked, 2),
-        "city_stats": city_stats,
+        "wins":         len(wins),
+        "losses":       len(losses),
+        "open_count":   len(open_t),
+        "exposure":     round(exposure,2),
+        "brier":        brier,
+        "avg_edge":     avg_edge,
+        "city_stats":   city_stats,
         "equity_curve": equity_curve,
-        "edges": edges,
-        "calibration": buckets,
-        "open_trades": open_t,
-        "closed_trades": list(reversed(closed))[:20],
-        "updated": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+        "open_trades":  open_t,
+        "closed_trades":list(reversed(closed))[:50],
+        "all_trades":   history,
+        "updated":      datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
     }
 
+# ── HTML ──────────────────────────────────────────────────────────────────────
 
-CITY_COORDS = {
-    "Seoul": (37.57, 126.98),
-    "Tokyo": (35.68, 139.65),
-    "Los Angeles": (34.05, -118.24),
-    "London": (51.51, -0.13),
-    "Paris": (48.86, 2.35),
-    "Houston": (29.76, -95.37),
-    "Hong Kong": (22.32, 114.17),
-    "Milan": (45.46, 9.19),
-    "Denver": (39.74, -104.99),
-    "Austin": (30.27, -97.74),
-    "Seattle": (47.61, -122.33),
-    "Beijing": (39.90, 116.41),
-    "New York": (40.71, -74.01),
-    "Chicago": (41.88, -87.63),
-    "Miami": (25.76, -80.19),
-    "Toronto": (43.65, -79.38),
-    "São Paulo": (-23.55, -46.63),
-    "Madrid": (40.42, -3.70),
-    "Mexico City": (19.43, -99.13),
-    "Phoenix": (33.45, -112.07),
-    "Atlanta": (33.75, -84.39),
-    "Boston": (42.36, -71.06),
-}
-
-
-def build_error_html(error_msg):
-    """Página de erro quando não há dados disponíveis."""
-    return f"""<!DOCTYPE html>
-<html lang="pt">
-<head>
-<meta charset="UTF-8">
-<meta http-equiv="refresh" content="30">
-<title>⚡ Weather Quant — Erro</title>
-<style>
-  body {{ background:#080c10; color:#e6edf3; font-family:'Courier New',monospace;
-         display:flex; align-items:center; justify-content:center; height:100vh; margin:0; }}
-  .box {{ background:#0d1117; border:1px solid #ff4466; border-radius:8px; padding:40px;
-          max-width:600px; text-align:center; }}
-  h1 {{ color:#ff4466; font-size:20px; margin-bottom:16px; }}
-  .msg {{ color:#7d8590; font-size:13px; line-height:1.7; margin-bottom:24px; }}
-  .code {{ background:#161b22; border-radius:4px; padding:12px; font-size:11px;
-           color:#ffaa00; text-align:left; word-break:break-all; }}
-  .retry {{ color:#7d8590; font-size:11px; margin-top:20px; }}
-</style>
-</head>
-<body>
-<div class="box">
-  <h1>⚠️ Sem dados disponíveis</h1>
-  <div class="msg">
-    O dashboard não conseguiu carregar dados de nenhuma fonte.<br>
-    Verifique se o bot está rodando e o PostgreSQL está configurado.
-  </div>
-  <div class="code">{error_msg}</div>
-  <div class="retry">Tentando novamente em 30 segundos...</div>
-</div>
-</body>
-</html>"""
-
-
-def build_html(stats, warning=None):
-    city_stats_json = json.dumps(stats["city_stats"])
-    equity_json     = json.dumps(stats["equity_curve"])
-    coords_json     = json.dumps(CITY_COORDS)
-    edges_json      = json.dumps(stats["edges"])
-    cal_json        = json.dumps(stats["calibration"])
-
-    warning_bar = ""
-    if warning:
-        warning_bar = f"""
-        <div style="background:#1a1000;border-bottom:1px solid #ffaa00;
-                    padding:8px 32px;font-size:11px;color:#ffaa00;">
-          ⚠️ {warning}
-        </div>"""
-
-    open_rows = ""
-    for t in stats["open_trades"]:
-        prob_pct = round(t.get("model_prob",0)*100,1)
-        mkt_pct  = round(t.get("market_price",0)*100,1)
-        edge_pct = round(t.get("edge",0)*100,1)
-        open_rows += f"""
-        <tr>
-          <td><span class="city-badge">{t.get('city','')}</span></td>
-          <td>{t.get('market_date','')}</td>
-          <td>${t.get('stake',0):.2f}</td>
-          <td class="prob-cell">
-            <div class="prob-bar-wrap">
-              <div class="prob-bar" style="width:{prob_pct}%"></div>
-            </div>
-            <span>{prob_pct}%</span>
-          </td>
-          <td>{mkt_pct}%</td>
-          <td class="edge-val">+{edge_pct}%</td>
-          <td class="question-cell">{t.get('question','')[:55]}...</td>
-        </tr>"""
-
-    closed_rows = ""
-    for t in stats["closed_trades"]:
-        res   = t.get("result","")
-        pnl   = t.get("pnl",0)
-        icon  = "✅" if res=="WIN" else "❌"
-        cls   = "win-row" if res=="WIN" else "loss-row"
-        pnl_cls = "pnl-pos" if pnl >= 0 else "pnl-neg"
-        closed_rows += f"""
-        <tr class="{cls}">
-          <td>{icon}</td>
-          <td><span class="city-badge">{t.get('city','')}</span></td>
-          <td>{t.get('market_date','')}</td>
-          <td>${t.get('stake',0):.2f}</td>
-          <td class="{pnl_cls}">${pnl:+.2f}</td>
-          <td>{round(t.get('model_prob',0)*100,1)}%</td>
-          <td class="question-cell">{t.get('question','')[:55]}...</td>
-        </tr>"""
-
-    pnl_color = "#00ff88" if stats["pnl"] >= 0 else "#ff4466"
-    pnl_sign  = "+" if stats["pnl"] >= 0 else ""
-
-    html = f"""<!DOCTYPE html>
+HTML = r"""<!DOCTYPE html>
 <html lang="pt">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="refresh" content="15">
-<title>⚡ Weather Quant</title>
+<title>Weather Quant — Mission Control</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
-:root {{
-  --bg:       #080c10;
-  --bg2:      #0d1117;
-  --bg3:      #161b22;
-  --border:   #21262d;
-  --green:    #00ff88;
-  --green2:   #00cc66;
-  --red:      #ff4466;
-  --amber:    #ffaa00;
-  --blue:     #58a6ff;
-  --text:     #e6edf3;
-  --muted:    #7d8590;
-}}
-* {{ box-sizing:border-box; margin:0; padding:0 }}
-body {{ background:var(--bg); color:var(--text); font-family:monospace; font-size:13px; }}
-.header {{
-  padding:24px 32px 16px;
-  border-bottom:1px solid var(--border);
-  display:flex; align-items:center; justify-content:space-between;
-}}
-.header-title {{
-  font-size:22px; font-weight:800;
-  color:var(--green);
-  text-shadow: 0 0 20px rgba(0,255,136,0.3);
-}}
-.main {{ padding:24px 32px; max-width:1400px; margin:0 auto; }}
-.kpi-grid {{ display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-bottom:24px; }}
-.kpi {{
-  background:var(--bg2); border:1px solid var(--border); border-radius:8px;
-  padding:16px; transition:border-color 0.2s;
-}}
-.kpi:hover {{ border-color:var(--green); }}
-.kpi-label {{ font-size:10px; color:var(--muted); text-transform:uppercase; margin-bottom:8px; }}
-.kpi-value {{ font-size:26px; font-weight:800; color:var(--green) }}
-.kpi-sub {{ font-size:10px; color:var(--muted); margin-top:4px; }}
-.grid-2 {{ display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px; }}
-.card {{
-  background:var(--bg2); border:1px solid var(--border); border-radius:8px;
-  padding:20px;
-}}
-.card-title {{
-  font-size:12px; font-weight:600;
-  text-transform:uppercase; letter-spacing:0.12em;
-  color:var(--muted); margin-bottom:16px; display:flex; align-items:center; gap:8px;
-}}
-.card-title::before {{
-  content:''; width:3px; height:14px; background:var(--green); border-radius:2px;
-}}
-.chart-wrap {{ position:relative; height:250px; }}
-.tbl {{ width:100%; border-collapse:collapse; font-size:12px; }}
-.tbl th {{
-  text-align:left; padding:8px 10px; color:var(--muted);
-  font-size:10px; text-transform:uppercase;
-  border-bottom:1px solid var(--border);
-}}
-.tbl td {{ padding:8px 10px; border-bottom:1px solid rgba(33,38,45,0.5); }}
-.tbl tr:hover td {{ background:rgba(255,255,255,0.02); }}
-.win-row td {{ border-left:3px solid var(--green); }}
-.loss-row td {{ border-left:3px solid var(--red); }}
-.city-badge {{
-  display:inline-block; padding:2px 8px; border-radius:20px;
-  background:rgba(88,166,255,0.1); color:var(--blue); font-size:11px;
-}}
-.prob-cell {{ display:flex; align-items:center; gap:6px; }}
-.prob-bar-wrap {{ width:50px; height:4px; background:var(--bg3); border-radius:2px; overflow:hidden; }}
-.prob-bar {{ height:100%; background:var(--green); border-radius:2px; }}
-.edge-val {{ color:var(--green); font-weight:700; }}
-.pnl-pos {{ color:var(--green); font-weight:700; }}
-.pnl-neg {{ color:var(--red);   font-weight:700; }}
-.question-cell {{ color:var(--muted); font-size:11px; }}
-.empty-state {{ color:var(--muted); text-align:center; padding:32px; }}
-.tbl-wrap {{ max-height:400px; overflow-y:auto; }}
-.tbl-wrap::-webkit-scrollbar {{ width:4px; }}
-.tbl-wrap::-webkit-scrollbar-track {{ background:var(--bg3); }}
-.tbl-wrap::-webkit-scrollbar-thumb {{ background:var(--border); border-radius:2px; }}
-@media(max-width:900px) {{
-  .kpi-grid {{ grid-template-columns:repeat(2,1fr); }}
-  .grid-2 {{ grid-template-columns:1fr; }}
-  .main {{ padding:16px; }}
-}}
+:root{
+  --bg:#030b18;--bg1:#060f22;--bg2:#091529;--bg3:#0d1d36;
+  --cyan:#00e5ff;--green:#00ff88;--red:#ff3366;--amber:#ffaa00;--purple:#b66cff;
+  --text:#cce8ff;--muted:#4a7090;--border:rgba(0,200,255,0.08);
+  --card:rgba(6,18,38,0.85);
+  --font-mono:'JetBrains Mono',monospace;
+  --font-display:'Syne',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{background:var(--bg);color:var(--text);font-family:var(--font-mono);font-size:13px;overflow-x:hidden}
+body{min-height:100vh}
+
+/* scrollbar */
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:var(--bg1)}
+::-webkit-scrollbar-thumb{background:var(--muted);border-radius:2px}
+
+/* starfield bg */
+.stars{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.stars span{position:absolute;border-radius:50%;background:#fff;animation:twinkle var(--d,3s) var(--dl,0s) infinite alternate}
+@keyframes twinkle{from{opacity:.1}to{opacity:.7}}
+
+/* layout */
+.wrapper{position:relative;z-index:1;max-width:1600px;margin:0 auto;padding:20px 24px}
+
+/* header */
+header{display:flex;align-items:center;justify-content:space-between;padding:0 0 20px;border-bottom:1px solid var(--border)}
+.logo{font-family:var(--font-display);font-size:22px;font-weight:800;letter-spacing:-.5px;color:#fff}
+.logo span{color:var(--cyan)}
+.hdr-right{display:flex;align-items:center;gap:16px}
+.status-dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.ts{color:var(--muted);font-size:11px}
+.refresh-btn{background:transparent;border:1px solid var(--border);color:var(--muted);padding:6px 14px;border-radius:4px;cursor:pointer;font-family:var(--font-mono);font-size:11px;transition:.2s}
+.refresh-btn:hover{border-color:var(--cyan);color:var(--cyan)}
+
+/* kpi row */
+.kpi-row{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin:20px 0}
+.kpi{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px 16px;position:relative;overflow:hidden;transition:.3s}
+.kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--accent,var(--cyan));border-radius:8px 8px 0 0}
+.kpi:hover{border-color:var(--accent,var(--cyan));transform:translateY(-2px)}
+.kpi-label{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin-bottom:8px}
+.kpi-value{font-family:var(--font-display);font-size:26px;font-weight:800;color:#fff;line-height:1}
+.kpi-sub{font-size:10px;color:var(--muted);margin-top:6px}
+.kpi-bar{position:absolute;bottom:0;left:0;height:2px;background:var(--accent,var(--cyan));opacity:.3;transition:width .8s}
+
+/* grid main */
+.main-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:18px;backdrop-filter:blur(12px)}
+.card-title{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.card-title::before{content:'';width:3px;height:12px;background:var(--cyan);border-radius:2px;flex-shrink:0}
+
+/* globe */
+#globe-wrap{position:relative;height:320px;cursor:grab;user-select:none}
+#globe-wrap:active{cursor:grabbing}
+#globe-canvas{width:100%;height:100%;display:block}
+.globe-tooltip{position:absolute;background:rgba(4,12,28,.95);border:1px solid var(--cyan);border-radius:6px;padding:10px 14px;font-size:11px;pointer-events:none;display:none;z-index:10;min-width:140px}
+.globe-tooltip strong{color:var(--cyan);display:block;margin-bottom:4px;font-size:12px}
+
+/* equity */
+.chart-wrap{position:relative;height:280px}
+
+/* filter bar */
+.filter-bar{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px 18px;margin-bottom:16px;display:flex;align-items:center;gap:20px;flex-wrap:wrap}
+.filter-label{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
+.city-chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{background:rgba(0,200,255,.06);border:1px solid var(--border);border-radius:20px;padding:4px 12px;font-size:11px;cursor:pointer;transition:.2s;color:var(--muted)}
+.chip:hover{border-color:var(--cyan);color:var(--cyan)}
+.chip.active{background:rgba(0,229,255,.12);border-color:var(--cyan);color:var(--cyan)}
+.result-btns{display:flex;gap:4px}
+.rbtn{background:transparent;border:1px solid var(--border);border-radius:4px;padding:4px 12px;font-family:var(--font-mono);font-size:11px;color:var(--muted);cursor:pointer;transition:.2s}
+.rbtn:hover{border-color:var(--cyan)}
+.rbtn.on{background:rgba(0,229,255,.1);border-color:var(--cyan);color:var(--cyan)}
+.rbtn.on-win{background:rgba(0,255,136,.1);border-color:var(--green);color:var(--green)}
+.rbtn.on-loss{background:rgba(255,51,102,.1);border-color:var(--red);color:var(--red)}
+
+/* charts row */
+.charts-row{display:grid;grid-template-columns:2fr 1fr 1fr;gap:16px;margin-bottom:16px}
+
+/* tables */
+.table-card{background:var(--card);border:1px solid var(--border);border-radius:8px;margin-bottom:16px;overflow:hidden}
+.table-header{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.tbl-wrap{max-height:380px;overflow-y:auto}
+table{width:100%;border-collapse:collapse}
+th{padding:10px 14px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg2);z-index:1}
+td{padding:9px 14px;border-bottom:1px solid rgba(0,200,255,.04);font-size:12px}
+tr:hover td{background:rgba(0,200,255,.03)}
+.city-tag{display:inline-block;padding:2px 8px;border-radius:12px;background:rgba(0,200,255,.08);color:var(--cyan);font-size:10px}
+.badge-win{color:var(--green)}
+.badge-loss{color:var(--red)}
+.badge-open{color:var(--amber)}
+.prob-bar-row{display:flex;align-items:center;gap:6px}
+.prob-bar-bg{flex:1;height:3px;background:rgba(255,255,255,.08);border-radius:2px;overflow:hidden}
+.prob-bar-fill{height:100%;border-radius:2px;background:var(--cyan)}
+.edge-pos{color:var(--green)}
+.edge-neg{color:var(--red)}
+
+/* gauge */
+.gauge-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%}
+.gauge-val{font-family:var(--font-display);font-size:36px;font-weight:800;color:#fff;margin-top:-20px}
+.gauge-sub{font-size:11px;color:var(--muted);margin-top:4px}
+
+/* empty */
+.empty{color:var(--muted);text-align:center;padding:40px;font-size:12px}
+
+/* warning */
+.warning-bar{background:rgba(255,170,0,.08);border-bottom:1px solid rgba(255,170,0,.2);padding:8px 24px;font-size:11px;color:var(--amber)}
+
+/* animations */
+@keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+.card,.kpi,.table-card{animation:fadeUp .4s ease both}
+.kpi:nth-child(1){animation-delay:.05s}
+.kpi:nth-child(2){animation-delay:.1s}
+.kpi:nth-child(3){animation-delay:.15s}
+.kpi:nth-child(4){animation-delay:.2s}
+.kpi:nth-child(5){animation-delay:.25s}
+.kpi:nth-child(6){animation-delay:.3s}
 </style>
 </head>
 <body>
 
-<div class="header">
-  <div class="header-title">⚡ Weather Quant</div>
-  <div style="font-size:11px;color:var(--muted);">{stats["updated"]}</div>
-</div>
+<div class="stars" id="stars"></div>
 
-{warning_bar}
+<div id="warning-bar" style="display:none" class="warning-bar"></div>
 
-<div class="main">
+<div class="wrapper">
 
-  <div class="kpi-grid">
-    <div class="kpi">
-      <div class="kpi-label">💰 Saldo</div>
-      <div class="kpi-value">${stats["balance"]:.2f}</div>
-      <div class="kpi-sub">Disponível</div>
+  <header>
+    <div class="logo">⚡ Weather<span>Quant</span></div>
+    <div class="hdr-right">
+      <div class="status-dot" id="statusDot"></div>
+      <span class="ts" id="tsLabel">—</span>
+      <button class="refresh-btn" onclick="fetchData()">↻ Atualizar</button>
     </div>
-    <div class="kpi">
-      <div class="kpi-label">📈 PnL</div>
-      <div class="kpi-value" style="color:{pnl_color}">{pnl_sign}${stats["pnl"]:.2f}</div>
-      <div class="kpi-sub">Total</div>
+  </header>
+
+  <!-- KPIs -->
+  <div class="kpi-row" id="kpiRow">
+    <div class="kpi" style="--accent:var(--cyan)">
+      <div class="kpi-label">Saldo</div>
+      <div class="kpi-value" id="kBalance">—</div>
+      <div class="kpi-sub" id="kBalanceSub">—</div>
+      <div class="kpi-bar" id="kBalanceBar" style="width:0"></div>
     </div>
-    <div class="kpi">
-      <div class="kpi-label">🏆 Win Rate</div>
-      <div class="kpi-value">{stats["win_rate"]}%</div>
-      <div class="kpi-sub">{stats["wins"]}W / {stats["losses"]}L</div>
+    <div class="kpi" style="--accent:var(--green)">
+      <div class="kpi-label">PnL Total</div>
+      <div class="kpi-value" id="kPnl">—</div>
+      <div class="kpi-sub" id="kPnlSub">—</div>
     </div>
-    <div class="kpi">
-      <div class="kpi-label">⏳ Abertos</div>
-      <div class="kpi-value" style="color:var(--blue)">{stats["open_count"]}</div>
-      <div class="kpi-sub">Exposição ${stats["exposure"]:.2f}</div>
+    <div class="kpi" style="--accent:var(--purple)">
+      <div class="kpi-label">Win Rate</div>
+      <div class="kpi-value" id="kWR">—</div>
+      <div class="kpi-sub" id="kWRSub">—</div>
     </div>
-    <div class="kpi">
-      <div class="kpi-label">📊 Total</div>
-      <div class="kpi-value">{stats["total_closed"]}</div>
-      <div class="kpi-sub">Fechados</div>
+    <div class="kpi" style="--accent:var(--amber)">
+      <div class="kpi-label">Abertos</div>
+      <div class="kpi-value" id="kOpen">—</div>
+      <div class="kpi-sub" id="kOpenSub">—</div>
+    </div>
+    <div class="kpi" style="--accent:#ff6b35">
+      <div class="kpi-label">Exposição</div>
+      <div class="kpi-value" id="kExp">—</div>
+      <div class="kpi-sub" id="kExpSub">—</div>
+    </div>
+    <div class="kpi" style="--accent:var(--cyan)">
+      <div class="kpi-label">Edge Médio</div>
+      <div class="kpi-value" id="kEdge">—</div>
+      <div class="kpi-sub" id="kBrier">—</div>
     </div>
   </div>
 
-  <div class="grid-2">
+  <!-- Globe + Equity -->
+  <div class="main-grid">
+    <div class="card">
+      <div class="card-title">🌍 Globo de Trades — arraste para girar</div>
+      <div id="globe-wrap">
+        <canvas id="globe-canvas"></canvas>
+        <div class="globe-tooltip" id="globeTip"></div>
+      </div>
+    </div>
     <div class="card">
       <div class="card-title">📈 Curva de Equity</div>
-      <div class="chart-wrap">
-        <canvas id="equityChart"></canvas>
-      </div>
+      <div class="chart-wrap"><canvas id="equityChart" role="img" aria-label="Curva de equity ao longo do tempo">Curva de equity</canvas></div>
+    </div>
+  </div>
+
+  <!-- Filter bar -->
+  <div class="filter-bar">
+    <span class="filter-label">Cidade</span>
+    <div class="city-chips" id="cityChips"></div>
+    <span class="filter-label" style="margin-left:8px">Resultado</span>
+    <div class="result-btns">
+      <button class="rbtn on" data-r="all" onclick="setResult(this,'all')">Todos</button>
+      <button class="rbtn" data-r="OPEN" onclick="setResult(this,'OPEN')">Abertos</button>
+      <button class="rbtn" data-r="WIN" onclick="setResult(this,'WIN')">Win</button>
+      <button class="rbtn" data-r="LOSS" onclick="setResult(this,'LOSS')">Loss</button>
+    </div>
+  </div>
+
+  <!-- Charts row -->
+  <div class="charts-row">
+    <div class="card">
+      <div class="card-title">💰 PnL por Cidade</div>
+      <div class="chart-wrap" style="height:220px"><canvas id="cityChart" role="img" aria-label="PnL por cidade">PnL por cidade</canvas></div>
     </div>
     <div class="card">
-      <div class="card-title">🎯 PnL por Cidade</div>
-      <div class="chart-wrap">
-        <canvas id="cityChart"></canvas>
+      <div class="card-title">🎯 Distribuição de Edge</div>
+      <div class="chart-wrap" style="height:220px"><canvas id="edgeChart" role="img" aria-label="Distribuição de edge">Distribuição de edge</canvas></div>
+    </div>
+    <div class="card" style="display:flex;flex-direction:column">
+      <div class="card-title">🏆 Win Rate</div>
+      <div class="gauge-wrap">
+        <canvas id="gaugeChart" width="160" height="90" role="img" aria-label="Win rate gauge">Win rate</canvas>
+        <div class="gauge-val" id="gaugeVal">—</div>
+        <div class="gauge-sub" id="gaugeSub">—</div>
       </div>
     </div>
   </div>
 
-  <div class="card">
-    <div class="card-title">⏳ Posições em Aberto ({stats["open_count"]})</div>
-    {('<div class="empty-state">Nenhuma posição aberta.</div>' if not stats["open_trades"] else f'''
+  <!-- Open trades -->
+  <div class="table-card">
+    <div class="table-header">
+      <div class="card-title" style="margin:0">⏳ Posições Abertas</div>
+      <span id="openCount" style="color:var(--amber);font-size:12px"></span>
+    </div>
     <div class="tbl-wrap">
-    <table class="tbl">
-      <thead><tr>
-        <th>Cidade</th><th>Data</th><th>Stake</th>
-        <th>Prob</th><th>Mkt</th><th>Edge</th><th>Pergunta</th>
-      </tr></thead>
-      <tbody>{open_rows}</tbody>
-    </table>
-    </div>''')}
+      <table>
+        <thead><tr>
+          <th>Cidade</th><th>Data</th><th>Tipo</th><th>Stake</th>
+          <th>Prob Modelo</th><th>Mkt Price</th><th>Edge</th><th>Pergunta</th>
+        </tr></thead>
+        <tbody id="openBody"></tbody>
+      </table>
+    </div>
   </div>
 
-  <div class="card">
-    <div class="card-title">📋 Últimos Trades</div>
-    {('<div class="empty-state">Nenhum trade fechado ainda.</div>' if not stats["closed_trades"] else f'''
+  <!-- Closed trades -->
+  <div class="table-card">
+    <div class="table-header">
+      <div class="card-title" style="margin:0">📋 Trades Fechados</div>
+      <span id="closedCount" style="color:var(--muted);font-size:12px"></span>
+    </div>
     <div class="tbl-wrap">
-    <table class="tbl">
-      <thead><tr>
-        <th></th><th>Cidade</th><th>Data</th><th>Stake</th>
-        <th>PnL</th><th>Prob</th><th>Pergunta</th>
-      </tr></thead>
-      <tbody>{closed_rows}</tbody>
-    </table>
-    </div>''')}
+      <table>
+        <thead><tr>
+          <th></th><th>Cidade</th><th>Data</th><th>Target</th>
+          <th>Stake</th><th>PnL</th><th>Prob</th><th>Mkt</th><th>Temp Real</th>
+        </tr></thead>
+        <tbody id="closedBody"></tbody>
+      </table>
+    </div>
   </div>
 
 </div>
 
 <script>
-const CITY_STATS  = {city_stats_json};
-const EQUITY      = {equity_json};
+// ── Starfield ────────────────────────────────────────────────
+(function(){
+  const c=document.getElementById('stars');
+  for(let i=0;i<120;i++){
+    const s=document.createElement('span');
+    const sz=Math.random()*2+.5;
+    s.style.cssText=`width:${sz}px;height:${sz}px;top:${Math.random()*100}%;left:${Math.random()*100}%;--d:${2+Math.random()*4}s;--dl:${Math.random()*4}s`;
+    c.appendChild(s);
+  }
+})();
 
-const eqCtx = document.getElementById('equityChart').getContext('2d');
-if (EQUITY.length > 0) {{
-  new Chart(eqCtx, {{
-    type: 'line',
-    data: {{
-      labels: EQUITY.map(p => p.date),
-      datasets: [{{ data: EQUITY.map(p => p.balance),
-        borderColor: '#00ff88', backgroundColor: 'rgba(0,255,136,0.08)',
-        fill: true, tension: 0.4, pointRadius: 4,
-        pointBackgroundColor: EQUITY.map(p => p.result==='WIN'?'#00ff88':'#ff4466'),
-        pointBorderColor: '#080c10', pointBorderWidth: 2 }}]
-    }},
-    options: {{
-      responsive:true, maintainAspectRatio:false,
-      plugins:{{ legend:{{display:false}} }},
-      scales:{{
-        x:{{ grid:{{color:'#21262d'}}, ticks:{{color:'#7d8590',font:{{size:10}}}} }},
-        y:{{ grid:{{color:'#21262d'}}, ticks:{{color:'#7d8590',font:{{size:10}}, callback: v => '$'+v.toFixed(0) }} }}
-      }}
-    }}
-  }});
-}} else {{ eqCtx.canvas.parentElement.innerHTML = '<div class="empty-state">Sem trades fechados</div>'; }}
+// ── State ────────────────────────────────────────────────────
+let DATA=null,activeCity='all',activeResult='all';
+let chartEquity=null,chartCity=null,chartEdge=null;
 
-const cities  = Object.keys(CITY_STATS).filter(c => CITY_STATS[c].wins + CITY_STATS[c].losses > 0);
-const cityCtx = document.getElementById('cityChart').getContext('2d');
-if (cities.length > 0) {{
-  new Chart(cityCtx, {{
-    type: 'bar',
-    data: {{
-      labels: cities,
-      datasets: [{{ data: cities.map(c => CITY_STATS[c].pnl),
-        backgroundColor: cities.map(c => CITY_STATS[c].pnl >= 0 ? 'rgba(0,255,136,0.7)' : 'rgba(255,68,102,0.7)'),
-        borderColor:     cities.map(c => CITY_STATS[c].pnl >= 0 ? '#00ff88' : '#ff4466'),
-        borderWidth: 1, borderRadius: 4 }}]
-    }},
-    options: {{
-      responsive:true, maintainAspectRatio:false,
-      plugins:{{ legend:{{display:false}} }},
-      scales:{{
-        x:{{ grid:{{display:false}}, ticks:{{color:'#7d8590',font:{{size:9}}}} }},
-        y:{{ grid:{{color:'#21262d'}}, ticks:{{color:'#7d8590',font:{{size:10}}, callback: v => '$'+v.toFixed(2) }} }}
-      }}
-    }}
-  }});
-}} else {{ cityCtx.canvas.parentElement.innerHTML = '<div class="empty-state">Aguardando trades</div>'; }}
+// ── Fetch ─────────────────────────────────────────────────────
+async function fetchData(){
+  try{
+    const r=await fetch('/api/stats');
+    if(!r.ok)throw new Error(r.status);
+    DATA=await r.json();
+    render();
+  }catch(e){console.error(e)}
+}
+fetchData();
+setInterval(fetchData,15000);
 
-setTimeout(() => location.reload(), 15000);
+// ── Render ────────────────────────────────────────────────────
+function render(){
+  if(!DATA)return;
+  updateKPIs();
+  buildCityChips();
+  updateEquity();
+  updateCityChart();
+  updateEdgeChart();
+  updateGauge();
+  updateTables();
+  updateGlobe();
+  document.getElementById('tsLabel').textContent=DATA.updated||'';
+  const wb=document.getElementById('warning-bar');
+  if(DATA.warning){wb.style.display='block';wb.textContent=DATA.warning}else{wb.style.display='none'}
+}
+
+// ── KPIs ──────────────────────────────────────────────────────
+function fmt$(v){return'$'+Math.abs(v).toFixed(2)}
+function sign(v){return v>=0?'+':''}
+
+function updateKPIs(){
+  const d=DATA;
+  const pnlPct=d.start_balance>0?((d.balance-d.start_balance)/d.start_balance*100).toFixed(1):0;
+
+  document.getElementById('kBalance').textContent='$'+d.balance.toFixed(2);
+  document.getElementById('kBalanceSub').textContent=sign(d.balance-d.start_balance)+'$'+(d.balance-d.start_balance).toFixed(2)+' vs início';
+  const barW=Math.min(100,Math.max(0,(d.balance/d.start_balance)*100));
+  document.getElementById('kBalanceBar').style.width=barW+'%';
+
+  const pnlEl=document.getElementById('kPnl');
+  pnlEl.textContent=sign(d.pnl)+'$'+Math.abs(d.pnl).toFixed(2);
+  pnlEl.style.color=d.pnl>=0?'var(--green)':'var(--red)';
+  document.getElementById('kPnlSub').textContent=sign(parseFloat(pnlPct))+pnlPct+'% retorno';
+
+  document.getElementById('kWR').textContent=d.win_rate+'%';
+  document.getElementById('kWRSub').textContent=d.wins+'W / '+d.losses+'L ('+d.total_closed+' trades)';
+
+  document.getElementById('kOpen').textContent=d.open_count;
+  document.getElementById('kOpenSub').textContent='Exposição $'+d.exposure.toFixed(2);
+
+  const expPct=d.start_balance>0?(d.exposure/d.start_balance*100).toFixed(0):0;
+  document.getElementById('kExp').textContent='$'+d.exposure.toFixed(2);
+  document.getElementById('kExpSub').textContent=expPct+'% do bankroll inicial';
+
+  document.getElementById('kEdge').textContent=sign(d.avg_edge)+d.avg_edge.toFixed(1)+'%';
+  document.getElementById('kBrier').textContent=d.brier!==null?'Brier: '+d.brier:'Aguardando trades';
+}
+
+// ── City chips ────────────────────────────────────────────────
+function buildCityChips(){
+  const wrap=document.getElementById('cityChips');
+  const cities=['all',...Object.keys(DATA.city_stats)];
+  const existing=new Set([...wrap.querySelectorAll('.chip')].map(c=>c.dataset.c));
+  if(JSON.stringify([...existing])==JSON.stringify(cities))return;
+  wrap.innerHTML='';
+  cities.forEach(c=>{
+    const chip=document.createElement('button');
+    chip.className='chip'+(c===activeCity?' active':'');
+    chip.dataset.c=c;
+    chip.textContent=c==='all'?'Todas':c;
+    chip.onclick=()=>{activeCity=c;[...wrap.querySelectorAll('.chip')].forEach(x=>x.classList.remove('active'));chip.classList.add('active');updateCityChart();updateTables()};
+    wrap.appendChild(chip);
+  });
+}
+
+function setResult(el,r){
+  activeResult=r;
+  document.querySelectorAll('.rbtn').forEach(b=>{b.className='rbtn'});
+  el.className='rbtn '+(r==='all'?'on':r==='WIN'?'on-win':'on-loss');
+  updateTables();
+}
+
+// ── Filter trades ─────────────────────────────────────────────
+function filteredClosed(){
+  return DATA.closed_trades.filter(t=>{
+    if(activeCity!=='all'&&t.city!==activeCity)return false;
+    if(activeResult==='all'||activeResult==='OPEN')return true;
+    return t.result===activeResult;
+  });
+}
+function filteredOpen(){
+  return DATA.open_trades.filter(t=>activeCity==='all'||t.city===activeCity);
+}
+
+// ── Equity chart ──────────────────────────────────────────────
+function updateEquity(){
+  const eq=DATA.equity_curve;
+  const ctx=document.getElementById('equityChart').getContext('2d');
+  const labels=eq.map(p=>p.date);
+  const vals=eq.map(p=>p.balance);
+  if(chartEquity)chartEquity.destroy();
+  const grad=ctx.createLinearGradient(0,0,0,280);
+  grad.addColorStop(0,'rgba(0,229,255,.25)');
+  grad.addColorStop(1,'rgba(0,229,255,0)');
+  chartEquity=new Chart(ctx,{
+    type:'line',
+    data:{
+      labels,
+      datasets:[{
+        data:vals,
+        borderColor:'#00e5ff',
+        backgroundColor:grad,
+        fill:true,tension:.4,
+        pointRadius:vals.map((_,i)=>i===vals.length-1?5:3),
+        pointBackgroundColor:eq.map(p=>p.result==='WIN'?'#00ff88':'#ff3366'),
+        pointBorderColor:'#030b18',pointBorderWidth:2
+      }]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>' $'+c.parsed.y.toFixed(2)}}},
+      scales:{
+        x:{grid:{color:'rgba(0,200,255,.04)'},ticks:{color:'#4a7090',font:{size:10},maxRotation:0,autoSkip:true,maxTicksLimit:8}},
+        y:{grid:{color:'rgba(0,200,255,.04)'},ticks:{color:'#4a7090',font:{size:10},callback:v=>'$'+v.toFixed(0)}}
+      }
+    }
+  });
+}
+
+// ── City PnL chart ────────────────────────────────────────────
+function updateCityChart(){
+  const cs=DATA.city_stats;
+  let entries=Object.entries(cs).filter(([c])=>activeCity==='all'||c===activeCity);
+  entries.sort((a,b)=>b[1].pnl-a[1].pnl);
+  const labels=entries.map(e=>e[0]);
+  const vals=entries.map(e=>e[1].pnl);
+  const colors=vals.map(v=>v>=0?'rgba(0,255,136,.7)':'rgba(255,51,102,.7)');
+  const borders=vals.map(v=>v>=0?'#00ff88':'#ff3366');
+  const ctx=document.getElementById('cityChart').getContext('2d');
+  if(chartCity)chartCity.destroy();
+  chartCity=new Chart(ctx,{
+    type:'bar',
+    data:{labels,datasets:[{data:vals,backgroundColor:colors,borderColor:borders,borderWidth:1,borderRadius:4}]},
+    options:{
+      indexAxis:'y',
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` $${c.parsed.x.toFixed(2)}`}}},
+      scales:{
+        x:{grid:{color:'rgba(0,200,255,.04)'},ticks:{color:'#4a7090',font:{size:10},callback:v=>'$'+v.toFixed(0)}},
+        y:{grid:{display:false},ticks:{color:'#cce8ff',font:{size:11}}}
+      }
+    }
+  });
+}
+
+// ── Edge histogram ────────────────────────────────────────────
+function updateEdgeChart(){
+  const edges=DATA.all_trades.filter(t=>t.edge!=null).map(t=>Math.round(t.edge*100));
+  const buckets={};
+  edges.forEach(e=>{const b=Math.floor(e/5)*5;buckets[b]=(buckets[b]||0)+1});
+  const keys=Object.keys(buckets).sort((a,b)=>a-b);
+  const ctx=document.getElementById('edgeChart').getContext('2d');
+  if(chartEdge)chartEdge.destroy();
+  chartEdge=new Chart(ctx,{
+    type:'bar',
+    data:{
+      labels:keys.map(k=>k+'%'),
+      datasets:[{data:keys.map(k=>buckets[k]),backgroundColor:'rgba(182,108,255,.6)',borderColor:'#b66cff',borderWidth:1,borderRadius:3}]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{grid:{color:'rgba(0,200,255,.04)'},ticks:{color:'#4a7090',font:{size:10}}},
+        y:{grid:{color:'rgba(0,200,255,.04)'},ticks:{color:'#4a7090',font:{size:10}}}
+      }
+    }
+  });
+}
+
+// ── Win rate gauge ────────────────────────────────────────────
+function updateGauge(){
+  const wr=DATA.win_rate/100;
+  const c=document.getElementById('gaugeChart');
+  const ctx=c.getContext('2d');
+  ctx.clearRect(0,0,160,90);
+  const cx=80,cy=80,r=65,start=Math.PI,end=2*Math.PI;
+  // bg arc
+  ctx.beginPath();ctx.arc(cx,cy,r,start,end);
+  ctx.strokeStyle='rgba(255,255,255,.06)';ctx.lineWidth=12;ctx.lineCap='round';ctx.stroke();
+  // value arc
+  const col=wr>=.55?'#00ff88':wr>=.45?'#ffaa00':'#ff3366';
+  ctx.beginPath();ctx.arc(cx,cy,r,start,start+(end-start)*wr);
+  ctx.strokeStyle=col;ctx.lineWidth=12;ctx.lineCap='round';ctx.stroke();
+  document.getElementById('gaugeVal').textContent=DATA.win_rate+'%';
+  document.getElementById('gaugeVal').style.color=col;
+  document.getElementById('gaugeSub').textContent=DATA.wins+'W / '+DATA.losses+'L';
+}
+
+// ── Tables ────────────────────────────────────────────────────
+function updateTables(){
+  // open
+  const open=filteredOpen();
+  document.getElementById('openCount').textContent=open.length+' posições';
+  const ob=document.getElementById('openBody');
+  if(!open.length){ob.innerHTML='<tr><td colspan="8" class="empty">Nenhuma posição aberta</td></tr>';return}
+  ob.innerHTML=open.map(t=>{
+    const prob=Math.round((t.model_prob||0)*100);
+    const mkt=Math.round((t.market_price||0)*100);
+    const edge=((t.edge||0)*100).toFixed(1);
+    const cls=parseFloat(edge)>=0?'edge-pos':'edge-neg';
+    return`<tr>
+      <td><span class="city-tag">${t.city||'—'}</span></td>
+      <td>${t.market_date||'—'}</td>
+      <td style="color:var(--amber)">${t.type||'—'}</td>
+      <td>$${(t.stake||0).toFixed(2)}</td>
+      <td><div class="prob-bar-row"><div class="prob-bar-bg"><div class="prob-bar-fill" style="width:${prob}%"></div></div><span>${prob}%</span></div></td>
+      <td>${mkt}%</td>
+      <td class="${cls}">${parseFloat(edge)>=0?'+':''}${edge}%</td>
+      <td style="color:var(--muted);font-size:11px">${(t.question||'').substring(0,50)}…</td>
+    </tr>`}).join('');
+
+  // closed
+  const closed=filteredClosed();
+  document.getElementById('closedCount').textContent=closed.length+' trades';
+  const cb=document.getElementById('closedBody');
+  if(!closed.length){cb.innerHTML='<tr><td colspan="9" class="empty">Nenhum trade fechado</td></tr>';return}
+  cb.innerHTML=closed.map(t=>{
+    const isWin=t.result==='WIN';
+    const pnl=t.pnl||0;
+    const temp=t.real_temp_c!=null?t.real_temp_c.toFixed(1)+'°C':'—';
+    return`<tr>
+      <td class="${isWin?'badge-win':'badge-loss'}" style="font-size:15px">${isWin?'✓':'✗'}</td>
+      <td><span class="city-tag">${t.city||'—'}</span></td>
+      <td>${t.market_date||'—'}</td>
+      <td style="color:var(--muted)">${t.type||''} ${t.target||''}°${t.unit||'C'}</td>
+      <td>$${(t.stake||0).toFixed(2)}</td>
+      <td class="${pnl>=0?'badge-win':'badge-loss'}" style="font-weight:600">${pnl>=0?'+':''}$${Math.abs(pnl).toFixed(2)}</td>
+      <td>${Math.round((t.model_prob||0)*100)}%</td>
+      <td>${Math.round((t.market_price||0)*100)}%</td>
+      <td style="color:var(--cyan)">${temp}</td>
+    </tr>`}).join('');
+}
+
+// ── 3D GLOBE ──────────────────────────────────────────────────
+const CITY_COORDS={
+  'New York':[40.71,-74.01],'London':[51.51,-0.13],'Paris':[48.86,2.35],
+  'Hong Kong':[22.32,114.17],'Tokyo':[35.68,139.65],'Seoul':[37.57,126.98],
+  'Beijing':[39.90,116.41],'São Paulo':[-23.55,-46.63],'Milan':[45.46,9.19],
+  'Los Angeles':[34.05,-118.24],'Houston':[29.76,-95.37],'Austin':[30.27,-97.74],
+  'Denver':[39.74,-104.99],'Seattle':[47.61,-122.33],'Chicago':[41.88,-87.63],
+  'Phoenix':[33.45,-112.07],'Miami':[25.76,-80.19],'Atlanta':[33.75,-84.39],
+  'Boston':[42.36,-71.06],'Toronto':[43.65,-79.38],'Madrid':[40.42,-3.70],
+  'Mexico City':[19.43,-99.13]
+};
+
+let scene,camera,renderer,globeMesh,gridMesh,atmMesh;
+let isDragging=false,prevMouse={x:0,y:0};
+let autoRotate=true;
+let cityMarkers={};
+let globeStats={};
+
+function latLonToVec3(lat,lon,r){
+  const phi=(90-lat)*Math.PI/180;
+  const theta=(lon+180)*Math.PI/180;
+  return new THREE.Vector3(
+    -r*Math.sin(phi)*Math.cos(theta),
+     r*Math.cos(phi),
+     r*Math.sin(phi)*Math.sin(theta)
+  );
+}
+
+function initGlobe(){
+  const wrap=document.getElementById('globe-wrap');
+  const W=wrap.clientWidth,H=320;
+  scene=new THREE.Scene();
+  camera=new THREE.PerspectiveCamera(42,W/H,.1,100);
+  camera.position.z=5.5;
+
+  renderer=new THREE.WebGLRenderer({canvas:document.getElementById('globe-canvas'),antialias:true,alpha:true});
+  renderer.setSize(W,H);
+  renderer.setPixelRatio(window.devicePixelRatio||1);
+
+  // Lights
+  scene.add(new THREE.AmbientLight(0x112244,.8));
+  const dl=new THREE.DirectionalLight(0x0088ff,1);
+  dl.position.set(5,3,5);scene.add(dl);
+  const dl2=new THREE.DirectionalLight(0x00ffcc,.3);
+  dl2.position.set(-3,-2,-3);scene.add(dl2);
+
+  // Globe
+  const geo=new THREE.SphereGeometry(2,64,64);
+  const mat=new THREE.MeshPhongMaterial({
+    color:0x061830,emissive:0x030e20,specular:0x0088ff,shininess:40
+  });
+  globeMesh=new THREE.Mesh(geo,mat);scene.add(globeMesh);
+
+  // Grid overlay
+  const gridMat=new THREE.MeshBasicMaterial({color:0x00e5ff,wireframe:true,transparent:true,opacity:.05});
+  gridMesh=new THREE.Mesh(new THREE.SphereGeometry(2.01,36,18),gridMat);
+  scene.add(gridMesh);
+
+  // Atmosphere
+  const atmGeo=new THREE.SphereGeometry(2.18,64,64);
+  const atmMat=new THREE.MeshPhongMaterial({
+    color:0x0066ff,emissive:0x003366,transparent:true,opacity:.12,side:THREE.BackSide
+  });
+  atmMesh=new THREE.Mesh(atmGeo,atmMat);scene.add(atmMesh);
+
+  // Outer glow ring
+  const ringGeo=new THREE.SphereGeometry(2.28,64,64);
+  const ringMat=new THREE.MeshBasicMaterial({color:0x0044ff,transparent:true,opacity:.04,side:THREE.BackSide});
+  scene.add(new THREE.Mesh(ringGeo,ringMat));
+
+  // Mouse events
+  const cv=document.getElementById('globe-canvas');
+  cv.addEventListener('mousedown',e=>{isDragging=true;autoRotate=false;prevMouse={x:e.clientX,y:e.clientY}});
+  cv.addEventListener('mousemove',e=>{
+    if(isDragging){
+      const dx=e.clientX-prevMouse.x,dy=e.clientY-prevMouse.y;
+      globeMesh.rotation.y+=dx*.005;globeMesh.rotation.x+=dy*.005;
+      gridMesh.rotation.copy(globeMesh.rotation);atmMesh.rotation.copy(globeMesh.rotation);
+      Object.values(cityMarkers).forEach(m=>{if(m.group){m.group.rotation.copy(globeMesh.rotation)}});
+      prevMouse={x:e.clientX,y:e.clientY};
+    }
+    // tooltip
+    handleGlobeHover(e,cv);
+  });
+  cv.addEventListener('mouseup',()=>isDragging=false);
+  cv.addEventListener('mouseleave',()=>{isDragging=false;document.getElementById('globeTip').style.display='none'});
+
+  // Touch
+  cv.addEventListener('touchstart',e=>{isDragging=true;autoRotate=false;prevMouse={x:e.touches[0].clientX,y:e.touches[0].clientY}},{passive:true});
+  cv.addEventListener('touchmove',e=>{
+    if(!isDragging)return;
+    const dx=e.touches[0].clientX-prevMouse.x,dy=e.touches[0].clientY-prevMouse.y;
+    globeMesh.rotation.y+=dx*.005;globeMesh.rotation.x+=dy*.005;
+    gridMesh.rotation.copy(globeMesh.rotation);atmMesh.rotation.copy(globeMesh.rotation);
+    prevMouse={x:e.touches[0].clientX,y:e.touches[0].clientY};
+  },{passive:true});
+  cv.addEventListener('touchend',()=>isDragging=false);
+
+  // Resize
+  window.addEventListener('resize',()=>{
+    const nw=wrap.clientWidth;
+    camera.aspect=nw/H;camera.updateProjectionMatrix();
+    renderer.setSize(nw,H);
+  });
+
+  animate();
+}
+
+let raycaster=null,mouse3d=null;
+function handleGlobeHover(e,cv){
+  if(!raycaster){raycaster=new THREE.Raycaster();mouse3d=new THREE.Vector2()}
+  const rect=cv.getBoundingClientRect();
+  mouse3d.x=((e.clientX-rect.left)/rect.width)*2-1;
+  mouse3d.y=-((e.clientY-rect.top)/rect.height)*2+1;
+  raycaster.setFromCamera(mouse3d,camera);
+  const meshes=Object.values(cityMarkers).flatMap(m=>m.meshes||[]);
+  const hits=raycaster.intersectObjects(meshes);
+  const tip=document.getElementById('globeTip');
+  if(hits.length){
+    const city=hits[0].object.userData.city;
+    const s=globeStats[city]||{};
+    const wr=s.wins+s.losses>0?Math.round(s.wins/(s.wins+s.losses)*100):null;
+    tip.style.display='block';
+    tip.style.left=(e.clientX-cv.getBoundingClientRect().left+12)+'px';
+    tip.style.top=(e.clientY-cv.getBoundingClientRect().top-8)+'px';
+    tip.innerHTML=`<strong>${city}</strong>
+      <span style="color:var(--green)">Win: ${s.wins||0}</span> / <span style="color:var(--red)">Loss: ${s.losses||0}</span><br>
+      ${s.open?`<span style="color:var(--amber)">${s.open} abertos</span><br>`:''}
+      PnL: <span style="color:${(s.pnl||0)>=0?'var(--green)':'var(--red)'}">${(s.pnl||0)>=0?'+':''}$${Math.abs(s.pnl||0).toFixed(2)}</span>
+      ${wr!==null?`<br>Win rate: ${wr}%`:''}`;
+  } else {
+    tip.style.display='none';
+  }
+}
+
+let ringPhase=0;
+function animate(){
+  requestAnimationFrame(animate);
+  if(autoRotate){
+    globeMesh.rotation.y+=.002;
+    gridMesh.rotation.y+=.002;
+    atmMesh.rotation.y+=.002;
+    Object.values(cityMarkers).forEach(m=>{if(m.pivot)m.pivot.rotation.y+=.002});
+  }
+  // pulse rings
+  ringPhase+=.05;
+  Object.values(cityMarkers).forEach(m=>{
+    if(m.ring){
+      const sc=1+.15*Math.sin(ringPhase+m.phase);
+      m.ring.scale.set(sc,sc,sc);
+      m.ring.material.opacity=.3+.2*Math.sin(ringPhase+m.phase);
+    }
+  });
+  renderer.render(scene,camera);
+}
+
+function updateGlobe(){
+  if(!scene){initGlobe();return}
+  const cs=DATA.city_stats;
+  globeStats=cs;
+
+  // remove old markers
+  Object.values(cityMarkers).forEach(m=>{if(m.pivot)scene.remove(m.pivot)});
+  cityMarkers={};
+
+  Object.entries(CITY_COORDS).forEach(([city,[lat,lon]])=>{
+    const stats=cs[city];
+    if(!stats)return;
+    const total=stats.wins+stats.losses+stats.open;
+    if(!total)return;
+
+    const pos=latLonToVec3(lat,lon,2);
+    const pnl=stats.pnl||0;
+    const hasOpen=stats.open>0;
+    const col=pnl>0?0x00ff88:pnl<0?0xff3366:0xffaa00;
+    const sz=.04+Math.min(.08,total*.008);
+
+    // pivot rotates with globe
+    const pivot=new THREE.Object3D();
+    pivot.rotation.copy(globeMesh.rotation);
+    scene.add(pivot);
+
+    // marker sphere
+    const mGeo=new THREE.SphereGeometry(sz,12,12);
+    const mMat=new THREE.MeshPhongMaterial({color:col,emissive:col,emissiveIntensity:.5});
+    const marker=new THREE.Mesh(mGeo,mMat);
+    marker.position.copy(pos);
+    marker.userData.city=city;
+    pivot.add(marker);
+
+    // spike line
+    const pts=[pos.clone().multiplyScalar(.98),pos.clone().multiplyScalar(1.04)];
+    const lineMat=new THREE.LineBasicMaterial({color:col,transparent:true,opacity:.6});
+    const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),lineMat);
+    pivot.add(line);
+
+    // pulsing ring for open trades
+    let ring=null;
+    if(hasOpen){
+      const rGeo=new THREE.RingGeometry(sz*1.6,sz*2,20);
+      const rMat=new THREE.MeshBasicMaterial({color:0xffaa00,side:THREE.DoubleSide,transparent:true,opacity:.4});
+      ring=new THREE.Mesh(rGeo,rMat);
+      ring.position.copy(pos);
+      ring.lookAt(new THREE.Vector3(0,0,0));
+      pivot.add(ring);
+    }
+
+    cityMarkers[city]={pivot,meshes:[marker],ring,phase:Math.random()*Math.PI*2};
+  });
+}
+
+// Start globe on load
+window.addEventListener('load',()=>{if(DATA)updateGlobe();else initGlobe()});
 </script>
-
 </body>
 </html>"""
 
-    return html.encode("utf-8")
-
+# ── HTTP Handler ──────────────────────────────────────────────────────────────
 
 class Handler(BaseHTTPRequestHandler):
-    def log_message(self, format, *args):
-        pass
+    def log_message(self, fmt, *args): pass
 
     def do_GET(self):
-        if self.path not in ("/", "/index.html"):
+        if self.path == '/api/stats':
+            try:
+                data, warning = load_data()
+                if data is None:
+                    self.send_response(503)
+                    self.send_header('Content-Type','application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error": warning}).encode())
+                    return
+                stats = build_stats(data)
+                if warning:
+                    stats["warning"] = warning
+                body = json.dumps(stats, ensure_ascii=False).encode('utf-8')
+                self.send_response(200)
+                self.send_header('Content-Type','application/json; charset=utf-8')
+                self.send_header('Content-Length', len(body))
+                self.end_headers()
+                self.wfile.write(body)
+            except Exception as e:
+                err = json.dumps({"error": str(e)}).encode()
+                self.send_response(500)
+                self.send_header('Content-Type','application/json')
+                self.end_headers()
+                self.wfile.write(err)
+
+        elif self.path in ('/', '/index.html'):
+            body = HTML.encode('utf-8')
+            self.send_response(200)
+            self.send_header('Content-Type','text/html; charset=utf-8')
+            self.send_header('Content-Length', len(body))
+            self.end_headers()
+            self.wfile.write(body)
+        else:
             self.send_response(404)
             self.end_headers()
-            return
-        
-        try:
-            data, warning = load_data()
-
-            if data is None:
-                html = build_error_html(warning or "Fonte de dados indisponível").encode("utf-8")
-                self.send_response(503)
-            else:
-                stats = build_stats(data)
-                html  = build_html(stats, warning=warning)
-                self.send_response(200)
-
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Content-Length", len(html))
-            self.end_headers()
-            self.wfile.write(html)
-        except Exception as e:
-            err = f"<h1>Erro</h1><pre>{str(e)[:500]}</pre>".encode()
-            self.send_response(500)
-            self.send_header("Content-Type","text/html; charset=utf-8")
-            self.send_header("Content-Length", len(err))
-            self.end_headers()
-            self.wfile.write(err)
 
 
-if __name__ == "__main__":
-    print(f"Dashboard rodando em http://0.0.0.0:{PORT}")
-    print(f"Fonte: PostgreSQL (DATABASE_URL)")
+if __name__ == '__main__':
+    print(f'Dashboard rodando em http://0.0.0.0:{PORT}')
     try:
-        HTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
+        HTTPServer(('0.0.0.0', PORT), Handler).serve_forever()
     except KeyboardInterrupt:
-        print("\nDashboard parado")
+        print('\nEncerrado')
+PYEOF
+echo "dashboard.py criado — $(wc -l < /mnt/user-data/outputs/dashboard.py) linhas"
