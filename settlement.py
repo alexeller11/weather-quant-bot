@@ -1,12 +1,13 @@
 """
 settlement.py — resolve trades abertos consultando a Gamma API da Polymarket.
 
-FIX: _to_slug() corrigido — CITY_SLUG_NORMALIZE tem chaves de display name,
-não slugs. Agora faz lookup invertido corretamente.
-
-FIX #22: trade_date >= today → trade_date > today
-Antes, trades com data == hoje eram ignorados pelo settlement.
-Agora o settlement tenta resolver trades do dia atual normalmente.
+CORREÇÕES:
+- _get_real_temperature() agora usa forecast+past_days=1 como fallback
+  quando o archive não tem dados do dia atual (retorna 403 ou lista vazia).
+- Estratégia de resolução em 3 camadas:
+    1. Polymarket Gamma (yes_price >= 0.95 / <= 0.05)
+    2. open-meteo ARCHIVE (dias passados — funciona para D-1 em diante)
+    3. open-meteo FORECAST past_days=1 (dia atual, disponível ~6h UTC)
 """
 
 import requests
@@ -62,25 +63,20 @@ def log_settlement(msg):
 def _to_slug(city_raw):
     """
     Converte city_raw (display name ou slug com hífen) em slug canônico.
-    Lida com variantes como "Hong-Kong", "Los-Angeles", "Sao-Paulo".
     """
-    # 1. Lookup direto no normalize (display → slug)
     slug = CITY_SLUG_NORMALIZE.get(city_raw)
     if slug and slug in CITY_COORDS_BY_SLUG:
         return slug
 
-    # 2. city_raw já pode ser slug ("new-york", "hong-kong")
     key = city_raw.lower().replace(" ", "-").replace("_", "-").strip()
     if key in CITY_COORDS_BY_SLUG:
         return key
 
-    # 3. city_raw pode ter hífen onde deveria ter espaço ("Hong-Kong" → "Hong Kong")
     display_attempt = city_raw.replace("-", " ")
     slug2 = CITY_SLUG_NORMALIZE.get(display_attempt)
     if slug2 and slug2 in CITY_COORDS_BY_SLUG:
         return slug2
 
-    # 4. Busca case-insensitive
     city_lower = city_raw.lower().strip()
     for display, sl in CITY_SLUG_NORMALIZE.items():
         if display.lower() == city_lower or display.lower().replace(" ", "-") == city_lower:
@@ -106,7 +102,7 @@ def _safe_get(url, retries=3):
                 log_settlement("Rate limit (429). Aguardando 60s...")
                 time.sleep(60)
                 continue
-            log_settlement(f"HTTP {r.status_code}: {url}")
+            log_settlement(f"HTTP {r.status_code}: {url[:80]}")
         except Exception as e:
             log_settlement(f"Request erro (tentativa {attempt+1}): {e}")
         time.sleep(2 ** attempt)
@@ -152,9 +148,75 @@ def _resolve_via_polymarket(market_id):
         return "OPEN", yes_price
 
 
-# ── Estratégia 2: fallback temperatura open-meteo ────────────────────────────
+# ── Estratégia 2: temperatura via open-meteo ARCHIVE ─────────────────────────
 
-def _get_real_temperature(city_raw, date):
+def _get_temp_archive(lat, lon, tz, date_str):
+    """
+    Busca temperatura máxima no open-meteo archive.
+    Funciona para datas passadas (D-1 em diante dependendo do fuso).
+    Retorna None se não tiver dado ainda.
+    """
+    url = (
+        "https://archive-api.open-meteo.com/v1/archive"
+        f"?latitude={lat}&longitude={lon}"
+        f"&start_date={date_str}&end_date={date_str}"
+        f"&daily=temperature_2m_max&timezone={tz}"
+    )
+    try:
+        r = requests.get(url, timeout=20)
+        if r.status_code != 200:
+            return None
+        data = r.json()
+        temps = data.get("daily", {}).get("temperature_2m_max", [])
+        if temps and temps[0] is not None:
+            return float(temps[0])
+    except Exception as e:
+        log_settlement(f"  [archive] erro: {e}")
+    return None
+
+
+# ── Estratégia 3: temperatura via open-meteo FORECAST (past_days=1) ──────────
+
+def _get_temp_forecast_today(lat, lon, tz, date_str):
+    """
+    Busca temperatura máxima via endpoint de forecast com past_days=2.
+    Funciona para o dia atual e D-1/D-2, disponível desde ~6h UTC.
+
+    IMPORTANTE: retorna dado de previsão/análise, não observação confirmada.
+    Usar apenas quando o archive ainda não tem o dado.
+    """
+    url = (
+        "https://api.open-meteo.com/v1/forecast"
+        f"?latitude={lat}&longitude={lon}"
+        f"&daily=temperature_2m_max&timezone={tz}"
+        f"&forecast_days=1&past_days=2"
+    )
+    try:
+        r = requests.get(url, timeout=20)
+        if r.status_code != 200:
+            return None
+        data = r.json()
+        dates = data.get("daily", {}).get("time", [])
+        temps = data.get("daily", {}).get("temperature_2m_max", [])
+        for d, t in zip(dates, temps):
+            if d == date_str and t is not None:
+                log_settlement(f"  [forecast/past] {date_str}: {t}°C ⚠️ dado de análise, não observação final")
+                return float(t)
+    except Exception as e:
+        log_settlement(f"  [forecast/past] erro: {e}")
+    return None
+
+
+# ── Temperatura real (com fallback em camadas) ────────────────────────────────
+
+def _get_real_temperature(city_raw, date_str):
+    """
+    Busca temperatura máxima real para a cidade na data.
+
+    Camadas de fallback:
+    1. open-meteo ARCHIVE (mais confiável, mas só tem D-1+)
+    2. open-meteo FORECAST past_days (para o dia atual, ~6h UTC em diante)
+    """
     slug = _to_slug(city_raw)
     if not slug or slug not in CITY_COORDS_BY_SLUG:
         log_settlement(f"❌ Cidade desconhecida: '{city_raw}' (slug={slug})")
@@ -163,27 +225,26 @@ def _get_real_temperature(city_raw, date):
     lat, lon = CITY_COORDS_BY_SLUG[slug]
     tz = CITY_TIMEZONE.get(slug, "UTC")
 
-    url = (
-        "https://archive-api.open-meteo.com/v1/archive"
-        f"?latitude={lat}&longitude={lon}"
-        f"&start_date={date}&end_date={date}"
-        f"&daily=temperature_2m_max&timezone={tz}"
-    )
-    try:
-        r    = requests.get(url, timeout=20)
-        data = r.json()
-        if "daily" not in data:
-            return None
-        temps = data["daily"].get("temperature_2m_max", [])
-        if not temps or temps[0] is None:
-            return None
-        return float(temps[0])
-    except requests.Timeout:
-        log_settlement(f"⏱️  Timeout open-meteo ({city_raw} {date})")
-        return None
-    except Exception as e:
-        log_settlement(f"❌ Erro open-meteo ({city_raw} {date}): {e}")
-        return None
+    # Camada 1: archive
+    temp = _get_temp_archive(lat, lon, tz, date_str)
+    if temp is not None:
+        log_settlement(f"  [archive] {city_raw} {date_str}: {temp:.1f}°C ✅")
+        return temp
+
+    # Camada 2: forecast past_days (fallback para dia atual)
+    today_str = utcnow().date().isoformat()
+    yesterday_str = (utcnow().date() - timedelta(days=1)).isoformat()
+
+    if date_str in (today_str, yesterday_str):
+        log_settlement(f"  [archive] sem dados para {date_str} — tentando forecast/past...")
+        temp2 = _get_temp_forecast_today(lat, lon, tz, date_str)
+        if temp2 is not None:
+            return temp2
+        log_settlement(f"  ⚠️  Nenhuma fonte tem temperatura para {city_raw} {date_str} ainda")
+    else:
+        log_settlement(f"  ⚠️  Archive sem dados para {city_raw} {date_str} — data futura?")
+
+    return None
 
 
 def _win_from_temp(real_temp_c, target_c, trade_type, trade):
@@ -307,7 +368,7 @@ def resolve_trades():
             errors += 1
             continue
 
-        # FIX #22: trades futuros são ignorados; trades de hoje ou passado são processados
+        # Trades futuros são ignorados
         if trade_date > today:
             log_settlement(f"  ⏳ {city} {market_date}: futuro — aguardando")
             continue
@@ -325,20 +386,14 @@ def resolve_trades():
             updated += 1
             continue
 
-        if poly_result == "OPEN":
-            # Mercado ainda aberto na Polymarket
-            if trade_date == today:
-                # Pode ser que o mercado ainda não fechou (tarde do dia)
-                # Tenta open-meteo como fallback antes de desistir
-                log_settlement(f"  ⚠️  Polymarket ainda aberto (trade de hoje) — tentando open-meteo")
-            else:
-                log_settlement(f"  ⚠️  Data vencida mas Polymarket pendente — tentando open-meteo")
-
-        # Estratégia 2: open-meteo archive
+        # Estratégia 2 e 3: temperatura real (archive → forecast/past)
+        log_settlement(f"  → Polymarket pendente — buscando temperatura real...")
         real_temp_c = _get_real_temperature(city, market_date)
+
         if real_temp_c is None:
-            log_settlement(f"  ⚠️  Temperatura indisponível: {city} {market_date} — será tentado novamente")
-            continue  # Deixa como OPEN para tentar novamente no próximo ciclo
+            log_settlement(f"  ⚠️  Temperatura indisponível: {city} {market_date} — tentando novamente no próximo ciclo")
+            unresolvable += 1
+            continue
 
         target_c = to_celsius(target, unit)
         win = _win_from_temp(real_temp_c, target_c, trade_type, trade)
@@ -349,7 +404,7 @@ def resolve_trades():
             continue
 
         log_settlement(
-            f"  → open-meteo: real={real_temp_c:.1f}°C target={target_c:.1f}°C ({unit}) → {'WIN' if win else 'LOSS'}"
+            f"  → temp real: {real_temp_c:.1f}°C | target: {target_c:.1f}°C ({unit}) → {'WIN' if win else 'LOSS'}"
         )
         _apply_result(bankroll, trade, win, real_temp_c, session)
         updated += 1
@@ -371,7 +426,7 @@ def resolve_trades():
     log_settlement("📊 SETTLEMENT SUMMARY")
     log_settlement("=" * 50)
     log_settlement(f"✅ Resolvidos agora:  {updated}")
-    log_settlement(f"⚠️  Unresolvable:      {unresolvable}")
+    log_settlement(f"⚠️  Pendentes:         {unresolvable}")
     log_settlement(f"❌ Erros:             {errors}")
     log_settlement(f"📈 Total WIN/LOSS:    {wins}W / {losses}L")
     if (wins + losses) > 0:
