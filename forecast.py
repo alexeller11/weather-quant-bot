@@ -1,8 +1,9 @@
 # =========================================================
-# FORECAST ENGINE — OPEN METEO
+# FORECAST ENGINE — OPEN METEO (COM TTL)
 # =========================================================
 
 import requests
+import time
 
 # =========================================================
 # COORDS
@@ -50,10 +51,13 @@ CITY_COORDS = {
 }
 
 # =========================================================
-# CACHE
+# CACHE COM TTL — FIX #15
 # =========================================================
 
 _FORECAST_CACHE = {}
+_CACHE_TIME = {}
+
+CACHE_TTL_SECONDS = 3600  # 1 hora
 
 # =========================================================
 # FORECAST
@@ -69,8 +73,17 @@ def get_forecast(
         forecast_day
     )
 
+    now = time.time()
+
+    # Verificar cache com expiração
     if cache_key in _FORECAST_CACHE:
-        return _FORECAST_CACHE[cache_key]
+        age = now - _CACHE_TIME[cache_key]
+        if age < CACHE_TTL_SECONDS:
+            return _FORECAST_CACHE[cache_key]
+        else:
+            # Expirou — remover
+            del _FORECAST_CACHE[cache_key]
+            del _CACHE_TIME[cache_key]
 
     if city_slug not in CITY_COORDS:
 
@@ -201,7 +214,9 @@ def get_forecast(
             sigma
         )
 
+        # Salvar no cache com timestamp
         _FORECAST_CACHE[cache_key] = result
+        _CACHE_TIME[cache_key] = now
 
         return result
 
