@@ -1,510 +1,182 @@
-{
-  "previsoes": [
-    {
-      "market_id": "2299353",
-      "city": "Seoul",
-      "market_date": "2026-05-21",
-      "target": 18.0,
-      "unit": "C",
-      "condition": "EXACT",
-      "model_prob": 0.6884,
-      "market_price": 0.039,
-      "forecast_mean_c": null,
-      "sigma_c": null,
-      "edge": 0.6494,
-      "ev": 16.6513,
-      "stake": 4.8,
-      "real_cost": 4.8,
-      "shares": 123,
-      "registered_at": "2026-05-20 14:04 UTC",
-      "result": null,
-      "real_temp_c": null,
-      "pnl": null,
-      "resolved_at": null
-    },
-    {
-      "market_id": "2299354",
-      "city": "Seoul",
-      "market_date": "2026-05-21",
-      "target": 19.0,
-      "unit": "C",
-      "condition": "EXACT",
-      "model_prob": 0.2262,
-      "market_price": 0.13,
-      "forecast_mean_c": null,
-      "sigma_c": null,
-      "edge": 0.0962,
-      "ev": 0.74,
-      "stake": 0.13,
-      "real_cost": 0.13,
-      "shares": 1,
-      "registered_at": "2026-05-20 14:04 UTC",
-      "result": null,
-      "real_temp_c": null,
-      "pnl": null,
-      "resolved_at": null
-    },
-    {
-      "market_id": "2309166",
-      "city": "Seoul",
-      "market_date": "2026-05-22",
-      "target": 23.0,
-      "unit": "C",
-      "condition": "EXACT",
-      "model_prob": 0.1785,
-      "market_price": 0.095,
-      "forecast_mean_c": null,
-      "sigma_c": null,
-      "edge": 0.0835,
-      "ev": 0.8789,
-      "stake": 1.9,
-      "real_cost": 1.9,
-      "shares": 20,
-      "registered_at": "2026-05-20 19:47 UTC",
-      "result": null,
-      "real_temp_c": null,
-      "pnl": null,
-      "resolved_at": null
-    },
-    {
-      "market_id": "2309167",
-      "city": "Seoul",
-      "market_date": "2026-05-22",
-      "target": 24.0,
-      "unit": "C",
-      "condition": "EXACT",
-      "model_prob": 0.3396,
-      "market_price": 0.175,
-      "forecast_mean_c": null,
-      "sigma_c": null,
-      "edge": 0.1646,
-      "ev": 0.9406,
-      "stake": 4.02,
-      "real_cost": 4.02,
-      "shares": 23,
-      "registered_at": "2026-05-20 19:47 UTC",
-      "result": null,
-      "real_temp_c": null,
-      "pnl": null,
-      "resolved_at": null
-    },
-    {
-      "market_id": "2309308",
-      "city": "Tokyo",
-      "market_date": "2026-05-22",
-      "target": 16.0,
-      "unit": "C",
-      "condition": "EXACT",
-      "model_prob": 0.345,
-      "market_price": 0.24,
-      "forecast_mean_c": null,
-      "sigma_c": null,
-      "edge": 0.105,
-      "ev": 0.4375,
-      "stake": 2.4,
-      "real_cost": 2.4,
-      "shares": 10,
-      "registered_at": "2026-05-20 19:47 UTC",
-      "result": null,
-      "real_temp_c": null,
-      "pnl": null,
-      "resolved_at": null
-    },
-    {
-      "market_id": "2299321",
-      "city": "Paris",
-      "market_date": "2026-05-21",
-      "target": 25.0,
-      "unit": "C",
-      "condition": "EXACT",
-      "model_prob": 0.7219,
-      "market_price": 0.33,
-      "forecast_mean_c": null,
-      "sigma_c": null,
-      "edge": 0.3919,
-      "ev": 1.1876,
-      "stake": 3.3,
-      "real_cost": 3.3,
-      "shares": 10,
-      "registered_at": "2026-05-20 19:48 UTC",
-      "result": null,
-      "real_temp_c": null,
-      "pnl": null,
-      "resolved_at": null
-    },
-    {
-      "market_id": "2309133",
-      "city": "Paris",
-      "market_date": "2026-05-22",
-      "target": 28.0,
-      "unit": "C",
-      "condition": "EXACT",
-      "model_prob": 0.5116,
-      "market_price": 0.335,
-      "forecast_mean_c": null,
-      "sigma_c": null,
-      "edge": 0.1766,
-      "ev": 0.5272,
-      "stake": 3.02,
-      "real_cost": 3.02,
-      "shares": 9,
-      "registered_at": "2026-05-20 19:48 UTC",
-      "result": null,
-      "real_temp_c": null,
-      "pnl": null,
-      "resolved_at": null
-    },
-    {
-      "market_id": "2299507",
-      "city": "Hong Kong",
-      "market_date": "2026-05-21",
-      "target": 28.0,
-      "unit": "C",
-      "condition": "EXACT",
-      "model_prob": 0.2744,
-      "market_price": 0.2,
-      "forecast_mean_c": null,
-      "sigma_c": null,
-      "edge": 0.0744,
-      "ev": 0.372,
-      "stake": 1.2,
-      "real_cost": 1.2,
-      "shares": 6,
-      "registered_at": "2026-05-20 19:48 UTC",
-      "result": null,
-      "real_temp_c": null,
-      "pnl": null,
-      "resolved_at": null
-    },
-    {
-      "market_id": "2309323",
-      "city": "Hong Kong",
-      "market_date": "2026-05-22",
-      "target": 30.0,
-      "unit": "C",
-      "condition": "EXACT",
-      "model_prob": 0.3662,
-      "market_price": 0.295,
-      "forecast_mean_c": null,
-      "sigma_c": null,
-      "edge": 0.0712,
-      "ev": 0.2414,
-      "stake": 1.18,
-      "real_cost": 1.18,
-      "shares": 4,
-      "registered_at": "2026-05-20 19:48 UTC",
-      "result": null,
-      "real_temp_c": null,
-      "pnl": null,
-      "resolved_at": null
-    },
-    {
-      "market_id": "2299540",
-      "city": "Milan",
-      "market_date": "2026-05-21",
-      "target": 27.0,
-      "unit": "C",
-      "condition": "EXACT",
-      "model_prob": 0.4864,
-      "market_price": 0.36,
-      "forecast_mean_c": null,
-      "sigma_c": null,
-      "edge": 0.1264,
-      "ev": 0.3511,
-      "stake": 2.52,
-      "real_cost": 2.52,
-      "shares": 7,
-      "registered_at": "2026-05-20 19:49 UTC",
-      "result": null,
-      "real_temp_c": null,
-      "pnl": null,
-      "resolved_at": null
-    },
-    {
-      "market_id": "2299541",
-      "city": "Milan",
-      "market_date": "2026-05-21",
-      "target": 28.0,
-      "unit": "C",
-      "condition": "EXACT",
-      "model_prob": 0.5081,
-      "market_price": 0.34,
-      "forecast_mean_c": null,
-      "sigma_c": null,
-      "edge": 0.1681,
-      "ev": 0.4944,
-      "stake": 2.04,
-      "real_cost": 2.04,
-      "shares": 6,
-      "registered_at": "2026-05-20 19:49 UTC",
-      "result": null,
-      "real_temp_c": null,
-      "pnl": null,
-      "resolved_at": null
-    },
-    {
-      "market_id": "2309351",
-      "city": "Milan",
-      "market_date": "2026-05-22",
-      "target": 27.0,
-      "unit": "C",
-      "condition": "EXACT",
-      "model_prob": 0.2685,
-      "market_price": 0.155,
-      "forecast_mean_c": null,
-      "sigma_c": null,
-      "edge": 0.1135,
-      "ev": 0.7323,
-      "stake": 1.4,
-      "real_cost": 1.4,
-      "shares": 9,
-      "registered_at": "2026-05-20 19:49 UTC",
-      "result": null,
-      "real_temp_c": null,
-      "pnl": null,
-      "resolved_at": null
-    },
-    {
-      "market_id": "2309464",
-      "city": "Austin",
-      "market_date": "2026-05-22",
-      "target": 86.0,
-      "unit": "F",
-      "condition": "ABOVE",
-      "model_prob": 0.934,
-      "market_price": 0.625,
-      "forecast_mean_c": null,
-      "sigma_c": null,
-      "edge": 0.309,
-      "ev": 0.4944,
-      "stake": 1.88,
-      "real_cost": 1.88,
-      "shares": 3,
-      "registered_at": "2026-05-20 19:49 UTC",
-      "result": null,
-      "real_temp_c": null,
-      "pnl": null,
-      "resolved_at": null
-    },
-    {
-      "market_id": "2299594",
-      "city": "Beijing",
-      "market_date": "2026-05-21",
-      "target": 27.0,
-      "unit": "C",
-      "condition": "EXACT",
-      "model_prob": 0.6373,
-      "market_price": 0.285,
-      "forecast_mean_c": null,
-      "sigma_c": null,
-      "edge": 0.3523,
-      "ev": 1.2361,
-      "stake": 1.71,
-      "real_cost": 1.71,
-      "shares": 6,
-      "registered_at": "2026-05-20 19:50 UTC",
-      "result": null,
-      "real_temp_c": null,
-      "pnl": null,
-      "resolved_at": null
-    },
-    {
-      "market_id": "2309179",
-      "city": "Toronto",
-      "market_date": "2026-05-22",
-      "target": 18.0,
-      "unit": "C",
-      "condition": "EXACT",
-      "model_prob": 0.1588,
-      "market_price": 0.08,
-      "forecast_mean_c": null,
-      "sigma_c": null,
-      "edge": 0.0788,
-      "ev": 0.985,
-      "stake": 0.64,
-      "real_cost": 0.64,
-      "shares": 8,
-      "registered_at": "2026-05-20 19:51 UTC",
-      "result": null,
-      "real_temp_c": null,
-      "pnl": null,
-      "resolved_at": null
-    },
-    {
-      "market_id": "2309363",
-      "city": "Madrid",
-      "market_date": "2026-05-22",
-      "target": 32.0,
-      "unit": "C",
-      "condition": "EXACT",
-      "model_prob": 0.4282,
-      "market_price": 0.275,
-      "forecast_mean_c": null,
-      "sigma_c": null,
-      "edge": 0.1532,
-      "ev": 0.5571,
-      "stake": 1.38,
-      "real_cost": 1.38,
-      "shares": 5,
-      "registered_at": "2026-05-20 19:53 UTC",
-      "result": null,
-      "real_temp_c": null,
-      "pnl": null,
-      "resolved_at": null
-    },
-    {
-      "market_id": "2299723",
-      "city": "Mexico City",
-      "market_date": "2026-05-21",
-      "target": 24.0,
-      "unit": "C",
-      "condition": "EXACT",
-      "model_prob": 0.1764,
-      "market_price": 0.095,
-      "forecast_mean_c": null,
-      "sigma_c": null,
-      "edge": 0.0814,
-      "ev": 0.8568,
-      "stake": 0.57,
-      "real_cost": 0.57,
-      "shares": 6,
-      "registered_at": "2026-05-20 19:54 UTC",
-      "result": null,
-      "real_temp_c": null,
-      "pnl": null,
-      "resolved_at": null
-    },
-    {
-      "market_id": "2299330",
-      "city": "São Paulo",
-      "market_date": "2026-05-21",
-      "target": 17.0,
-      "unit": "C",
-      "condition": "EXACT",
-      "model_prob": 0.4075,
-      "market_price": 0.335,
-      "forecast_mean_c": null,
-      "sigma_c": null,
-      "edge": 0.0725,
-      "ev": 0.2164,
-      "stake": 0.67,
-      "real_cost": 0.67,
-      "shares": 2,
-      "registered_at": "2026-05-20 19:54 UTC",
-      "result": null,
-      "real_temp_c": null,
-      "pnl": null,
-      "resolved_at": null
-    },
-    {
-      "market_id": "2299331",
-      "city": "São Paulo",
-      "market_date": "2026-05-21",
-      "target": 18.0,
-      "unit": "C",
-      "condition": "EXACT",
-      "model_prob": 0.4554,
-      "market_price": 0.345,
-      "forecast_mean_c": null,
-      "sigma_c": null,
-      "edge": 0.1104,
-      "ev": 0.32,
-      "stake": 1.03,
-      "real_cost": 1.03,
-      "shares": 3,
-      "registered_at": "2026-05-20 19:54 UTC",
-      "result": null,
-      "real_temp_c": null,
-      "pnl": null,
-      "resolved_at": null
-    },
-    {
-      "market_id": "2309168",
-      "city": "Seoul",
-      "market_date": "2026-05-22",
-      "target": 25.0,
-      "unit": "C",
-      "condition": "EXACT",
-      "model_prob": 0.2949,
-      "market_price": 0.215,
-      "forecast_mean_c": null,
-      "sigma_c": null,
-      "edge": 0.0799,
-      "ev": 0.3716,
-      "stake": 0.43,
-      "real_cost": 0.43,
-      "shares": 2,
-      "registered_at": "2026-05-20 19:57 UTC",
-      "result": null,
-      "real_temp_c": null,
-      "pnl": null,
-      "resolved_at": null
-    },
-    {
-      "market_id": "2299499",
-      "city": "Tokyo",
-      "market_date": "2026-05-21",
-      "target": 22.0,
-      "unit": "C",
-      "condition": "EXACT",
-      "model_prob": 0.2011,
-      "market_price": 0.085,
-      "forecast_mean_c": null,
-      "sigma_c": null,
-      "edge": 0.1161,
-      "ev": 1.3659,
-      "stake": 0.68,
-      "real_cost": 0.68,
-      "shares": 8,
-      "registered_at": "2026-05-20 19:58 UTC",
-      "result": null,
-      "real_temp_c": null,
-      "pnl": null,
-      "resolved_at": null
-    },
-    {
-      "market_id": "2309134",
-      "city": "Paris",
-      "market_date": "2026-05-22",
-      "target": 29.0,
-      "unit": "C",
-      "condition": "EXACT",
-      "model_prob": 0.328,
-      "market_price": 0.245,
-      "forecast_mean_c": null,
-      "sigma_c": null,
-      "edge": 0.083,
-      "ev": 0.3388,
-      "stake": 0.49,
-      "real_cost": 0.49,
-      "shares": 2,
-      "registered_at": "2026-05-20 19:58 UTC",
-      "result": null,
-      "real_temp_c": null,
-      "pnl": null,
-      "resolved_at": null
-    },
-    {
-      "market_id": "2299508",
-      "city": "Hong Kong",
-      "market_date": "2026-05-21",
-      "target": 29.0,
-      "unit": "C",
-      "condition": "EXACT",
-      "model_prob": 0.4017,
-      "market_price": 0.295,
-      "forecast_mean_c": null,
-      "sigma_c": null,
-      "edge": 0.1067,
-      "ev": 0.3617,
-      "stake": 0.29,
-      "real_cost": 0.29,
-      "shares": 1,
-      "registered_at": "2026-05-20 19:59 UTC",
-      "result": null,
-      "real_temp_c": null,
-      "pnl": null,
-      "resolved_at": null
-    }
-  ]
-}
+"""
+validacao.py — Validação do modelo lendo direto do bankroll.
+
+Não depende de validacao.json — usa bankroll como fonte única da verdade.
+
+Funções exportadas:
+    registrar_resultado(market_id, result, real_temp_c, pnl)  — no-op, mantido por compatibilidade
+    gerar_relatorio(enviar_telegram=False)
+"""
+
+from datetime import timezone, datetime
+
+
+# ── Compatibilidade — settlement ainda chama isso ────────────────────────────
+
+def registrar_resultado(market_id, result, real_temp_c, pnl):
+    """No-op — dados ficam no bankroll, não precisamos de arquivo separado."""
+    pass
+
+
+# ── Intervalo de confiança binomial ──────────────────────────────────────────
+
+def _confianca_binomial(n, wins, confidence=0.95):
+    if n < 1:
+        return None, None
+    try:
+        from scipy.stats import binom
+        p_hat = wins / n
+        alpha = 1 - confidence
+        ci_lower = binom.ppf(alpha / 2, n, p_hat) / n
+        ci_upper = binom.ppf(1 - alpha / 2, n, p_hat) / n
+        return round(ci_lower, 4), round(ci_upper, 4)
+    except ImportError:
+        p = wins / n
+        margin = 1.96 * (p * (1 - p) / n) ** 0.5
+        return round(max(0, p - margin), 4), round(min(1, p + margin), 4)
+
+
+# ── Veredito ─────────────────────────────────────────────────────────────────
+
+def _veredito(n, wins, brier, edge_realizado_pct):
+    if n < 5:
+        return "AGUARDANDO", f"Apenas {n} trades resolvidos — mínimo 5 para diagnóstico inicial"
+
+    status = "DADOS INSUFICIENTES" if n < 20 else "CONFIÁVEL"
+    msg    = f"{n}/20 trades — veredito provisório" if n < 20 else f"{n} trades — estatística robusta"
+
+    ci_lower, ci_upper = _confianca_binomial(n, wins)
+
+    aprovado = (
+        ci_lower is not None and ci_lower >= 0.50
+        and brier is not None and brier < 0.25
+        and edge_realizado_pct is not None and edge_realizado_pct > 0
+    )
+
+    ci_str = f"CI 95%: [{ci_lower*100:.1f}%, {ci_upper*100:.1f}%]" if ci_lower is not None else ""
+
+    if aprovado:
+        return f"APROVADO ({status})", f"{msg} — {ci_str}"
+
+    razoes = []
+    if ci_lower is None or ci_lower < 0.50:
+        razoes.append(f"WR {ci_str} insuficiente")
+    if brier is not None and brier >= 0.25:
+        razoes.append(f"Brier {brier:.4f} ≥ 0.25")
+    if edge_realizado_pct is not None and edge_realizado_pct <= 0:
+        razoes.append(f"Edge realizado {edge_realizado_pct:+.1f}% ≤ 0")
+
+    return f"REPROVADO ({status})", " | ".join(razoes) if razoes else msg
+
+
+# ── Relatório ─────────────────────────────────────────────────────────────────
+
+def gerar_relatorio(enviar_telegram=False):
+    from bankroll import load_bankroll
+
+    history  = load_bankroll().get("history", [])
+    fechados = [t for t in history if t.get("result") in ("WIN", "LOSS")]
+    abertos  = [t for t in history if t.get("result") == "OPEN"]
+    wins     = [t for t in fechados if t.get("result") == "WIN"]
+    losses   = [t for t in fechados if t.get("result") == "LOSS"]
+
+    n        = len(fechados)
+    win_rate = len(wins) / n if n > 0 else 0
+    pnl_total = sum(t.get("pnl") or 0 for t in fechados)
+
+    # Brier score
+    brier = None
+    brier_vals = [
+        (t.get("model_prob", 0) - (1.0 if t.get("result") == "WIN" else 0.0)) ** 2
+        for t in fechados if t.get("model_prob") is not None
+    ]
+    if brier_vals:
+        brier = round(sum(brier_vals) / len(brier_vals), 4)
+
+    # Edge realizado: média(outcome - model_prob), positivo = modelo subestimou
+    edge_realizado_pct = None
+    edge_vals = [
+        (1.0 if t.get("result") == "WIN" else 0.0) - (t.get("model_prob") or 0)
+        for t in fechados if t.get("model_prob") is not None
+    ]
+    if edge_vals:
+        edge_realizado_pct = round(sum(edge_vals) / len(edge_vals) * 100, 2)
+
+    # Breakdown por condição (type)
+    por_tipo = {}
+    for t in fechados:
+        tipo = t.get("type", "?").upper()
+        if tipo not in por_tipo:
+            por_tipo[tipo] = {"wins": 0, "losses": 0, "pnl": 0.0}
+        if t.get("result") == "WIN":
+            por_tipo[tipo]["wins"] += 1
+        else:
+            por_tipo[tipo]["losses"] += 1
+        por_tipo[tipo]["pnl"] += t.get("pnl") or 0
+
+    tipo_lines = ""
+    for tipo, s in sorted(por_tipo.items()):
+        total_t = s["wins"] + s["losses"]
+        wr_t    = s["wins"] / total_t * 100 if total_t else 0
+        tipo_lines += f"\n  {tipo:6} {s['wins']}W/{s['losses']}L ({wr_t:.0f}%) PnL ${s['pnl']:+.2f}"
+
+    # Breakdown por cidade (top 5 por volume)
+    por_cidade = {}
+    for t in fechados:
+        city = t.get("city", "?")
+        if city not in por_cidade:
+            por_cidade[city] = {"wins": 0, "losses": 0, "pnl": 0.0}
+        if t.get("result") == "WIN":
+            por_cidade[city]["wins"] += 1
+        else:
+            por_cidade[city]["losses"] += 1
+        por_cidade[city]["pnl"] += t.get("pnl") or 0
+
+    top_cidades = sorted(por_cidade.items(), key=lambda x: -(x[1]["wins"] + x[1]["losses"]))[:5]
+    cidade_lines = ""
+    for city, s in top_cidades:
+        total_c = s["wins"] + s["losses"]
+        wr_c    = s["wins"] / total_c * 100 if total_c else 0
+        cidade_lines += f"\n  {city:15} {s['wins']}W/{s['losses']}L ({wr_c:.0f}%) ${s['pnl']:+.2f}"
+
+    veredito, detalhe = _veredito(n, len(wins), brier, edge_realizado_pct)
+
+    emoji_pnl   = "🟢" if pnl_total >= 0 else "🔴"
+    emoji_brier = "✅" if brier is not None and brier < 0.25 else "⚠️"
+    emoji_edge  = "✅" if edge_realizado_pct is not None and edge_realizado_pct > 0 else "⚠️"
+
+    relatorio = (
+        f"<b>📊 VALIDAÇÃO DO MODELO</b>\n\n"
+        f"Fechados: <b>{n}</b> ({len(wins)}W / {len(losses)}L) | Abertos: {len(abertos)}\n"
+        f"Win rate: <b>{win_rate*100:.1f}%</b>\n"
+        f"{emoji_pnl} PnL: <b>${pnl_total:+.2f}</b>\n\n"
+        f"Brier score: <b>{brier:.4f}</b> {emoji_brier}\n"
+        f"Edge realizado: <b>{edge_realizado_pct:+.1f}%</b> {emoji_edge}\n"
+        if brier is not None and edge_realizado_pct is not None else
+        f"<b>📊 VALIDAÇÃO DO MODELO</b>\n\n"
+        f"Fechados: <b>{n}</b> ({len(wins)}W / {len(losses)}L) | Abertos: {len(abertos)}\n"
+        f"Win rate: <b>{win_rate*100:.1f}%</b>\n"
+        f"{emoji_pnl} PnL: <b>${pnl_total:+.2f}</b>\n\n"
+        f"Brier: N/A | Edge realizado: N/A\n"
+    )
+
+    if tipo_lines:
+        relatorio += f"\n<b>Por tipo:</b>{tipo_lines}\n"
+
+    if cidade_lines:
+        relatorio += f"\n<b>Top cidades:</b>{cidade_lines}\n"
+
+    relatorio += f"\n<b>Veredito: {veredito}</b>\n<i>{detalhe}</i>"
+
+    if enviar_telegram:
+        try:
+            from notificador import enviar_mensagem
+            enviar_mensagem(relatorio)
+        except Exception as e:
+            print(f"[validacao] Telegram erro: {e}")
+
+    return relatorio
+
+
+if __name__ == "__main__":
+    print(gerar_relatorio(enviar_telegram=False))
