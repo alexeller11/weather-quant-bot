@@ -61,7 +61,8 @@
             "entry_time": "2026-05-22T19:30:48.952190",
             "model_prob": 0.2143,
             "market_date": "2026-05-23",
-            "market_price": 0.125
+            "market_price": 0.125,
+            "unit": "C"
         },
         {
             "ev": 0.2002,
@@ -79,7 +80,8 @@
             "entry_time": "2026-05-22T22:53:46.477547",
             "model_prob": 0.8902,
             "market_date": "2026-05-23",
-            "market_price": 0.69
+            "market_price": 0.69,
+            "unit": "C"
         },
         {
             "ev": 0.4753,
@@ -97,7 +99,8 @@
             "entry_time": "2026-05-22T22:53:47.703869",
             "model_prob": 0.5653,
             "market_date": "2026-05-24",
-            "market_price": 0.09
+            "market_price": 0.09,
+            "unit": "C"
         },
         {
             "ev": 0.3689,
@@ -117,7 +120,8 @@
             "model_prob": 0.5039,
             "market_date": "2026-05-24",
             "sigma_total": 6.7362,
-            "market_price": 0.135
+            "market_price": 0.135,
+            "unit": "F"
         },
         {
             "ev": 0.4237,
@@ -137,7 +141,8 @@
             "model_prob": 0.5287,
             "market_date": "2026-05-24",
             "sigma_total": 5.5637,
-            "market_price": 0.105
+            "market_price": 0.105,
+            "unit": "F"
         },
         {
             "ev": 0.1281,
@@ -157,7 +162,8 @@
             "model_prob": 0.2331,
             "market_date": "2026-05-24",
             "sigma_total": 4.6662,
-            "market_price": 0.105
+            "market_price": 0.105,
+            "unit": "C"
         },
         {
             "ev": 0.0938,
@@ -288,7 +294,7 @@
         {
             "ev": 0.1123,
             "pnl": 0,
-            "city": "Hong-Kong",
+            "city": "Hong Kong",
             "edge": 0.1123,
             "type": "ABOVE",
             "unit": "C",
@@ -309,7 +315,7 @@
         {
             "ev": 0.1827,
             "pnl": 0,
-            "city": "Los-Angeles",
+            "city": "Los Angeles",
             "edge": 0.1827,
             "type": "ABOVE",
             "unit": "F",
@@ -330,7 +336,7 @@
         {
             "ev": 0.0515,
             "pnl": 0,
-            "city": "Sao-Paulo",
+            "city": "São Paulo",
             "edge": 0.0515,
             "type": "ABOVE",
             "unit": "C",
