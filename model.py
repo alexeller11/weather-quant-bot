@@ -1,9 +1,8 @@
 # =========================================================
-# WEATHER QUANT BOT — MODEL
+# WEATHER QUANT BOT — MODEL (CORRIGIDO)
 # =========================================================
 
 from statistics import NormalDist
-
 import math
 
 from config import (
@@ -85,7 +84,7 @@ def build_sigma(
     )
 
     # =====================================================
-    # EXACT
+    # EXACT — FIX #9: REJEITAR SE MUITO BAIXO
     # =====================================================
 
     if condition.upper() == "EXACT":
@@ -93,12 +92,15 @@ def build_sigma(
         if sigma_total < SIGMA_MIN_EXACT:
 
             print(
-                f"[sigma] EXACT "
-                f"{sigma_total:.2f} "
-                f"→ {SIGMA_MIN_EXACT:.2f}"
+                f"  ⚠️  EXACT com sigma "
+                f"muito baixa "
+                f"({sigma_total:.2f} < "
+                f"{SIGMA_MIN_EXACT:.2f}) "
+                f"— pode dar prob irrealista"
             )
 
-            sigma_total = SIGMA_MIN_EXACT
+            # Em vez de forçar, retorna None para rejeitar
+            return None
 
     # =====================================================
     # CITY MIN
@@ -133,6 +135,10 @@ def calculate_probability(
 
     unit="C"
 ):
+
+    # Checar se sigma é None (FIX #9)
+    if sigma is None:
+        return 0.0
 
     target_c = to_celsius(
         target,
