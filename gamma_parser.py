@@ -44,18 +44,28 @@ def safe_request(url, retries=5, timeout=15):
 def detect_unit(question):
     """
     Detecta se a pergunta usa Fahrenheit ou Celsius.
-    Prioridade: °F > número+F > Fahrenheit > °C > Celsius > default C.
+    Prioridade: °F > número+F em contexto > Fahrenheit > °C > Celsius > default C.
     """
+    q = question.lower()
+    
+    # Padrões Fahrenheit com contexto (para evitar falsos positivos)
     fahrenheit_patterns = [
-        r"°[Ff]",
-        r"\d+\s*[Ff](?!\w)",
+        r"°[Ff]",  # °F ou °f
+        r"(?:temperature|temp|be|reach|hit)\s+\d+\s*[Ff](?![a-z])",  # "temperature 60F" mas não "far"
+        r"\d+\s*[Ff](?:\s|,|\?|$)",  # "60F " (espaço após)
         r"[Ff]ahrenheit",
     ]
+    
     for pattern in fahrenheit_patterns:
         if re.search(pattern, question):
             return "F"
 
-    celsius_patterns = [r"°[Cc]", r"[Cc]elsius"]
+    # Padrões Celsius
+    celsius_patterns = [
+        r"°[Cc]",
+        r"[Cc]elsius"
+    ]
+    
     for pattern in celsius_patterns:
         if re.search(pattern, question):
             return "C"
@@ -73,7 +83,7 @@ def _extract_temp_candidates(question, unit):
     """
     if unit == "F":
         # Tenta colado com unidade primeiro
-        attached = re.findall(r"(\d+(?:\.\d+)?)\s*(?:°[Ff]|[Ff](?!\w))", question)
+        attached = re.findall(r"(\d+(?:\.\d+)?)\s*(?:°[Ff]|[Ff](?![a-z]))", question)
         if attached:
             return [float(n) for n in attached if 50 <= float(n) <= 130]
         # Fallback: range razoável de Fahrenheit
@@ -133,9 +143,9 @@ def parse_question(question):
         return {"condition": condition, "target": target, "unit": unit}
 
     # ── Formato 2: "between X-Y" ou "between X and Y" ───────────────────────
-    # Ex: "Will ... be between 74-75°F" ou "between 22-23°C"
+    # FIX #4: Corrigir regex
     range_match = re.search(
-        r"between\s+(\d+(?:\.\d+)?)\s*[-–and\s]+\s*(\d+(?:\.\d+)?)", q
+        r"between\s+(\d+(?:\.\d+)?)\s*(?:[-–]|and)\s*(\d+(?:\.\d+)?)", q
     )
     if range_match:
         low  = float(range_match.group(1))
@@ -160,7 +170,7 @@ def parse_question(question):
     # Só aceita se tiver número colado com unidade ou grau, para evitar falsos positivos
     exact_with_unit = re.findall(r"(\d+(?:\.\d+)?)\s*°[CcFf]", question)
     if not exact_with_unit and unit == "F":
-        exact_with_unit = re.findall(r"(\d+(?:\.\d+)?)\s*[Ff](?!\w)", question)
+        exact_with_unit = re.findall(r"(\d+(?:\.\d+)?)\s*[Ff](?![a-z])", question)
 
     if exact_with_unit:
         target = float(exact_with_unit[0])
@@ -207,8 +217,8 @@ def _slug_variants(city, d):
     day   = d.day
     year  = d.year
     variants = [
-        f"highest-temperature-in-{city}-on-{month}-{day}-{year}",   # formato atual Polymarket (com ano)
-        f"highest-temperature-in-{city}-on-{month}-{day}",          # legado (sem ano)
+        f"highest-temperature-in-{city}-on-{month}-{day}-{year}",
+        f"highest-temperature-in-{city}-on-{month}-{day}",
     ]
     return variants
 
@@ -221,13 +231,11 @@ def _search_fallback(city, d):
     """
     month = d.strftime('%B').lower()
     day   = d.day
-    # Ex: "highest temperature london may 20"
     query = f"highest temperature {city} {month} {day}"
     url   = f"{BASE_URL}/events?limit=5&active=true&q={requests.utils.quote(query)}"
     data  = safe_request(url)
     if not data or not isinstance(data, list):
         return None
-    # Filtra pelo título mais provável
     city_clean = city.replace("-", " ")
     for event in data:
         title = (event.get("title") or event.get("name") or "").lower()
@@ -307,10 +315,10 @@ def fetch_markets(city):
                     "market_id":   market_id,
                     "question":    question,
                     "market_date": d.strftime("%Y-%m-%d"),
-                    "event_slug":  event.get("slug", ""),   # para agrupar outcomes do mesmo evento
+                    "event_slug":  event.get("slug", ""),
                     "condition":   parsed["condition"],
                     "target":      parsed["target"],
-                    "target_high": parsed.get("target_high"),  # só para range
+                    "target_high": parsed.get("target_high"),
                     "unit":        parsed["unit"],
                     "yes_price":   yes_price,
                     "no_price":    no_price,
