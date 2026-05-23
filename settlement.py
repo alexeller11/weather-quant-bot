@@ -3,6 +3,10 @@ settlement.py — resolve trades abertos consultando a Gamma API da Polymarket.
 
 FIX: _to_slug() corrigido — CITY_SLUG_NORMALIZE tem chaves de display name,
 não slugs. Agora faz lookup invertido corretamente.
+
+FIX #22: trade_date >= today → trade_date > today
+Antes, trades com data == hoje eram ignorados pelo settlement.
+Agora o settlement tenta resolver trades do dia atual normalmente.
 """
 
 import requests
@@ -57,24 +61,29 @@ def log_settlement(msg):
 
 def _to_slug(city_raw):
     """
-    FIX: CITY_SLUG_NORMALIZE tem chaves de display ("New York" → "new-york").
-    Então para converter city_raw (display) em slug, basta fazer lookup direto.
-    Antes tentava lookup com key já em formato slug, o que nunca funcionava.
+    Converte city_raw (display name ou slug com hífen) em slug canônico.
+    Lida com variantes como "Hong-Kong", "Los-Angeles", "Sao-Paulo".
     """
-    # Tentativa direta: city_raw é display name ("Toronto", "Madrid"...)
+    # 1. Lookup direto no normalize (display → slug)
     slug = CITY_SLUG_NORMALIZE.get(city_raw)
     if slug and slug in CITY_COORDS_BY_SLUG:
         return slug
 
-    # Fallback: city_raw já pode ser um slug ("new-york")
+    # 2. city_raw já pode ser slug ("new-york", "hong-kong")
     key = city_raw.lower().replace(" ", "-").replace("_", "-").strip()
     if key in CITY_COORDS_BY_SLUG:
         return key
 
-    # Último fallback: busca case-insensitive no normalize
+    # 3. city_raw pode ter hífen onde deveria ter espaço ("Hong-Kong" → "Hong Kong")
+    display_attempt = city_raw.replace("-", " ")
+    slug2 = CITY_SLUG_NORMALIZE.get(display_attempt)
+    if slug2 and slug2 in CITY_COORDS_BY_SLUG:
+        return slug2
+
+    # 4. Busca case-insensitive
     city_lower = city_raw.lower().strip()
     for display, sl in CITY_SLUG_NORMALIZE.items():
-        if display.lower() == city_lower:
+        if display.lower() == city_lower or display.lower().replace(" ", "-") == city_lower:
             if sl in CITY_COORDS_BY_SLUG:
                 return sl
 
@@ -218,7 +227,7 @@ def _apply_result(bankroll, trade, win, real_temp_c, session):
         trade["fee"]    = round(fee, 2)
         session["wins"]  += 1
         session["pnl"]   += pnl
-        log_settlement(f"✅ WIN | {city:15} | {market_date} | PnL: ${pnl:+.2f} | market {market_id}")
+        log_settlement(f"✅ WIN  | {city:15} | {market_date} | PnL: ${pnl:+.2f} | market {market_id}")
         try:
             notificar_settlement_win(
                 city=city, market_date=market_date, target=target, unit=unit,
@@ -298,6 +307,11 @@ def resolve_trades():
             errors += 1
             continue
 
+        # FIX #22: trades futuros são ignorados; trades de hoje ou passado são processados
+        if trade_date > today:
+            log_settlement(f"  ⏳ {city} {market_date}: futuro — aguardando")
+            continue
+
         log_settlement(f"🔍 Checando: {city} {market_date} ({trade_type} {target}°{unit}) — market {market_id}")
 
         # Estratégia 1: Polymarket Gamma
@@ -312,24 +326,19 @@ def resolve_trades():
             continue
 
         if poly_result == "OPEN":
-            if trade_date >= today:
-                log_settlement(f"  ⏳ Mercado ainda aberto na Polymarket — aguardando")
-                continue
-            log_settlement(f"  ⚠️  Data vencida mas Polymarket pendente — tentando open-meteo")
+            # Mercado ainda aberto na Polymarket
+            if trade_date == today:
+                # Pode ser que o mercado ainda não fechou (tarde do dia)
+                # Tenta open-meteo como fallback antes de desistir
+                log_settlement(f"  ⚠️  Polymarket ainda aberto (trade de hoje) — tentando open-meteo")
+            else:
+                log_settlement(f"  ⚠️  Data vencida mas Polymarket pendente — tentando open-meteo")
 
         # Estratégia 2: open-meteo archive
-        if trade_date >= today:
-            log_settlement(f"  ⏳ {city} {market_date}: aguardando (data ainda não passou)")
-            continue
-
         real_temp_c = _get_real_temperature(city, market_date)
         if real_temp_c is None:
-            log_settlement(f"  ⚠️  Temperatura indisponível via open-meteo: {city} {market_date}")
-            log_settlement(f"  ⚠️  Trade marcado como UNRESOLVABLE — requer investigação manual")
-            trade["result"]    = "UNRESOLVABLE"
-            trade["exit_time"] = utcnow().isoformat()
-            unresolvable += 1
-            continue
+            log_settlement(f"  ⚠️  Temperatura indisponível: {city} {market_date} — será tentado novamente")
+            continue  # Deixa como OPEN para tentar novamente no próximo ciclo
 
         target_c = to_celsius(target, unit)
         win = _win_from_temp(real_temp_c, target_c, trade_type, trade)
