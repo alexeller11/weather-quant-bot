@@ -1,6 +1,3 @@
-bash
-
-cat > /mnt/user-data/outputs/dashboard.py << 'PYEOF'
 """
 DASHBOARD — WEATHER QUANT BOT
 Dashboard de última geração: globo 3D, gráficos interativos, filtros em tempo real.
@@ -147,21 +144,13 @@ HTML = r"""<!DOCTYPE html>
 *{box-sizing:border-box;margin:0;padding:0}
 html{background:var(--bg);color:var(--text);font-family:var(--font-mono);font-size:13px;overflow-x:hidden}
 body{min-height:100vh}
-
-/* scrollbar */
 ::-webkit-scrollbar{width:4px;height:4px}
 ::-webkit-scrollbar-track{background:var(--bg1)}
 ::-webkit-scrollbar-thumb{background:var(--muted);border-radius:2px}
-
-/* starfield bg */
 .stars{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
 .stars span{position:absolute;border-radius:50%;background:#fff;animation:twinkle var(--d,3s) var(--dl,0s) infinite alternate}
 @keyframes twinkle{from{opacity:.1}to{opacity:.7}}
-
-/* layout */
 .wrapper{position:relative;z-index:1;max-width:1600px;margin:0 auto;padding:20px 24px}
-
-/* header */
 header{display:flex;align-items:center;justify-content:space-between;padding:0 0 20px;border-bottom:1px solid var(--border)}
 .logo{font-family:var(--font-display);font-size:22px;font-weight:800;letter-spacing:-.5px;color:#fff}
 .logo span{color:var(--cyan)}
@@ -171,8 +160,6 @@ header{display:flex;align-items:center;justify-content:space-between;padding:0 0
 .ts{color:var(--muted);font-size:11px}
 .refresh-btn{background:transparent;border:1px solid var(--border);color:var(--muted);padding:6px 14px;border-radius:4px;cursor:pointer;font-family:var(--font-mono);font-size:11px;transition:.2s}
 .refresh-btn:hover{border-color:var(--cyan);color:var(--cyan)}
-
-/* kpi row */
 .kpi-row{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin:20px 0}
 .kpi{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px 16px;position:relative;overflow:hidden;transition:.3s}
 .kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--accent,var(--cyan));border-radius:8px 8px 0 0}
@@ -181,24 +168,16 @@ header{display:flex;align-items:center;justify-content:space-between;padding:0 0
 .kpi-value{font-family:var(--font-display);font-size:26px;font-weight:800;color:#fff;line-height:1}
 .kpi-sub{font-size:10px;color:var(--muted);margin-top:6px}
 .kpi-bar{position:absolute;bottom:0;left:0;height:2px;background:var(--accent,var(--cyan));opacity:.3;transition:width .8s}
-
-/* grid main */
 .main-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
 .card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:18px;backdrop-filter:blur(12px)}
 .card-title{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin-bottom:14px;display:flex;align-items:center;gap:8px}
 .card-title::before{content:'';width:3px;height:12px;background:var(--cyan);border-radius:2px;flex-shrink:0}
-
-/* globe */
 #globe-wrap{position:relative;height:320px;cursor:grab;user-select:none}
 #globe-wrap:active{cursor:grabbing}
 #globe-canvas{width:100%;height:100%;display:block}
 .globe-tooltip{position:absolute;background:rgba(4,12,28,.95);border:1px solid var(--cyan);border-radius:6px;padding:10px 14px;font-size:11px;pointer-events:none;display:none;z-index:10;min-width:140px}
 .globe-tooltip strong{color:var(--cyan);display:block;margin-bottom:4px;font-size:12px}
-
-/* equity */
 .chart-wrap{position:relative;height:280px}
-
-/* filter bar */
 .filter-bar{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px 18px;margin-bottom:16px;display:flex;align-items:center;gap:20px;flex-wrap:wrap}
 .filter-label{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
 .city-chips{display:flex;gap:6px;flex-wrap:wrap}
@@ -211,11 +190,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:0 0
 .rbtn.on{background:rgba(0,229,255,.1);border-color:var(--cyan);color:var(--cyan)}
 .rbtn.on-win{background:rgba(0,255,136,.1);border-color:var(--green);color:var(--green)}
 .rbtn.on-loss{background:rgba(255,51,102,.1);border-color:var(--red);color:var(--red)}
-
-/* charts row */
 .charts-row{display:grid;grid-template-columns:2fr 1fr 1fr;gap:16px;margin-bottom:16px}
-
-/* tables */
 .table-card{background:var(--card);border:1px solid var(--border);border-radius:8px;margin-bottom:16px;overflow:hidden}
 .table-header{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
 .tbl-wrap{max-height:380px;overflow-y:auto}
@@ -232,19 +207,11 @@ tr:hover td{background:rgba(0,200,255,.03)}
 .prob-bar-fill{height:100%;border-radius:2px;background:var(--cyan)}
 .edge-pos{color:var(--green)}
 .edge-neg{color:var(--red)}
-
-/* gauge */
 .gauge-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%}
 .gauge-val{font-family:var(--font-display);font-size:36px;font-weight:800;color:#fff;margin-top:-20px}
 .gauge-sub{font-size:11px;color:var(--muted);margin-top:4px}
-
-/* empty */
 .empty{color:var(--muted);text-align:center;padding:40px;font-size:12px}
-
-/* warning */
 .warning-bar{background:rgba(255,170,0,.08);border-bottom:1px solid rgba(255,170,0,.2);padding:8px 24px;font-size:11px;color:var(--amber)}
-
-/* animations */
 @keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
 .card,.kpi,.table-card{animation:fadeUp .4s ease both}
 .kpi:nth-child(1){animation-delay:.05s}
@@ -256,13 +223,9 @@ tr:hover td{background:rgba(0,200,255,.03)}
 </style>
 </head>
 <body>
-
 <div class="stars" id="stars"></div>
-
 <div id="warning-bar" style="display:none" class="warning-bar"></div>
-
 <div class="wrapper">
-
   <header>
     <div class="logo">⚡ Weather<span>Quant</span></div>
     <div class="hdr-right">
@@ -271,8 +234,6 @@ tr:hover td{background:rgba(0,200,255,.03)}
       <button class="refresh-btn" onclick="fetchData()">↻ Atualizar</button>
     </div>
   </header>
-
-  <!-- KPIs -->
   <div class="kpi-row" id="kpiRow">
     <div class="kpi" style="--accent:var(--cyan)">
       <div class="kpi-label">Saldo</div>
@@ -306,8 +267,6 @@ tr:hover td{background:rgba(0,200,255,.03)}
       <div class="kpi-sub" id="kBrier">—</div>
     </div>
   </div>
-
-  <!-- Globe + Equity -->
   <div class="main-grid">
     <div class="card">
       <div class="card-title">🌍 Globo de Trades — arraste para girar</div>
@@ -318,11 +277,9 @@ tr:hover td{background:rgba(0,200,255,.03)}
     </div>
     <div class="card">
       <div class="card-title">📈 Curva de Equity</div>
-      <div class="chart-wrap"><canvas id="equityChart" role="img" aria-label="Curva de equity ao longo do tempo">Curva de equity</canvas></div>
+      <div class="chart-wrap"><canvas id="equityChart"></canvas></div>
     </div>
   </div>
-
-  <!-- Filter bar -->
   <div class="filter-bar">
     <span class="filter-label">Cidade</span>
     <div class="city-chips" id="cityChips"></div>
@@ -334,28 +291,24 @@ tr:hover td{background:rgba(0,200,255,.03)}
       <button class="rbtn" data-r="LOSS" onclick="setResult(this,'LOSS')">Loss</button>
     </div>
   </div>
-
-  <!-- Charts row -->
   <div class="charts-row">
     <div class="card">
       <div class="card-title">💰 PnL por Cidade</div>
-      <div class="chart-wrap" style="height:220px"><canvas id="cityChart" role="img" aria-label="PnL por cidade">PnL por cidade</canvas></div>
+      <div class="chart-wrap" style="height:220px"><canvas id="cityChart"></canvas></div>
     </div>
     <div class="card">
       <div class="card-title">🎯 Distribuição de Edge</div>
-      <div class="chart-wrap" style="height:220px"><canvas id="edgeChart" role="img" aria-label="Distribuição de edge">Distribuição de edge</canvas></div>
+      <div class="chart-wrap" style="height:220px"><canvas id="edgeChart"></canvas></div>
     </div>
     <div class="card" style="display:flex;flex-direction:column">
       <div class="card-title">🏆 Win Rate</div>
       <div class="gauge-wrap">
-        <canvas id="gaugeChart" width="160" height="90" role="img" aria-label="Win rate gauge">Win rate</canvas>
+        <canvas id="gaugeChart" width="160" height="90"></canvas>
         <div class="gauge-val" id="gaugeVal">—</div>
         <div class="gauge-sub" id="gaugeSub">—</div>
       </div>
     </div>
   </div>
-
-  <!-- Open trades -->
   <div class="table-card">
     <div class="table-header">
       <div class="card-title" style="margin:0">⏳ Posições Abertas</div>
@@ -371,8 +324,6 @@ tr:hover td{background:rgba(0,200,255,.03)}
       </table>
     </div>
   </div>
-
-  <!-- Closed trades -->
   <div class="table-card">
     <div class="table-header">
       <div class="card-title" style="margin:0">📋 Trades Fechados</div>
@@ -388,11 +339,8 @@ tr:hover td{background:rgba(0,200,255,.03)}
       </table>
     </div>
   </div>
-
 </div>
-
 <script>
-// ── Starfield ────────────────────────────────────────────────
 (function(){
   const c=document.getElementById('stars');
   for(let i=0;i<120;i++){
@@ -403,11 +351,9 @@ tr:hover td{background:rgba(0,200,255,.03)}
   }
 })();
 
-// ── State ────────────────────────────────────────────────────
 let DATA=null,activeCity='all',activeResult='all';
 let chartEquity=null,chartCity=null,chartEdge=null;
 
-// ── Fetch ─────────────────────────────────────────────────────
 async function fetchData(){
   try{
     const r=await fetch('/api/stats');
@@ -419,7 +365,6 @@ async function fetchData(){
 fetchData();
 setInterval(fetchData,15000);
 
-// ── Render ────────────────────────────────────────────────────
 function render(){
   if(!DATA)return;
   updateKPIs();
@@ -435,39 +380,30 @@ function render(){
   if(DATA.warning){wb.style.display='block';wb.textContent=DATA.warning}else{wb.style.display='none'}
 }
 
-// ── KPIs ──────────────────────────────────────────────────────
-function fmt$(v){return'$'+Math.abs(v).toFixed(2)}
 function sign(v){return v>=0?'+':''}
 
 function updateKPIs(){
   const d=DATA;
   const pnlPct=d.start_balance>0?((d.balance-d.start_balance)/d.start_balance*100).toFixed(1):0;
-
   document.getElementById('kBalance').textContent='$'+d.balance.toFixed(2);
   document.getElementById('kBalanceSub').textContent=sign(d.balance-d.start_balance)+'$'+(d.balance-d.start_balance).toFixed(2)+' vs início';
   const barW=Math.min(100,Math.max(0,(d.balance/d.start_balance)*100));
   document.getElementById('kBalanceBar').style.width=barW+'%';
-
   const pnlEl=document.getElementById('kPnl');
   pnlEl.textContent=sign(d.pnl)+'$'+Math.abs(d.pnl).toFixed(2);
   pnlEl.style.color=d.pnl>=0?'var(--green)':'var(--red)';
   document.getElementById('kPnlSub').textContent=sign(parseFloat(pnlPct))+pnlPct+'% retorno';
-
   document.getElementById('kWR').textContent=d.win_rate+'%';
   document.getElementById('kWRSub').textContent=d.wins+'W / '+d.losses+'L ('+d.total_closed+' trades)';
-
   document.getElementById('kOpen').textContent=d.open_count;
   document.getElementById('kOpenSub').textContent='Exposição $'+d.exposure.toFixed(2);
-
   const expPct=d.start_balance>0?(d.exposure/d.start_balance*100).toFixed(0):0;
   document.getElementById('kExp').textContent='$'+d.exposure.toFixed(2);
   document.getElementById('kExpSub').textContent=expPct+'% do bankroll inicial';
-
   document.getElementById('kEdge').textContent=sign(d.avg_edge)+d.avg_edge.toFixed(1)+'%';
   document.getElementById('kBrier').textContent=d.brier!==null?'Brier: '+d.brier:'Aguardando trades';
 }
 
-// ── City chips ────────────────────────────────────────────────
 function buildCityChips(){
   const wrap=document.getElementById('cityChips');
   const cities=['all',...Object.keys(DATA.city_stats)];
@@ -491,7 +427,6 @@ function setResult(el,r){
   updateTables();
 }
 
-// ── Filter trades ─────────────────────────────────────────────
 function filteredClosed(){
   return DATA.closed_trades.filter(t=>{
     if(activeCity!=='all'&&t.city!==activeCity)return false;
@@ -503,7 +438,6 @@ function filteredOpen(){
   return DATA.open_trades.filter(t=>activeCity==='all'||t.city===activeCity);
 }
 
-// ── Equity chart ──────────────────────────────────────────────
 function updateEquity(){
   const eq=DATA.equity_curve;
   const ctx=document.getElementById('equityChart').getContext('2d');
@@ -515,30 +449,19 @@ function updateEquity(){
   grad.addColorStop(1,'rgba(0,229,255,0)');
   chartEquity=new Chart(ctx,{
     type:'line',
-    data:{
-      labels,
-      datasets:[{
-        data:vals,
-        borderColor:'#00e5ff',
-        backgroundColor:grad,
-        fill:true,tension:.4,
-        pointRadius:vals.map((_,i)=>i===vals.length-1?5:3),
-        pointBackgroundColor:eq.map(p=>p.result==='WIN'?'#00ff88':'#ff3366'),
-        pointBorderColor:'#030b18',pointBorderWidth:2
-      }]
-    },
-    options:{
-      responsive:true,maintainAspectRatio:false,
+    data:{labels,datasets:[{data:vals,borderColor:'#00e5ff',backgroundColor:grad,fill:true,tension:.4,
+      pointRadius:vals.map((_,i)=>i===vals.length-1?5:3),
+      pointBackgroundColor:eq.map(p=>p.result==='WIN'?'#00ff88':'#ff3366'),
+      pointBorderColor:'#030b18',pointBorderWidth:2}]},
+    options:{responsive:true,maintainAspectRatio:false,
       plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>' $'+c.parsed.y.toFixed(2)}}},
       scales:{
         x:{grid:{color:'rgba(0,200,255,.04)'},ticks:{color:'#4a7090',font:{size:10},maxRotation:0,autoSkip:true,maxTicksLimit:8}},
         y:{grid:{color:'rgba(0,200,255,.04)'},ticks:{color:'#4a7090',font:{size:10},callback:v=>'$'+v.toFixed(0)}}
-      }
-    }
+      }}
   });
 }
 
-// ── City PnL chart ────────────────────────────────────────────
 function updateCityChart(){
   const cs=DATA.city_stats;
   let entries=Object.entries(cs).filter(([c])=>activeCity==='all'||c===activeCity);
@@ -552,19 +475,15 @@ function updateCityChart(){
   chartCity=new Chart(ctx,{
     type:'bar',
     data:{labels,datasets:[{data:vals,backgroundColor:colors,borderColor:borders,borderWidth:1,borderRadius:4}]},
-    options:{
-      indexAxis:'y',
-      responsive:true,maintainAspectRatio:false,
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,
       plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` $${c.parsed.x.toFixed(2)}`}}},
       scales:{
         x:{grid:{color:'rgba(0,200,255,.04)'},ticks:{color:'#4a7090',font:{size:10},callback:v=>'$'+v.toFixed(0)}},
         y:{grid:{display:false},ticks:{color:'#cce8ff',font:{size:11}}}
-      }
-    }
+      }}
   });
 }
 
-// ── Edge histogram ────────────────────────────────────────────
 function updateEdgeChart(){
   const edges=DATA.all_trades.filter(t=>t.edge!=null).map(t=>Math.round(t.edge*100));
   const buckets={};
@@ -574,32 +493,24 @@ function updateEdgeChart(){
   if(chartEdge)chartEdge.destroy();
   chartEdge=new Chart(ctx,{
     type:'bar',
-    data:{
-      labels:keys.map(k=>k+'%'),
-      datasets:[{data:keys.map(k=>buckets[k]),backgroundColor:'rgba(182,108,255,.6)',borderColor:'#b66cff',borderWidth:1,borderRadius:3}]
-    },
-    options:{
-      responsive:true,maintainAspectRatio:false,
+    data:{labels:keys.map(k=>k+'%'),datasets:[{data:keys.map(k=>buckets[k]),backgroundColor:'rgba(182,108,255,.6)',borderColor:'#b66cff',borderWidth:1,borderRadius:3}]},
+    options:{responsive:true,maintainAspectRatio:false,
       plugins:{legend:{display:false}},
       scales:{
         x:{grid:{color:'rgba(0,200,255,.04)'},ticks:{color:'#4a7090',font:{size:10}}},
         y:{grid:{color:'rgba(0,200,255,.04)'},ticks:{color:'#4a7090',font:{size:10}}}
-      }
-    }
+      }}
   });
 }
 
-// ── Win rate gauge ────────────────────────────────────────────
 function updateGauge(){
   const wr=DATA.win_rate/100;
   const c=document.getElementById('gaugeChart');
   const ctx=c.getContext('2d');
   ctx.clearRect(0,0,160,90);
   const cx=80,cy=80,r=65,start=Math.PI,end=2*Math.PI;
-  // bg arc
   ctx.beginPath();ctx.arc(cx,cy,r,start,end);
   ctx.strokeStyle='rgba(255,255,255,.06)';ctx.lineWidth=12;ctx.lineCap='round';ctx.stroke();
-  // value arc
   const col=wr>=.55?'#00ff88':wr>=.45?'#ffaa00':'#ff3366';
   ctx.beginPath();ctx.arc(cx,cy,r,start,start+(end-start)*wr);
   ctx.strokeStyle=col;ctx.lineWidth=12;ctx.lineCap='round';ctx.stroke();
@@ -608,9 +519,7 @@ function updateGauge(){
   document.getElementById('gaugeSub').textContent=DATA.wins+'W / '+DATA.losses+'L';
 }
 
-// ── Tables ────────────────────────────────────────────────────
 function updateTables(){
-  // open
   const open=filteredOpen();
   document.getElementById('openCount').textContent=open.length+' posições';
   const ob=document.getElementById('openBody');
@@ -631,7 +540,6 @@ function updateTables(){
       <td style="color:var(--muted);font-size:11px">${(t.question||'').substring(0,50)}…</td>
     </tr>`}).join('');
 
-  // closed
   const closed=filteredClosed();
   document.getElementById('closedCount').textContent=closed.length+' trades';
   const cb=document.getElementById('closedBody');
@@ -653,7 +561,6 @@ function updateTables(){
     </tr>`}).join('');
 }
 
-// ── 3D GLOBE ──────────────────────────────────────────────────
 const CITY_COORDS={
   'New York':[40.71,-74.01],'London':[51.51,-0.13],'Paris':[48.86,2.35],
   'Hong Kong':[22.32,114.17],'Tokyo':[35.68,139.65],'Seoul':[37.57,126.98],
@@ -687,43 +594,26 @@ function initGlobe(){
   scene=new THREE.Scene();
   camera=new THREE.PerspectiveCamera(42,W/H,.1,100);
   camera.position.z=5.5;
-
   renderer=new THREE.WebGLRenderer({canvas:document.getElementById('globe-canvas'),antialias:true,alpha:true});
   renderer.setSize(W,H);
   renderer.setPixelRatio(window.devicePixelRatio||1);
-
-  // Lights
   scene.add(new THREE.AmbientLight(0x112244,.8));
   const dl=new THREE.DirectionalLight(0x0088ff,1);
   dl.position.set(5,3,5);scene.add(dl);
   const dl2=new THREE.DirectionalLight(0x00ffcc,.3);
   dl2.position.set(-3,-2,-3);scene.add(dl2);
-
-  // Globe
   const geo=new THREE.SphereGeometry(2,64,64);
-  const mat=new THREE.MeshPhongMaterial({
-    color:0x061830,emissive:0x030e20,specular:0x0088ff,shininess:40
-  });
+  const mat=new THREE.MeshPhongMaterial({color:0x061830,emissive:0x030e20,specular:0x0088ff,shininess:40});
   globeMesh=new THREE.Mesh(geo,mat);scene.add(globeMesh);
-
-  // Grid overlay
   const gridMat=new THREE.MeshBasicMaterial({color:0x00e5ff,wireframe:true,transparent:true,opacity:.05});
   gridMesh=new THREE.Mesh(new THREE.SphereGeometry(2.01,36,18),gridMat);
   scene.add(gridMesh);
-
-  // Atmosphere
   const atmGeo=new THREE.SphereGeometry(2.18,64,64);
-  const atmMat=new THREE.MeshPhongMaterial({
-    color:0x0066ff,emissive:0x003366,transparent:true,opacity:.12,side:THREE.BackSide
-  });
+  const atmMat=new THREE.MeshPhongMaterial({color:0x0066ff,emissive:0x003366,transparent:true,opacity:.12,side:THREE.BackSide});
   atmMesh=new THREE.Mesh(atmGeo,atmMat);scene.add(atmMesh);
-
-  // Outer glow ring
   const ringGeo=new THREE.SphereGeometry(2.28,64,64);
   const ringMat=new THREE.MeshBasicMaterial({color:0x0044ff,transparent:true,opacity:.04,side:THREE.BackSide});
   scene.add(new THREE.Mesh(ringGeo,ringMat));
-
-  // Mouse events
   const cv=document.getElementById('globe-canvas');
   cv.addEventListener('mousedown',e=>{isDragging=true;autoRotate=false;prevMouse={x:e.clientX,y:e.clientY}});
   cv.addEventListener('mousemove',e=>{
@@ -731,16 +621,12 @@ function initGlobe(){
       const dx=e.clientX-prevMouse.x,dy=e.clientY-prevMouse.y;
       globeMesh.rotation.y+=dx*.005;globeMesh.rotation.x+=dy*.005;
       gridMesh.rotation.copy(globeMesh.rotation);atmMesh.rotation.copy(globeMesh.rotation);
-      Object.values(cityMarkers).forEach(m=>{if(m.group){m.group.rotation.copy(globeMesh.rotation)}});
       prevMouse={x:e.clientX,y:e.clientY};
     }
-    // tooltip
     handleGlobeHover(e,cv);
   });
   cv.addEventListener('mouseup',()=>isDragging=false);
   cv.addEventListener('mouseleave',()=>{isDragging=false;document.getElementById('globeTip').style.display='none'});
-
-  // Touch
   cv.addEventListener('touchstart',e=>{isDragging=true;autoRotate=false;prevMouse={x:e.touches[0].clientX,y:e.touches[0].clientY}},{passive:true});
   cv.addEventListener('touchmove',e=>{
     if(!isDragging)return;
@@ -750,14 +636,11 @@ function initGlobe(){
     prevMouse={x:e.touches[0].clientX,y:e.touches[0].clientY};
   },{passive:true});
   cv.addEventListener('touchend',()=>isDragging=false);
-
-  // Resize
   window.addEventListener('resize',()=>{
     const nw=wrap.clientWidth;
     camera.aspect=nw/H;camera.updateProjectionMatrix();
     renderer.setSize(nw,H);
   });
-
   animate();
 }
 
@@ -783,7 +666,7 @@ function handleGlobeHover(e,cv){
       ${s.open?`<span style="color:var(--amber)">${s.open} abertos</span><br>`:''}
       PnL: <span style="color:${(s.pnl||0)>=0?'var(--green)':'var(--red)'}">${(s.pnl||0)>=0?'+':''}$${Math.abs(s.pnl||0).toFixed(2)}</span>
       ${wr!==null?`<br>Win rate: ${wr}%`:''}`;
-  } else {
+  }else{
     tip.style.display='none';
   }
 }
@@ -797,7 +680,6 @@ function animate(){
     atmMesh.rotation.y+=.002;
     Object.values(cityMarkers).forEach(m=>{if(m.pivot)m.pivot.rotation.y+=.002});
   }
-  // pulse rings
   ringPhase+=.05;
   Object.values(cityMarkers).forEach(m=>{
     if(m.ring){
@@ -813,43 +695,31 @@ function updateGlobe(){
   if(!scene){initGlobe();return}
   const cs=DATA.city_stats;
   globeStats=cs;
-
-  // remove old markers
   Object.values(cityMarkers).forEach(m=>{if(m.pivot)scene.remove(m.pivot)});
   cityMarkers={};
-
   Object.entries(CITY_COORDS).forEach(([city,[lat,lon]])=>{
     const stats=cs[city];
     if(!stats)return;
     const total=stats.wins+stats.losses+stats.open;
     if(!total)return;
-
     const pos=latLonToVec3(lat,lon,2);
     const pnl=stats.pnl||0;
     const hasOpen=stats.open>0;
     const col=pnl>0?0x00ff88:pnl<0?0xff3366:0xffaa00;
     const sz=.04+Math.min(.08,total*.008);
-
-    // pivot rotates with globe
     const pivot=new THREE.Object3D();
     pivot.rotation.copy(globeMesh.rotation);
     scene.add(pivot);
-
-    // marker sphere
     const mGeo=new THREE.SphereGeometry(sz,12,12);
     const mMat=new THREE.MeshPhongMaterial({color:col,emissive:col,emissiveIntensity:.5});
     const marker=new THREE.Mesh(mGeo,mMat);
     marker.position.copy(pos);
     marker.userData.city=city;
     pivot.add(marker);
-
-    // spike line
     const pts=[pos.clone().multiplyScalar(.98),pos.clone().multiplyScalar(1.04)];
     const lineMat=new THREE.LineBasicMaterial({color:col,transparent:true,opacity:.6});
     const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),lineMat);
     pivot.add(line);
-
-    // pulsing ring for open trades
     let ring=null;
     if(hasOpen){
       const rGeo=new THREE.RingGeometry(sz*1.6,sz*2,20);
@@ -859,12 +729,10 @@ function updateGlobe(){
       ring.lookAt(new THREE.Vector3(0,0,0));
       pivot.add(ring);
     }
-
     cityMarkers[city]={pivot,meshes:[marker],ring,phase:Math.random()*Math.PI*2};
   });
 }
 
-// Start globe on load
 window.addEventListener('load',()=>{if(DATA)updateGlobe();else initGlobe()});
 </script>
 </body>
@@ -919,5 +787,3 @@ if __name__ == '__main__':
         HTTPServer(('0.0.0.0', PORT), Handler).serve_forever()
     except KeyboardInterrupt:
         print('\nEncerrado')
-PYEOF
-echo "dashboard.py criado — $(wc -l < /mnt/user-data/outputs/dashboard.py) linhas"
