@@ -1,5 +1,7 @@
 # =========================================================
 # WEATHER QUANT BOT — BOT.PY (COMPLETO)
+# FIX #20: Guardrail model_prob == 0.50 exato
+# FIX #21: balance/history carregados fora do loop de cidades
 # =========================================================
 
 import os
@@ -66,7 +68,7 @@ from config import (
     MAX_LIQUIDITY_PRICE,
 
     MAX_EV,
-    
+
     CYCLE_INTERVAL_SECONDS,
 )
 
@@ -318,14 +320,13 @@ while True:
 
         print("=======================")
 
-        # FIX: Carregar bankroll UMA VEZ por ciclo
+        # FIX #21: Carregar bankroll UMA VEZ por ciclo,
+        # fora do loop de cidades para balance acumular corretamente
         bankroll = load_bankroll()
+        balance  = bankroll["balance"]
+        history  = bankroll["history"]
 
         for city in CITY_SLUGS:
-
-            balance = bankroll["balance"]
-
-            history = bankroll["history"]
 
             current_exposure = (
                 open_exposure(history)
@@ -561,6 +562,15 @@ while True:
                         ):
                             continue
 
+                        # FIX #20: Guardrail — prob exatamente 0.50
+                        # indica forecast_c == target_c → sem edge real
+                        if abs(model_prob - 0.50) < 0.001:
+                            print(
+                                f"  🚫 model_prob={model_prob:.4f} "
+                                f"(≈0.50) — sem edge, skip"
+                            )
+                            continue
+
                         edge = round(
                             (
                                 model_prob
@@ -629,7 +639,7 @@ while True:
                             "sigma_total": sigma_total,
 
                             "market_id": market_id,
-                            
+
                             "unit": unit,
                         })
 
@@ -674,7 +684,7 @@ while True:
                         sigma_total = cand[
                             "sigma_total"
                         ]
-                        
+
                         unit = cand["unit"]
 
                         remaining = (
@@ -707,18 +717,11 @@ while True:
                         if stake <= 0:
                             continue
 
-                        stake = min(
-                            stake,
-                            remaining
-                        )
+                        # FIX #21: caps na ordem correta antes de calcular shares
+                        stake = min(stake, remaining)
 
-                        if (
-                            stake
-                            > MAX_POSITION_DOLARES
-                        ):
-                            stake = (
-                                MAX_POSITION_DOLARES
-                            )
+                        if stake > MAX_POSITION_DOLARES:
+                            stake = MAX_POSITION_DOLARES
 
                         shares = int(
                             stake / market_price
@@ -728,8 +731,7 @@ while True:
                             continue
 
                         real_cost = round(
-                            shares
-                            * market_price,
+                            shares * market_price,
                             2
                         )
 
@@ -808,7 +810,7 @@ while True:
 
                             "pnl":
                             0,
-                            
+
                             "unit": unit,
                         }
 
@@ -816,6 +818,7 @@ while True:
                             trade
                         )
 
+                        # FIX #21: atualiza balance imediatamente após o trade
                         balance -= stake
 
                         print(
@@ -876,6 +879,7 @@ while True:
                     f"Erro city {city}: {e}"
                 )
 
+        # FIX #21: persiste balance acumulado ao final do ciclo
         bankroll["balance"] = balance
         save_bankroll(bankroll)
 
