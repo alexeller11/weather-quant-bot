@@ -1,5 +1,5 @@
 # =========================================================
-# WEATHER QUANT BOT — BOT.PY (CORRIGIDO)
+# WEATHER QUANT BOT — BOT.PY (COMPLETO)
 # =========================================================
 
 import os
@@ -211,7 +211,7 @@ def iniciar_scheduler():
     ).start()
 
 # =========================================================
-# EXACT GUARD
+# EXACT GUARD (RELAXADO)
 # =========================================================
 
 def exact_market_guard(
@@ -224,7 +224,7 @@ def exact_market_guard(
     if condition.upper() != "EXACT":
         return True
 
-    if market_price > 0.25:
+    if market_price > 0.30:
 
         print(
             "  🚫 EXACT caro demais"
@@ -232,7 +232,7 @@ def exact_market_guard(
 
         return False
 
-    if model_prob > 0.25:
+    if model_prob > 0.30:
 
         print(
             f"  🚫 EXACT bloqueado "
@@ -264,7 +264,7 @@ def exact_market_guard(
         - market_price
     )
 
-    if exact_edge < 0.10:
+    if exact_edge < 0.07:
 
         print(
             f"  🚫 EXACT edge fraco "
@@ -318,7 +318,7 @@ while True:
 
         print("=======================")
 
-        # FIX #7: Carregar bankroll UMA VEZ por ciclo
+        # FIX: Carregar bankroll UMA VEZ por ciclo
         bankroll = load_bankroll()
 
         for city in CITY_SLUGS:
@@ -527,6 +527,9 @@ while True:
                             )
                         )
 
+                        if sigma_total is None:
+                            continue
+
                         print(
                             f"  [Sigma] "
                             f"{sigma_total:.2f}"
@@ -674,7 +677,6 @@ while True:
                         
                         unit = cand["unit"]
 
-                        # Atualizar exposição local (não recarregar)
                         remaining = (
                             remaining_capacity(
                                 history
@@ -874,7 +876,6 @@ while True:
                     f"Erro city {city}: {e}"
                 )
 
-        # Salvar bankroll uma vez após todo ciclo
         bankroll["balance"] = balance
         save_bankroll(bankroll)
 
