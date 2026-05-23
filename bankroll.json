@@ -1,5 +1,5 @@
 {
-    "balance": 19.870000000000005,
+    "balance": 33.78320000000001,
     "history": [
         {
             "ev": 0.3158,
@@ -47,39 +47,43 @@
         },
         {
             "ev": 0.7144,
-            "pnl": 0,
+            "pnl": -2.12,
             "city": "Hong Kong",
             "edge": 0.0893,
             "type": "ABOVE",
             "stake": 2.12,
-            "result": "OPEN",
+            "result": "LOSS",
             "shares": 17,
             "target": 33.0,
             "question": "Will the highest temperature in Hong Kong be 33°C or higher on May 23?",
-            "exit_time": null,
+            "exit_time": "2026-05-23T13:33:02.459912",
             "market_id": "2319902",
             "entry_time": "2026-05-22T19:30:48.952190",
             "model_prob": 0.2143,
             "market_date": "2026-05-23",
-            "market_price": 0.125
+            "market_price": 0.125,
+            "real_temp_c": 29.5,
+            "fee": 0.0
         },
         {
             "ev": 0.2002,
-            "pnl": 0,
+            "pnl": 4.25,
             "city": "Beijing",
             "edge": 0.2002,
             "type": "BELOW",
             "stake": 9.66,
-            "result": "OPEN",
+            "result": "WIN",
             "shares": 14,
             "target": 26.0,
             "question": "Will the highest temperature in Beijing be 26°C or below on May 23?",
-            "exit_time": null,
+            "exit_time": "2026-05-23T13:33:07.722956",
             "market_id": "2319980",
             "entry_time": "2026-05-22T22:53:46.477547",
             "model_prob": 0.8902,
             "market_date": "2026-05-23",
-            "market_price": 0.69
+            "market_price": 0.69,
+            "real_temp_c": 25.5,
+            "fee": 0.09
         },
         {
             "ev": 0.4753,
