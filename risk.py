@@ -1,10 +1,14 @@
 # =========================================================
-# WEATHER QUANT BOT — RISK (CORRIGIDO)
+# WEATHER QUANT BOT — RISK
+# FIX: kelly_stake usa MAX_KELLY_FRACTION_CAP (0.20) como
+#      cap de FRAÇÃO, não MAX_POSITION (10.0 = dólares).
+#      Sem isso, Kelly nunca era capado como fração —
+#      num bankroll de $100 apostaria $46 em Denver 56F.
 # =========================================================
 
 from config import (
     MAX_TOTAL_EXPOSURE,
-    MAX_POSITION,
+    MAX_KELLY_FRACTION_CAP,
     KELLY_FRACTION,
 )
 
@@ -13,22 +17,25 @@ from config import (
 # =========================================================
 
 def kelly_stake(
-
     bankroll,
-
     prob,
-
     market_price,
 ):
     """
-    Calcula stake via Kelly Criterion com half-kelly e cap.
-    
-    FIX #8: Simplificado e explícito.
+    Calcula stake via Kelly Criterion.
+
+    Pipeline:
+    1. Kelly puro  = (b*p - q) / b
+    2. Half-Kelly  = kelly_puro * KELLY_FRACTION (0.5)
+    3. Cap fração  = min(half_kelly, MAX_KELLY_FRACTION_CAP) (0.20)
+    4. Stake $     = bankroll * cap_fração
+
+    O cap em dólares (MAX_POSITION_DOLARES) é aplicado em bot.py
+    depois de converter para shares.
     """
 
     try:
 
-        # Odds
         b = (
             (1.0 / market_price)
             - 1.0
@@ -43,13 +50,15 @@ def kelly_stake(
             / b
         )
 
-        # Half Kelly
-        kelly_half = kelly_puro * KELLY_FRACTION
+        # Half-Kelly
+        kelly_half = (
+            kelly_puro * KELLY_FRACTION
+        )
 
-        # Cap
+        # Cap como FRAÇÃO do bankroll (ex: 0.20 = máx 20%)
         kelly_capped = min(
             kelly_half,
-            MAX_POSITION
+            MAX_KELLY_FRACTION_CAP
         )
 
         if kelly_capped <= 0:
@@ -62,7 +71,7 @@ def kelly_stake(
             2
         )
 
-    except:
+    except Exception:
         return 0
 
 # =========================================================
@@ -90,7 +99,7 @@ def expected_value(
 
         return round(ev, 4)
 
-    except:
+    except Exception:
         return 0
 
 # =========================================================
@@ -134,7 +143,7 @@ def remaining_capacity(history):
     )
 
 # =========================================================
-# STAKE CAP (SIMPLIFICADO)
+# STAKE CAP POR TIPO
 # =========================================================
 
 def cap_stake_by_type(
@@ -142,14 +151,12 @@ def cap_stake_by_type(
     condition,
 ):
     """
-    FIX #8: Cap removido — já é feito em kelly_stake.
-    Essa função agora só reduz para EXACT (mais arriscado).
+    Reduz stake para EXACT (mais arriscado que ABOVE/BELOW).
+    O cap em dólares absolutos (MAX_POSITION_DOLARES) é feito em bot.py.
     """
 
     if condition.upper() == "EXACT":
-        # EXACT é arriscado — reduz 40%
         stake *= 0.60
-    # ABOVE/BELOW — sem redução adicional
 
     return round(
         max(stake, 0),
