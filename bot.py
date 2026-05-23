@@ -1,5 +1,5 @@
 # =========================================================
-# WEATHER QUANT BOT — BOT.PY
+# WEATHER QUANT BOT — BOT.PY (CORRIGIDO)
 # =========================================================
 
 import os
@@ -66,6 +66,8 @@ from config import (
     MAX_LIQUIDITY_PRICE,
 
     MAX_EV,
+    
+    CYCLE_INTERVAL_SECONDS,
 )
 
 from notificador import (
@@ -295,7 +297,7 @@ iniciar_listener()
 iniciar_scheduler()
 
 # =========================================================
-# LOOP
+# MAIN LOOP
 # =========================================================
 
 while True:
@@ -316,9 +318,10 @@ while True:
 
         print("=======================")
 
-        for city in CITY_SLUGS:
+        # FIX #7: Carregar bankroll UMA VEZ por ciclo
+        bankroll = load_bankroll()
 
-            bankroll = load_bankroll()
+        for city in CITY_SLUGS:
 
             balance = bankroll["balance"]
 
@@ -623,6 +626,8 @@ while True:
                             "sigma_total": sigma_total,
 
                             "market_id": market_id,
+                            
+                            "unit": unit,
                         })
 
                     except Exception as e:
@@ -666,17 +671,10 @@ while True:
                         sigma_total = cand[
                             "sigma_total"
                         ]
+                        
+                        unit = cand["unit"]
 
-                        bankroll = load_bankroll()
-
-                        balance = bankroll[
-                            "balance"
-                        ]
-
-                        history = bankroll[
-                            "history"
-                        ]
-
+                        # Atualizar exposição local (não recarregar)
                         remaining = (
                             remaining_capacity(
                                 history
@@ -808,17 +806,15 @@ while True:
 
                             "pnl":
                             0,
+                            
+                            "unit": unit,
                         }
 
-                        bankroll["history"].append(
+                        history.append(
                             trade
                         )
 
-                        bankroll["balance"] -= stake
-
-                        save_bankroll(
-                            bankroll
-                        )
+                        balance -= stake
 
                         print(
                             f"  >>> TRADE "
@@ -839,7 +835,7 @@ while True:
 
                                 target=target,
 
-                                unit="C",
+                                unit=unit,
 
                                 stake=stake,
 
@@ -849,9 +845,7 @@ while True:
 
                                 edge=edge * 100,
 
-                                balance=bankroll[
-                                    "balance"
-                                ],
+                                balance=balance,
 
                                 shares=shares,
                             )
@@ -880,11 +874,15 @@ while True:
                     f"Erro city {city}: {e}"
                 )
 
+        # Salvar bankroll uma vez após todo ciclo
+        bankroll["balance"] = balance
+        save_bankroll(bankroll)
+
         print(
-            "\nPróximo ciclo em 5min..."
+            f"\nPróximo ciclo em {CYCLE_INTERVAL_SECONDS}s..."
         )
 
-        time.sleep(300)
+        time.sleep(CYCLE_INTERVAL_SECONDS)
 
     except Exception as e:
 
