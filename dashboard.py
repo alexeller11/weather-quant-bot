@@ -1,7 +1,7 @@
 """
 DASHBOARD — WEATHER QUANT BOT
 Dashboard profissional com gráficos, mapa-múndi e curva de equity.
-CORRIGIDO: Sem erros de import/sintaxe
+CORRIGIDO: f-string SyntaxError na linha 397
 """
 
 import os
@@ -241,7 +241,7 @@ def build_html(stats, warning=None):
         <tr>
           <td><span class="city-badge">{t.get('city','')}</span></td>
           <td>{t.get('market_date','')}</td>
-          <td>${{t.get('stake',0):.2f}}</td>
+          <td>${t.get('stake',0):.2f}</td>
           <td class="prob-cell">
             <div class="prob-bar-wrap">
               <div class="prob-bar" style="width:{prob_pct}%"></div>
@@ -259,13 +259,14 @@ def build_html(stats, warning=None):
         pnl   = t.get("pnl",0)
         icon  = "✅" if res=="WIN" else "❌"
         cls   = "win-row" if res=="WIN" else "loss-row"
+        pnl_cls = "pnl-pos" if pnl >= 0 else "pnl-neg"
         closed_rows += f"""
         <tr class="{cls}">
           <td>{icon}</td>
           <td><span class="city-badge">{t.get('city','')}</span></td>
           <td>{t.get('market_date','')}</td>
-          <td>${{t.get('stake',0):.2f}}</td>
-          <td class="{{'pnl-pos' if pnl>=0 else 'pnl-neg'}}">${{pnl:+.2f}}</td>
+          <td>${t.get('stake',0):.2f}</td>
+          <td class="{pnl_cls}">${pnl:+.2f}</td>
           <td>{round(t.get('model_prob',0)*100,1)}%</td>
           <td class="question-cell">{t.get('question','')[:55]}...</td>
         </tr>"""
@@ -378,12 +379,12 @@ body {{ background:var(--bg); color:var(--text); font-family:monospace; font-siz
   <div class="kpi-grid">
     <div class="kpi">
       <div class="kpi-label">💰 Saldo</div>
-      <div class="kpi-value">${{stats["balance"]:.2f}}</div>
+      <div class="kpi-value">${stats["balance"]:.2f}</div>
       <div class="kpi-sub">Disponível</div>
     </div>
     <div class="kpi">
       <div class="kpi-label">📈 PnL</div>
-      <div class="kpi-value" style="color:{pnl_color}">{pnl_sign}${{{stats["pnl"]:.2f}}}</div>
+      <div class="kpi-value" style="color:{pnl_color}">{pnl_sign}${stats["pnl"]:.2f}</div>
       <div class="kpi-sub">Total</div>
     </div>
     <div class="kpi">
@@ -394,7 +395,7 @@ body {{ background:var(--bg); color:var(--text); font-family:monospace; font-siz
     <div class="kpi">
       <div class="kpi-label">⏳ Abertos</div>
       <div class="kpi-value" style="color:var(--blue)">{stats["open_count"]}</div>
-      <div class="kpi-sub">Exposição ${{{stats["exposure"]:.2f}}</div>
+      <div class="kpi-sub">Exposição ${stats["exposure"]:.2f}</div>
     </div>
     <div class="kpi">
       <div class="kpi-label">📊 Total</div>
