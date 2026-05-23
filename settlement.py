@@ -1,12 +1,8 @@
 """
 settlement.py — resolve trades abertos consultando a Gamma API da Polymarket.
 
-Estratégia:
-  1. Para cada trade OPEN, busca GET /markets/{id} na Gamma API.
-  2. Se o mercado está fechado (closed=True ou acceptingOrders=False)
-     e outcomePrices resolveu (YES≈1 ou YES≈0), determina WIN/LOSS.
-  3. Fallback: se o mercado ainda não resolveu na Polymarket mas a data
-     já passou, tenta a temperatura real via open-meteo archive.
+FIX: _to_slug() corrigido — CITY_SLUG_NORMALIZE tem chaves de display name,
+não slugs. Agora faz lookup invertido corretamente.
 """
 
 import requests
@@ -60,11 +56,29 @@ def log_settlement(msg):
 
 
 def _to_slug(city_raw):
-    key  = city_raw.lower().replace(" ", "-").replace("_", "-").strip()
+    """
+    FIX: CITY_SLUG_NORMALIZE tem chaves de display ("New York" → "new-york").
+    Então para converter city_raw (display) em slug, basta fazer lookup direto.
+    Antes tentava lookup com key já em formato slug, o que nunca funcionava.
+    """
+    # Tentativa direta: city_raw é display name ("Toronto", "Madrid"...)
+    slug = CITY_SLUG_NORMALIZE.get(city_raw)
+    if slug and slug in CITY_COORDS_BY_SLUG:
+        return slug
+
+    # Fallback: city_raw já pode ser um slug ("new-york")
+    key = city_raw.lower().replace(" ", "-").replace("_", "-").strip()
     if key in CITY_COORDS_BY_SLUG:
         return key
-    key2 = city_raw.lower().replace("-", " ").strip()
-    return CITY_SLUG_NORMALIZE.get(key) or CITY_SLUG_NORMALIZE.get(key2)
+
+    # Último fallback: busca case-insensitive no normalize
+    city_lower = city_raw.lower().strip()
+    for display, sl in CITY_SLUG_NORMALIZE.items():
+        if display.lower() == city_lower:
+            if sl in CITY_COORDS_BY_SLUG:
+                return sl
+
+    return None
 
 
 def to_celsius(value, unit):
@@ -93,73 +107,53 @@ def _safe_get(url, retries=3):
 # ── Estratégia 1: resolução via Polymarket Gamma API ─────────────────────────
 
 def _resolve_via_polymarket(market_id):
-    """
-    Consulta GET /markets/{id} e determina resultado.
-
-    Retorna:
-        "WIN"   — YES resolveu em ~1.0
-        "LOSS"  — YES resolveu em ~0.0
-        "OPEN"  — mercado ainda não resolveu
-        None    — erro ou dados insuficientes
-    """
     data = _safe_get(f"{GAMMA_BASE}/markets/{market_id}")
     if not data:
         return None, None
 
-    closed          = data.get("closed", False)
-    accepting       = data.get("acceptingOrders", True)
-    uma_status      = data.get("umaResolutionStatus", "") or ""
-    outcome_prices  = data.get("outcomePrices")
+    closed         = data.get("closed", False)
+    accepting      = data.get("acceptingOrders", True)
+    uma_status     = data.get("umaResolutionStatus", "") or ""
+    outcome_prices = data.get("outcomePrices")
 
-    # Mercado ainda ativo — não resolveu
     if closed is False and accepting is True and uma_status not in ("resolved", "proposed"):
         return "OPEN", None
 
-    # Tenta ler preço do YES
     try:
         if isinstance(outcome_prices, str):
             prices = json.loads(outcome_prices)
         else:
             prices = list(outcome_prices) if outcome_prices else []
-
         yes_price = float(prices[0]) if prices else None
     except Exception:
         yes_price = None
 
     if yes_price is None:
-        # closed mas sem preço ainda (UMA em disputa) — aguarda
         if uma_status in ("proposed",):
             log_settlement(f"  ⏳ UMA em disputa (proposed): market {market_id}")
             return "OPEN", None
         return None, None
 
-    # YES ≥ 0.95 → WIN; YES ≤ 0.05 → LOSS; fora disso ainda pendente
     if yes_price >= 0.95:
         return "WIN", yes_price
     elif yes_price <= 0.05:
         return "LOSS", yes_price
     else:
-        # Preço intermediário — resolução ainda pendente
         log_settlement(f"  ⏳ YES={yes_price:.3f} — aguardando resolução final: market {market_id}")
         return "OPEN", yes_price
 
 
-# ── Estratégia 2: fallback temperatura open-meteo (D+1 ou posterior) ─────────
+# ── Estratégia 2: fallback temperatura open-meteo ────────────────────────────
 
 def _get_real_temperature(city_raw, date):
-    """
-    FIX #5: Usar timezone correto da cidade
-    """
     slug = _to_slug(city_raw)
     if not slug or slug not in CITY_COORDS_BY_SLUG:
-        log_settlement(f"❌ Cidade desconhecida: '{city_raw}'")
+        log_settlement(f"❌ Cidade desconhecida: '{city_raw}' (slug={slug})")
         return None
-    
+
     lat, lon = CITY_COORDS_BY_SLUG[slug]
-    
-    # FIX #5: Pegar timezone correto
     tz = CITY_TIMEZONE.get(slug, "UTC")
-    
+
     url = (
         "https://archive-api.open-meteo.com/v1/archive"
         f"?latitude={lat}&longitude={lon}"
@@ -184,7 +178,6 @@ def _get_real_temperature(city_raw, date):
 
 
 def _win_from_temp(real_temp_c, target_c, trade_type, trade):
-    """Determina WIN/LOSS pela temperatura real."""
     if trade_type == "ABOVE":
         return real_temp_c >= target_c
     elif trade_type == "BELOW":
@@ -225,10 +218,7 @@ def _apply_result(bankroll, trade, win, real_temp_c, session):
         trade["fee"]    = round(fee, 2)
         session["wins"]  += 1
         session["pnl"]   += pnl
-        log_settlement(
-            f"✅ WIN | {city:15} | {market_date} | "
-            f"PnL: ${pnl:+.2f} | market {market_id}"
-        )
+        log_settlement(f"✅ WIN | {city:15} | {market_date} | PnL: ${pnl:+.2f} | market {market_id}")
         try:
             notificar_settlement_win(
                 city=city, market_date=market_date, target=target, unit=unit,
@@ -250,10 +240,7 @@ def _apply_result(bankroll, trade, win, real_temp_c, session):
         trade["fee"]    = 0.0
         session["losses"] += 1
         session["pnl"]    -= stake
-        log_settlement(
-            f"❌ LOSS | {city:15} | {market_date} | "
-            f"PnL: -${stake:.2f} | market {market_id}"
-        )
+        log_settlement(f"❌ LOSS | {city:15} | {market_date} | PnL: -${stake:.2f} | market {market_id}")
         try:
             notificar_settlement_loss(
                 city=city, market_date=market_date, target=target, unit=unit,
@@ -280,13 +267,13 @@ def resolve_trades():
     log_settlement("🚀 INICIANDO SETTLEMENT")
     log_settlement(f"UTC NOW: {utcnow().isoformat()}")
 
-    bankroll    = load_bankroll()
-    history     = bankroll["history"]
-    today       = utcnow().date()
-    updated     = 0
-    errors      = 0
+    bankroll     = load_bankroll()
+    history      = bankroll["history"]
+    today        = utcnow().date()
+    updated      = 0
+    errors       = 0
     unresolvable = 0
-    session     = {"wins": 0, "losses": 0, "pnl": 0.0}
+    session      = {"wins": 0, "losses": 0, "pnl": 0.0}
 
     open_trades = [t for t in history if t.get("result") == "OPEN"]
     log_settlement(f"Total trades OPEN: {len(open_trades)}")
@@ -313,40 +300,33 @@ def resolve_trades():
 
         log_settlement(f"🔍 Checando: {city} {market_date} ({trade_type} {target}°{unit}) — market {market_id}")
 
-        # ── Estratégia 1: Polymarket Gamma ───────────────────────────────────
+        # Estratégia 1: Polymarket Gamma
         poly_result, yes_price = _resolve_via_polymarket(market_id)
         time.sleep(0.3)
 
         if poly_result in ("WIN", "LOSS"):
             win = (poly_result == "WIN")
-            log_settlement(
-                f"  → Polymarket: {'YES' if win else 'NO'} resolveu "
-                f"(YES price={yes_price:.3f})"
-            )
+            log_settlement(f"  → Polymarket: {'YES' if win else 'NO'} resolveu (YES price={yes_price:.3f})")
             _apply_result(bankroll, trade, win, None, session)
             updated += 1
             continue
 
         if poly_result == "OPEN":
-            # Mercado ainda ativo na Polymarket
             if trade_date >= today:
                 log_settlement(f"  ⏳ Mercado ainda aberto na Polymarket — aguardando")
                 continue
-            # Data passou mas Polymarket ainda não resolveu — tenta open-meteo
             log_settlement(f"  ⚠️  Data vencida mas Polymarket pendente — tentando open-meteo")
 
-        # ── Estratégia 2: open-meteo archive (fallback) ──────────────────────
+        # Estratégia 2: open-meteo archive
         if trade_date >= today:
-            # Hoje ou futuro — open-meteo não tem dados ainda
             log_settlement(f"  ⏳ {city} {market_date}: aguardando (data ainda não passou)")
             continue
 
         real_temp_c = _get_real_temperature(city, market_date)
         if real_temp_c is None:
             log_settlement(f"  ⚠️  Temperatura indisponível via open-meteo: {city} {market_date}")
-            # FIX #13: Marcar como UNRESOLVABLE em vez de FOREVER OPEN
             log_settlement(f"  ⚠️  Trade marcado como UNRESOLVABLE — requer investigação manual")
-            trade["result"] = "UNRESOLVABLE"
+            trade["result"]    = "UNRESOLVABLE"
             trade["exit_time"] = utcnow().isoformat()
             unresolvable += 1
             continue
@@ -367,14 +347,12 @@ def resolve_trades():
 
     save_bankroll(bankroll)
 
-    # Relatório de validação
     if VALIDACAO_OK and updated > 0:
         try:
             gerar_relatorio(enviar_telegram=True)
         except Exception as e:
             log_settlement(f"⚠️  validacao relatorio: {e}")
 
-    # Resumo
     wins      = sum(1 for t in history if t.get("result") == "WIN")
     losses    = sum(1 for t in history if t.get("result") == "LOSS")
     total_pnl = sum(t.get("pnl", 0) for t in history if t.get("result") in ("WIN", "LOSS"))
