@@ -305,6 +305,27 @@
             "market_date": "2026-05-25",
             "sigma_total": 7.1554,
             "market_price": 0.205
+        },
+        {
+            "market_id": "2337143",
+            "city": "Los-Angeles",
+            "question": "Will the highest temperature in Los Angeles be 72°F or higher on May 25?",
+            "market_date": "2026-05-25",
+            "entry_time": "2026-05-23T05:44:42.615247",
+            "exit_time": null,
+            "type": "ABOVE",
+            "target": 72.0,
+            "forecast_c": 21.8,
+            "sigma_total": 6.1658,
+            "shares": 1,
+            "model_prob": 0.4727,
+            "market_price": 0.29,
+            "edge": 0.1827,
+            "ev": 0.1827,
+            "stake": 0.29,
+            "result": "OPEN",
+            "pnl": 0,
+            "unit": "F"
         }
     ],
     "created_at": "2026-05-23T00:31:38.634156+00:00",
