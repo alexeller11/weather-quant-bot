@@ -1,9 +1,11 @@
 # =========================================================
-# WEATHER QUANT BOT — RISK
+# WEATHER QUANT BOT — RISK (CORRIGIDO)
 # =========================================================
 
 from config import (
-    MAX_TOTAL_EXPOSURE
+    MAX_TOTAL_EXPOSURE,
+    MAX_POSITION,
+    KELLY_FRACTION,
 )
 
 # =========================================================
@@ -18,33 +20,42 @@ def kelly_stake(
 
     market_price,
 ):
+    """
+    Calcula stake via Kelly Criterion com half-kelly e cap.
+    
+    FIX #8: Simplificado e explícito.
+    """
 
     try:
 
+        # Odds
         b = (
             (1.0 / market_price)
             - 1.0
         )
 
-        p = prob
-
+        p = float(prob)
         q = 1.0 - p
 
-        kelly = (
+        # Kelly puro
+        kelly_puro = (
             ((b * p) - q)
             / b
         )
 
-        # =====================================
-        # HALF KELLY
-        # =====================================
+        # Half Kelly
+        kelly_half = kelly_puro * KELLY_FRACTION
 
-        kelly *= 0.50
+        # Cap
+        kelly_capped = min(
+            kelly_half,
+            MAX_POSITION
+        )
 
-        if kelly <= 0:
+        if kelly_capped <= 0:
             return 0
 
-        stake = bankroll * kelly
+        stake = bankroll * kelly_capped
 
         return round(
             max(stake, 0),
@@ -123,21 +134,22 @@ def remaining_capacity(history):
     )
 
 # =========================================================
-# STAKE CAP
+# STAKE CAP (SIMPLIFICADO)
 # =========================================================
 
 def cap_stake_by_type(
     stake,
-    condition
+    condition,
 ):
+    """
+    FIX #8: Cap removido — já é feito em kelly_stake.
+    Essa função agora só reduz para EXACT (mais arriscado).
+    """
 
     if condition.upper() == "EXACT":
-
-        stake *= 0.40
-
-    else:
-
-        stake *= 0.75
+        # EXACT é arriscado — reduz 40%
+        stake *= 0.60
+    # ABOVE/BELOW — sem redução adicional
 
     return round(
         max(stake, 0),
