@@ -173,21 +173,23 @@ def reset_bankroll(starting_balance=None):
 def normalize_city(city_slug):
     """
     Converte slug em display name.
-    Ex: "new-york" → "New York", "hong-kong" → "Hong Kong"
-    
-    FIX #19: CITY_DISPLAY já tem mapping slug→display, basta lookup direto.
-    CITY_SLUG_NORMALIZE é o inverso (display→slug) e não é usado aqui.
+    Ex: "new-york"   → "New York"
+        "hong-kong"  → "Hong Kong"
+        "sao-paulo"  → "São Paulo"
+
+    FIX #19: lookup direto em CITY_DISPLAY (chaves são slugs).
+    CITY_SLUG_NORMALIZE tem chaves display→slug (inverso) e NÃO é usado aqui.
     """
     if not city_slug:
         return "Unknown"
-    
-    # Lookup direto no CITY_DISPLAY (slug como chave)
+
+    # Lookup direto: CITY_DISPLAY tem slug como chave
     normalized = CITY_DISPLAY.get(city_slug)
     if normalized:
         return normalized
-    
-    # Fallback: substitui "-" por " " e faz title
-    # Ex: se passar "new-york" mas não estiver em CITY_DISPLAY, retorna "New York"
+
+    # Fallback: substitui "-" e "_" por espaço e faz title
+    # Garante "new-york" → "New York" mesmo que não esteja em CITY_DISPLAY
     return city_slug.replace("-", " ").replace("_", " ").title()
 
 
