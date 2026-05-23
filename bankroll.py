@@ -171,13 +171,24 @@ def reset_bankroll(starting_balance=None):
 
 
 def normalize_city(city_slug):
-    key  = city_slug.lower().replace(" ", "-")
-    slug = CITY_SLUG_NORMALIZE.get(key) or CITY_SLUG_NORMALIZE.get(
-        city_slug.lower().replace("-", " ").strip()
-    )
-    if slug:
-        return CITY_DISPLAY[slug]
-    return city_slug.title()
+    """
+    Converte slug em display name.
+    Ex: "new-york" → "New York", "hong-kong" → "Hong Kong"
+    
+    FIX #19: CITY_DISPLAY já tem mapping slug→display, basta lookup direto.
+    CITY_SLUG_NORMALIZE é o inverso (display→slug) e não é usado aqui.
+    """
+    if not city_slug:
+        return "Unknown"
+    
+    # Lookup direto no CITY_DISPLAY (slug como chave)
+    normalized = CITY_DISPLAY.get(city_slug)
+    if normalized:
+        return normalized
+    
+    # Fallback: substitui "-" por " " e faz title
+    # Ex: se passar "new-york" mas não estiver em CITY_DISPLAY, retorna "New York"
+    return city_slug.replace("-", " ").replace("_", " ").title()
 
 
 def already_traded(history, market_id):
