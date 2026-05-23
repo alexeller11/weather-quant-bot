@@ -24,7 +24,12 @@ try:
 except Exception:
     VALIDACAO_OK = False
 
-from config import POLYMARKET_FEE, CITY_COORDS_BY_SLUG, CITY_SLUG_NORMALIZE
+from config import (
+    POLYMARKET_FEE,
+    CITY_COORDS_BY_SLUG,
+    CITY_SLUG_NORMALIZE,
+    CITY_TIMEZONE,
+)
 
 try:
     from notificador import (
@@ -142,16 +147,24 @@ def _resolve_via_polymarket(market_id):
 # ── Estratégia 2: fallback temperatura open-meteo (D+1 ou posterior) ─────────
 
 def _get_real_temperature(city_raw, date):
+    """
+    FIX #5: Usar timezone correto da cidade
+    """
     slug = _to_slug(city_raw)
     if not slug or slug not in CITY_COORDS_BY_SLUG:
         log_settlement(f"❌ Cidade desconhecida: '{city_raw}'")
         return None
+    
     lat, lon = CITY_COORDS_BY_SLUG[slug]
+    
+    # FIX #5: Pegar timezone correto
+    tz = CITY_TIMEZONE.get(slug, "UTC")
+    
     url = (
         "https://archive-api.open-meteo.com/v1/archive"
         f"?latitude={lat}&longitude={lon}"
         f"&start_date={date}&end_date={date}"
-        "&daily=temperature_2m_max&timezone=UTC"
+        f"&daily=temperature_2m_max&timezone={tz}"
     )
     try:
         r    = requests.get(url, timeout=20)
@@ -272,6 +285,7 @@ def resolve_trades():
     today       = utcnow().date()
     updated     = 0
     errors      = 0
+    unresolvable = 0
     session     = {"wins": 0, "losses": 0, "pnl": 0.0}
 
     open_trades = [t for t in history if t.get("result") == "OPEN"]
@@ -301,7 +315,7 @@ def resolve_trades():
 
         # ── Estratégia 1: Polymarket Gamma ───────────────────────────────────
         poly_result, yes_price = _resolve_via_polymarket(market_id)
-        time.sleep(0.3)  # gentileza com a API
+        time.sleep(0.3)
 
         if poly_result in ("WIN", "LOSS"):
             win = (poly_result == "WIN")
@@ -330,7 +344,11 @@ def resolve_trades():
         real_temp_c = _get_real_temperature(city, market_date)
         if real_temp_c is None:
             log_settlement(f"  ⚠️  Temperatura indisponível via open-meteo: {city} {market_date}")
-            errors += 1
+            # FIX #13: Marcar como UNRESOLVABLE em vez de FOREVER OPEN
+            log_settlement(f"  ⚠️  Trade marcado como UNRESOLVABLE — requer investigação manual")
+            trade["result"] = "UNRESOLVABLE"
+            trade["exit_time"] = utcnow().isoformat()
+            unresolvable += 1
             continue
 
         target_c = to_celsius(target, unit)
@@ -366,6 +384,7 @@ def resolve_trades():
     log_settlement("📊 SETTLEMENT SUMMARY")
     log_settlement("=" * 50)
     log_settlement(f"✅ Resolvidos agora:  {updated}")
+    log_settlement(f"⚠️  Unresolvable:      {unresolvable}")
     log_settlement(f"❌ Erros:             {errors}")
     log_settlement(f"📈 Total WIN/LOSS:    {wins}W / {losses}L")
     if (wins + losses) > 0:
@@ -386,7 +405,7 @@ def resolve_trades():
         except Exception as e:
             log_settlement(f"⚠️  Telegram resumo: {e}")
 
-    return updated, errors
+    return updated, errors, unresolvable
 
 
 if __name__ == "__main__":
