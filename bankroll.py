@@ -77,7 +77,12 @@ def _save_to_db(conn, data):
 def initialize():
     """Garante que bankroll.json existe se não houver banco."""
     if not os.path.exists(BANKROLL_FILE):
-        data = {"balance": START_BALANCE, "history": []}
+        data = {
+            "balance": START_BALANCE,
+            "start_balance": START_BALANCE,
+            "history": [],
+            "created_at": ""
+        }
         with open(BANKROLL_FILE, "w") as f:
             json.dump(data, f, indent=4)
 
@@ -120,6 +125,13 @@ def save_bankroll(data):
     2. bankroll.json local
     3. GitHub commit (assíncrono)
     """
+    # Garantir campos essenciais
+    if "start_balance" not in data:
+        data["start_balance"] = START_BALANCE
+    if "created_at" not in data:
+        from datetime import datetime, timezone
+        data["created_at"] = datetime.now(timezone.utc).isoformat()
+
     # 1. Salva local sempre (rápido)
     with open(BANKROLL_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4, ensure_ascii=False)
@@ -147,8 +159,14 @@ def save_bankroll(data):
 
 
 def reset_bankroll(starting_balance=None):
+    from datetime import datetime, timezone
     balance = starting_balance if starting_balance is not None else START_BALANCE
-    save_bankroll({"balance": balance, "history": []})
+    save_bankroll({
+        "balance": balance,
+        "start_balance": balance,
+        "history": [],
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
     print(f"Bankroll resetado. Saldo inicial: ${balance:.2f}")
 
 
