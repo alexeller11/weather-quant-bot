@@ -64,7 +64,6 @@ def commit_bankroll(bankroll_data):
     try:
         conteudo     = json.dumps(bankroll_data, indent=4, ensure_ascii=False)
         conteudo_b64 = base64.b64encode(conteudo.encode()).decode()
-        sha          = _get_sha_atual(token, repo, branch)
 
         saldo   = bankroll_data.get("balance", 0)
         abertos = len([t for t in bankroll_data.get("history", [])
@@ -76,20 +75,29 @@ def commit_bankroll(bankroll_data):
             "content": conteudo_b64,
             "branch":  branch,
         }
-        if sha:
-            payload["sha"] = sha
 
-        r = requests.put(
-            f"{_API}/repos/{repo}/contents/{BANKROLL_FILE}",
-            headers=_headers(token),
-            json=payload,
-            timeout=15,
-        )
+        for tentativa in range(2):
+            sha = _get_sha_atual(token, repo, branch)
+            if sha:
+                payload["sha"] = sha
+            elif "sha" in payload:
+                del payload["sha"]
 
-        if r.status_code in (200, 201):
-            print(f"  [github] bankroll salvo: ${saldo:.2f}")
-            return True
-        else:
+            r = requests.put(
+                f"{_API}/repos/{repo}/contents/{BANKROLL_FILE}",
+                headers=_headers(token),
+                json=payload,
+                timeout=15,
+            )
+
+            if r.status_code in (200, 201):
+                print(f"  [github] bankroll salvo: ${saldo:.2f}")
+                return True
+
+            if r.status_code == 409 and tentativa == 0:
+                print("  [github] conflito de SHA, tentando novamente...")
+                continue
+
             print(f"  [github] erro {r.status_code}: {r.text[:200]}")
             return False
 
