@@ -2,7 +2,8 @@
 # WEATHER QUANT BOT — BOT.PY (COMPLETO)
 # FIX #20: Guardrail model_prob == 0.50 exato
 # FIX #21: balance/history carregados fora do loop de cidades
-# FIX #22: scheduler roda settlement a cada hora (não só 08h/20h)
+# FIX #22: scheduler roda settlement a cada hora
+# FIX EMERGENCIA: fecha trades presos no boot (remover após rodar uma vez)
 # =========================================================
 
 import os
@@ -23,6 +24,43 @@ def utcnow():
     return datetime.now(
         timezone.utc
     ).replace(tzinfo=None)
+
+# =========================================================
+# FIX EMERGENCIA — fecha trades presos de datas passadas
+# Roda uma vez no boot e não faz nada se não houver trades presos
+# =========================================================
+
+try:
+    from bankroll import load_bankroll, save_bankroll
+
+    _data = load_bankroll()
+    _today = utcnow().date()
+    _fechados = 0
+
+    for _trade in _data["history"]:
+        if _trade.get("result") != "OPEN":
+            continue
+        try:
+            _d = datetime.strptime(_trade["market_date"], "%Y-%m-%d").date()
+        except Exception:
+            continue
+        if _d < _today:
+            _stake = float(_trade.get("stake", 0))
+            _trade["result"]    = "LOSS"
+            _trade["pnl"]       = round(-_stake, 2)
+            _trade["fee"]       = 0.0
+            _trade["exit_time"] = utcnow().isoformat()
+            print(f"[fix] Fechando trade preso: {_trade.get('city')} {_trade['market_date']} ${_stake:.2f}")
+            _fechados += 1
+
+    if _fechados > 0:
+        save_bankroll(_data)
+        print(f"[fix] {_fechados} trades fechados e salvos. Saldo: ${_data['balance']:.2f}")
+    else:
+        print("[fix] Nenhum trade preso encontrado.")
+
+except Exception as _e:
+    print(f"[fix] Erro no fix de emergencia: {_e}")
 
 # =========================================================
 # IMPORTS
@@ -130,7 +168,6 @@ def _rodar_settlement():
                 "[scheduler] Settlement OK"
             )
 
-            # Só notifica se algo foi resolvido (evita spam)
             if "Resolvidos agora:  0" not in (res.stdout or ""):
                 enviar_mensagem(
                     "Settlement executado com sucesso!"
@@ -157,11 +194,6 @@ def _rodar_settlement():
 
 # =========================================================
 # SCHEDULER — roda settlement a cada hora
-# FIX #22: antes rodava só às 08h e 20h UTC,
-# fazendo trades do mesmo dia nunca serem resolvidos
-# se fossem abertos depois do ciclo das 08h.
-# Agora roda a cada hora para cobrir mercados que
-# fecham ao longo do dia.
 # =========================================================
 
 def iniciar_scheduler():
@@ -309,8 +341,6 @@ while True:
 
         print("=======================")
 
-        # FIX #21: Carregar bankroll UMA VEZ por ciclo,
-        # fora do loop de cidades para balance acumular corretamente
         bankroll = load_bankroll()
         balance  = bankroll["balance"]
         history  = bankroll["history"]
@@ -551,8 +581,6 @@ while True:
                         ):
                             continue
 
-                        # FIX #20: Guardrail — prob exatamente 0.50
-                        # indica forecast_c == target_c → sem edge real
                         if abs(model_prob - 0.50) < 0.001:
                             print(
                                 f"  🚫 model_prob={model_prob:.4f} "
@@ -706,7 +734,6 @@ while True:
                         if stake <= 0:
                             continue
 
-                        # FIX #21: caps na ordem correta antes de calcular shares
                         stake = min(stake, remaining)
 
                         if stake > MAX_POSITION_DOLARES:
@@ -807,7 +834,6 @@ while True:
                             trade
                         )
 
-                        # FIX #21: atualiza balance imediatamente após o trade
                         balance -= stake
 
                         print(
@@ -868,7 +894,6 @@ while True:
                     f"Erro city {city}: {e}"
                 )
 
-        # FIX #21: persiste balance acumulado ao final do ciclo
         bankroll["balance"] = balance
         save_bankroll(bankroll)
 
