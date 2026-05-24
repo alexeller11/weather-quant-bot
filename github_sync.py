@@ -1,7 +1,8 @@
 """
-GITHUB SYNC — WEATHER QUANT
-FIX: GITHUB_TOKEN agora lido dentro das funções (não no import-time).
-Isso resolve o erro 403 quando o Railway injeta vars após o processo iniciar.
+GITHUB SYNC - WEATHER QUANT
+
+Reads GitHub credentials at call time so Railway-injected environment
+variables are available after process start.
 """
 
 import os
@@ -15,10 +16,10 @@ _API = "https://api.github.com"
 
 
 def _get_config():
-    """Lê config do ambiente a cada chamada — garante valor atualizado."""
+    """Read config from the environment on each call."""
     return {
-        "token":  os.environ.get("GITHUB_TOKEN", "").strip(),
-        "repo":   os.environ.get("GITHUB_REPO", "").strip(),
+        "token": os.environ.get("GITHUB_TOKEN", "").strip(),
+        "repo": os.environ.get("GITHUB_REPO", "").strip(),
         "branch": os.environ.get("GITHUB_BRANCH", "main").strip(),
     }
 
@@ -35,50 +36,69 @@ def _configurado():
     return bool(cfg["token"] and cfg["repo"])
 
 
-def _get_sha_atual(token, repo, branch):
-    """Pega o SHA do bankroll.json atual no repo."""
-    url = f"{_API}/repos/{repo}/contents/{BANKROLL_FILE}"
+def _get_remote_file(token, repo, branch, path):
+    url = f"{_API}/repos/{repo}/contents/{path}"
     try:
-        r = requests.get(url, headers=_headers(token),
-                         params={"ref": branch}, timeout=10)
+        r = requests.get(
+            url,
+            headers=_headers(token),
+            params={"ref": branch},
+            timeout=10,
+        )
         if r.status_code == 200:
-            return r.json().get("sha")
+            payload = r.json()
+            content = base64.b64decode(payload.get("content", "")).decode()
+            return payload.get("sha"), content
     except Exception:
         pass
     return None
 
 
+def _get_sha_atual(token, repo, branch):
+    """Get the current bankroll.json blob SHA."""
+    remote = _get_remote_file(token, repo, branch, BANKROLL_FILE)
+    if remote:
+        return remote[0]
+    return None
+
+
 def commit_bankroll(bankroll_data):
     """
-    Faz commit do bankroll.json no GitHub.
-    Retorna True se ok, False se falhou.
+    Commit bankroll.json to GitHub.
+    Returns True if saved or already up to date, False on failure.
     """
     cfg = _get_config()
     if not cfg["token"] or not cfg["repo"]:
         return False
 
-    token  = cfg["token"]
-    repo   = cfg["repo"]
+    token = cfg["token"]
+    repo = cfg["repo"]
     branch = cfg["branch"]
 
     try:
-        conteudo     = json.dumps(bankroll_data, indent=4, ensure_ascii=False)
+        conteudo = json.dumps(bankroll_data, indent=4, ensure_ascii=False)
         conteudo_b64 = base64.b64encode(conteudo.encode()).decode()
 
-        saldo   = bankroll_data.get("balance", 0)
-        abertos = len([t for t in bankroll_data.get("history", [])
-                       if t.get("result") == "OPEN"])
-        ts      = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+        saldo = bankroll_data.get("balance", 0)
+        abertos = len([
+            t for t in bankroll_data.get("history", [])
+            if t.get("result") == "OPEN"
+        ])
+        ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
         payload = {
             "message": f"bankroll: ${saldo:.2f} | {abertos} abertos | {ts}",
             "content": conteudo_b64,
-            "branch":  branch,
+            "branch": branch,
         }
 
         for tentativa in range(2):
-            sha = _get_sha_atual(token, repo, branch)
-            if sha:
+            remote = _get_remote_file(token, repo, branch, BANKROLL_FILE)
+            if remote:
+                sha, remote_content = remote
+                if remote_content == conteudo:
+                    print("  [github] bankroll sem alteracoes")
+                    return True
                 payload["sha"] = sha
             elif "sha" in payload:
                 del payload["sha"]
@@ -102,37 +122,32 @@ def commit_bankroll(bankroll_data):
             return False
 
     except Exception as e:
-        print(f"  [github] exceção: {e}")
+        print(f"  [github] excecao: {e}")
         return False
 
 
 def commit_validacao(validacao_data):
-    """Commit do validacao.json no GitHub."""
+    """Commit validacao.json to GitHub."""
     cfg = _get_config()
     if not cfg["token"] or not cfg["repo"]:
         return False
 
-    token  = cfg["token"]
-    repo   = cfg["repo"]
+    token = cfg["token"]
+    repo = cfg["repo"]
     branch = cfg["branch"]
 
     try:
-        conteudo     = json.dumps(validacao_data, indent=2, ensure_ascii=False)
+        conteudo = json.dumps(validacao_data, indent=2, ensure_ascii=False)
         conteudo_b64 = base64.b64encode(conteudo.encode()).decode()
 
-        r = requests.get(
-            f"{_API}/repos/{repo}/contents/validacao.json",
-            headers=_headers(token),
-            params={"ref": branch},
-            timeout=10,
-        )
-        sha = r.json().get("sha") if r.status_code == 200 else None
-        n   = len(validacao_data.get("previsoes", []))
+        remote = _get_remote_file(token, repo, branch, "validacao.json")
+        sha = remote[0] if remote else None
+        n = len(validacao_data.get("previsoes", []))
 
         payload = {
             "message": f"validacao: {n} previsoes",
             "content": conteudo_b64,
-            "branch":  branch,
+            "branch": branch,
         }
         if sha:
             payload["sha"] = sha
