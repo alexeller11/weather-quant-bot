@@ -146,6 +146,7 @@
         },
         {
             "ev": 0.1281,
+            "fee": 0.0,
             "pnl": -1.05,
             "city": "Milan",
             "edge": 0.1281,
@@ -161,10 +162,9 @@
             "forecast_c": 29.6,
             "model_prob": 0.2331,
             "market_date": "2026-05-24",
-            "sigma_total": 4.6662,
-            "market_price": 0.105,
             "real_temp_c": 30.9,
-            "fee": 0.0
+            "sigma_total": 4.6662,
+            "market_price": 0.105
         },
         {
             "ev": 0.0938,
