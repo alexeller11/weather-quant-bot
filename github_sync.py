@@ -5,6 +5,8 @@ Reads GitHub credentials at call time so Railway-injected environment
 variables are available after process start.
 """
 
+# Deploy marker: sync guard active.
+
 import os
 import json
 import base64
