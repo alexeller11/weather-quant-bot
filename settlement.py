@@ -1,12 +1,13 @@
 """
 settlement.py — resolve trades abertos consultando a Gamma API da Polymarket.
 
-CORREÇÕES:
-- _get_real_temperature() agora usa forecast+past_days=1 como fallback
-  quando o archive não tem dados do dia atual (retorna 403 ou lista vazia).
-- Estratégia de resolução em 3 camadas:
+FIX CRÍTICO: Após save_bankroll, recarrega do banco e verifica que os trades
+realmente foram persistidos como WIN/LOSS. Se ainda aparecerem como OPEN,
+força um segundo save para evitar o loop de notificações infinitas.
+
+Estratégia de resolução em 3 camadas:
     1. Polymarket Gamma (yes_price >= 0.95 / <= 0.05)
-    2. open-meteo ARCHIVE (dias passados — funciona para D-1 em diante)
+    2. open-meteo ARCHIVE (dias passados)
     3. open-meteo FORECAST past_days=1 (dia atual, disponível ~6h UTC)
 """
 
@@ -61,9 +62,6 @@ def log_settlement(msg):
 
 
 def _to_slug(city_raw):
-    """
-    Converte city_raw (display name ou slug com hífen) em slug canônico.
-    """
     slug = CITY_SLUG_NORMALIZE.get(city_raw)
     if slug and slug in CITY_COORDS_BY_SLUG:
         return slug
@@ -151,11 +149,6 @@ def _resolve_via_polymarket(market_id):
 # ── Estratégia 2: temperatura via open-meteo ARCHIVE ─────────────────────────
 
 def _get_temp_archive(lat, lon, tz, date_str):
-    """
-    Busca temperatura máxima no open-meteo archive.
-    Funciona para datas passadas (D-1 em diante dependendo do fuso).
-    Retorna None se não tiver dado ainda.
-    """
     url = (
         "https://archive-api.open-meteo.com/v1/archive"
         f"?latitude={lat}&longitude={lon}"
@@ -175,16 +168,9 @@ def _get_temp_archive(lat, lon, tz, date_str):
     return None
 
 
-# ── Estratégia 3: temperatura via open-meteo FORECAST (past_days=1) ──────────
+# ── Estratégia 3: temperatura via open-meteo FORECAST (past_days) ────────────
 
 def _get_temp_forecast_today(lat, lon, tz, date_str):
-    """
-    Busca temperatura máxima via endpoint de forecast com past_days=2.
-    Funciona para o dia atual e D-1/D-2, disponível desde ~6h UTC.
-
-    IMPORTANTE: retorna dado de previsão/análise, não observação confirmada.
-    Usar apenas quando o archive ainda não tem o dado.
-    """
     url = (
         "https://api.open-meteo.com/v1/forecast"
         f"?latitude={lat}&longitude={lon}"
@@ -200,23 +186,14 @@ def _get_temp_forecast_today(lat, lon, tz, date_str):
         temps = data.get("daily", {}).get("temperature_2m_max", [])
         for d, t in zip(dates, temps):
             if d == date_str and t is not None:
-                log_settlement(f"  [forecast/past] {date_str}: {t}°C ⚠️ dado de análise, não observação final")
+                log_settlement(f"  [forecast/past] {date_str}: {t}°C ⚠️ dado de análise")
                 return float(t)
     except Exception as e:
         log_settlement(f"  [forecast/past] erro: {e}")
     return None
 
 
-# ── Temperatura real (com fallback em camadas) ────────────────────────────────
-
 def _get_real_temperature(city_raw, date_str):
-    """
-    Busca temperatura máxima real para a cidade na data.
-
-    Camadas de fallback:
-    1. open-meteo ARCHIVE (mais confiável, mas só tem D-1+)
-    2. open-meteo FORECAST past_days (para o dia atual, ~6h UTC em diante)
-    """
     slug = _to_slug(city_raw)
     if not slug or slug not in CITY_COORDS_BY_SLUG:
         log_settlement(f"❌ Cidade desconhecida: '{city_raw}' (slug={slug})")
@@ -225,14 +202,12 @@ def _get_real_temperature(city_raw, date_str):
     lat, lon = CITY_COORDS_BY_SLUG[slug]
     tz = CITY_TIMEZONE.get(slug, "UTC")
 
-    # Camada 1: archive
     temp = _get_temp_archive(lat, lon, tz, date_str)
     if temp is not None:
         log_settlement(f"  [archive] {city_raw} {date_str}: {temp:.1f}°C ✅")
         return temp
 
-    # Camada 2: forecast past_days (fallback para dia atual)
-    today_str = utcnow().date().isoformat()
+    today_str     = utcnow().date().isoformat()
     yesterday_str = (utcnow().date() - timedelta(days=1)).isoformat()
 
     if date_str in (today_str, yesterday_str):
@@ -242,7 +217,7 @@ def _get_real_temperature(city_raw, date_str):
             return temp2
         log_settlement(f"  ⚠️  Nenhuma fonte tem temperatura para {city_raw} {date_str} ainda")
     else:
-        log_settlement(f"  ⚠️  Archive sem dados para {city_raw} {date_str} — data futura?")
+        log_settlement(f"  ⚠️  Archive sem dados para {city_raw} {date_str}")
 
     return None
 
@@ -330,6 +305,26 @@ def _apply_result(bankroll, trade, win, real_temp_c, session):
     trade["exit_time"] = utcnow().isoformat()
 
 
+# ── Verificação pós-save ──────────────────────────────────────────────────────
+
+def _verificar_persistencia(ids_resolvidos):
+    """
+    Recarrega o bankroll do banco e verifica que os trades resolvidos
+    nesta sessão realmente foram persistidos como WIN ou LOSS.
+    Retorna lista de market_ids que ainda estão OPEN (falha de persistência).
+    """
+    try:
+        bankroll_check = load_bankroll()
+        ainda_open = []
+        for t in bankroll_check.get("history", []):
+            if t.get("market_id") in ids_resolvidos and t.get("result") == "OPEN":
+                ainda_open.append(t.get("market_id"))
+        return ainda_open
+    except Exception as e:
+        log_settlement(f"⚠️  Erro na verificação pós-save: {e}")
+        return []
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def resolve_trades():
@@ -344,6 +339,9 @@ def resolve_trades():
     errors       = 0
     unresolvable = 0
     session      = {"wins": 0, "losses": 0, "pnl": 0.0}
+
+    # IDs resolvidos nesta sessão — usados para verificação pós-save
+    ids_resolvidos = []
 
     open_trades = [t for t in history if t.get("result") == "OPEN"]
     log_settlement(f"Total trades OPEN: {len(open_trades)}")
@@ -383,15 +381,16 @@ def resolve_trades():
             win = (poly_result == "WIN")
             log_settlement(f"  → Polymarket: {'YES' if win else 'NO'} resolveu (YES price={yes_price:.3f})")
             _apply_result(bankroll, trade, win, None, session)
+            ids_resolvidos.append(market_id)
             updated += 1
             continue
 
-        # Estratégia 2 e 3: temperatura real (archive → forecast/past)
+        # Estratégia 2 e 3: temperatura real
         log_settlement(f"  → Polymarket pendente — buscando temperatura real...")
         real_temp_c = _get_real_temperature(city, market_date)
 
         if real_temp_c is None:
-            log_settlement(f"  ⚠️  Temperatura indisponível: {city} {market_date} — tentando novamente no próximo ciclo")
+            log_settlement(f"  ⚠️  Temperatura indisponível: {city} {market_date} — próximo ciclo")
             unresolvable += 1
             continue
 
@@ -407,9 +406,35 @@ def resolve_trades():
             f"  → temp real: {real_temp_c:.1f}°C | target: {target_c:.1f}°C ({unit}) → {'WIN' if win else 'LOSS'}"
         )
         _apply_result(bankroll, trade, win, real_temp_c, session)
+        ids_resolvidos.append(market_id)
         updated += 1
 
-    save_bankroll(bankroll)
+    # ── Salva e verifica persistência ────────────────────────────────────────
+    if updated > 0:
+        log_settlement(f"💾 Salvando {updated} trades resolvidos...")
+        save_bankroll(bankroll)
+
+        # Verifica se o banco realmente persistiu
+        if ids_resolvidos:
+            log_settlement("🔍 Verificando persistência no banco...")
+            ainda_open = _verificar_persistencia(ids_resolvidos)
+            if ainda_open:
+                log_settlement(f"⚠️  ALERTA: {len(ainda_open)} trades ainda OPEN após save — forçando re-save")
+                # Força segundo save com os mesmos dados em memória
+                save_bankroll(bankroll)
+                # Segunda verificação
+                ainda_open2 = _verificar_persistencia(ids_resolvidos)
+                if ainda_open2:
+                    log_settlement(f"❌ CRÍTICO: Re-save também falhou para IDs: {ainda_open2}")
+                    log_settlement("❌ Notificações foram enviadas mas banco não persistiu — INTERROMPENDO para evitar loop")
+                    # Não envia resumo para evitar spam
+                    return updated, errors, unresolvable
+                else:
+                    log_settlement("✅ Re-save bem-sucedido — persistência confirmada")
+            else:
+                log_settlement(f"✅ Persistência confirmada para {len(ids_resolvidos)} trade(s)")
+    else:
+        save_bankroll(bankroll)
 
     if VALIDACAO_OK and updated > 0:
         try:
