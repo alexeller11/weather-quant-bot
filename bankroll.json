@@ -1,5 +1,5 @@
 {
-    "balance": 15.073200000000009,
+    "balance": 14.253200000000009,
     "history": [
         {
             "ev": 0.3158,
@@ -507,6 +507,27 @@
             "market_date": "2026-05-26",
             "sigma_total": 6.1658,
             "market_price": 0.375
+        },
+        {
+            "market_id": "2336655",
+            "city": "São Paulo",
+            "question": "Will the highest temperature in Sao Paulo be 18°C or below on May 25?",
+            "market_date": "2026-05-25",
+            "entry_time": "2026-05-24T05:41:58.645240",
+            "exit_time": null,
+            "type": "BELOW",
+            "target": 18.0,
+            "forecast_c": 22.0,
+            "sigma_total": 4.5259,
+            "shares": 10,
+            "model_prob": 0.1884,
+            "market_price": 0.082,
+            "edge": 0.1064,
+            "ev": 0.1064,
+            "stake": 0.82,
+            "result": "OPEN",
+            "pnl": 0,
+            "unit": "C"
         }
     ],
     "created_at": "2026-05-23T00:31:38.634156+00:00",
