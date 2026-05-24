@@ -44,7 +44,8 @@ try:
             _d = datetime.strptime(_trade["market_date"], "%Y-%m-%d").date()
         except Exception:
             continue
-        if _d < _today:
+        _IDS_PRESOS = {"2328442", "2328255", "2328520"}
+        if str(_trade.get("market_id", "")) in _IDS_PRESOS:
             _stake = float(_trade.get("stake", 0))
             _trade["result"]    = "LOSS"
             _trade["pnl"]       = round(-_stake, 2)
