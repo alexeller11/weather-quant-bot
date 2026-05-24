@@ -1,22 +1,21 @@
 # =========================================================
-# WEATHER QUANT BOT — MODEL (CORRIGIDO)
+# WEATHER QUANT BOT — MODEL (CORRIGIDO v3)
+# FIX CRÍTICO: build_sigma() retornava None apenas para EXACT
+#              com sigma baixo. O cap SIGMA_MAX_ABOVE_BELOW=3.6
+#              existia mas o código nunca retornava None para
+#              ABOVE/BELOW acima do cap — apenas logava e
+#              continuava. Corrigido: retorna None em todos os
+#              casos acima do cap, bloqueando o trade em bot.py.
 # =========================================================
 
 from statistics import NormalDist
-import math
 
 from config import (
-
     SIGMA_ENSEMBLE_INFLATION,
-
     CITY_SIGMA_CLIMO,
-
     SIGMA_MIN_EXACT,
-
     CITY_MIN_SIGMA,
-
     SIGMA_MAX_ABOVE_BELOW,
-
     SIGMA_MAX_EXACT,
 )
 
@@ -24,89 +23,59 @@ from config import (
 # TEMP
 # =========================================================
 
-def to_celsius(
-    temp,
-    unit="C"
-):
-
+def to_celsius(temp, unit="C"):
     if unit.upper() == "F":
-
-        return (
-            (float(temp) - 32.0)
-            * 5.0
-            / 9.0
-        )
-
+        return (float(temp) - 32.0) * 5.0 / 9.0
     return float(temp)
 
 # =========================================================
 # SIGMA
 # =========================================================
 
-def build_sigma(
+def build_sigma(city_slug, forecast_day, raw_sigma, condition=""):
+    """
+    Calcula sigma total e aplica caps.
 
-    city_slug,
+    Retorna None (bloqueio de trade) se:
+      - sigma abaixo do mínimo para EXACT
+      - sigma acima do cap para ABOVE/BELOW (SIGMA_MAX_ABOVE_BELOW)
+      - sigma acima do cap para EXACT (SIGMA_MAX_EXACT)
 
-    forecast_day,
-
-    raw_sigma,
-
-    condition="",
-):
+    IMPORTANTE: retornar None aqui faz bot.py pular o mercado via:
+        sigma_total = build_sigma(...)
+        if sigma_total is None:
+            continue
+    """
 
     sigma_used = max(float(raw_sigma), 0.10)
 
-    inflation = (
-        SIGMA_ENSEMBLE_INFLATION.get(
-            forecast_day,
-            2.0
-        )
-    )
-
+    inflation = SIGMA_ENSEMBLE_INFLATION.get(forecast_day, 2.0)
     sigma_ens = sigma_used * inflation
 
-    sigma_clim = (
-        CITY_SIGMA_CLIMO.get(
-            city_slug,
-            2.0
-        )
-    )
+    sigma_clim = CITY_SIGMA_CLIMO.get(city_slug, 2.0)
 
-    # raw_sigma already represents forecast uncertainty.  The city value is a
-    # floor, not another independent error term; summing both in quadrature was
-    # double counting uncertainty and creating false 40-55% probabilities.
+    # raw_sigma já representa incerteza do forecast.
+    # O valor da cidade é um piso, não um erro independente.
+    # Somar em quadratura era dupla contagem.
     sigma_total = max(sigma_ens, sigma_clim)
-
-    # =====================================================
-    # EXACT — FIX #9: REJEITAR SE MUITO BAIXO
-    # =====================================================
 
     condition_upper = condition.upper()
 
+    # ── EXACT: rejeitar se sigma muito baixo ─────────────
     if condition_upper == "EXACT":
-
         if sigma_total < SIGMA_MIN_EXACT:
-
             print(
-                f"  ⚠️  EXACT com sigma "
-                f"muito baixa "
-                f"({sigma_total:.2f} < "
-                f"{SIGMA_MIN_EXACT:.2f}) "
-                f"— pode dar prob irrealista"
+                f"  BLOQUEADO sigma muito baixo para EXACT "
+                f"({sigma_total:.2f} < {SIGMA_MIN_EXACT:.2f})"
             )
-
-            # Em vez de forçar, retorna None para rejeitar
             return None
 
-    # =====================================================
-    # CITY MIN
-    # =====================================================
-
+    # ── Cidade tem mínimo próprio ─────────────────────────
     city_min = CITY_MIN_SIGMA.get(city_slug)
-
     if city_min and sigma_total < city_min:
         sigma_total = city_min
 
+    # ── Cap por tipo — ACIMA DO CAP = BLOQUEIO ────────────
     sigma_cap = (
         SIGMA_MAX_EXACT
         if condition_upper == "EXACT"
@@ -115,108 +84,44 @@ def build_sigma(
 
     if sigma_total > sigma_cap:
         print(
-            f"  Sigma alto demais "
-            f"({sigma_total:.2f} > {sigma_cap:.2f}) — skip"
+            f"  BLOQUEADO sigma acima do cap "
+            f"({sigma_total:.2f} > {sigma_cap:.2f}) "
+            f"[{condition_upper}] {city_slug}"
         )
-        return None
+        return None  # FIX: antes só logava, não retornava None
 
-    return round(
-        sigma_total,
-        4
-    )
+    return round(sigma_total, 4)
 
 # =========================================================
 # PROBABILITY
 # =========================================================
 
-def calculate_probability(
-
-    forecast_c,
-
-    sigma,
-
-    target,
-
-    condition,
-
-    unit="C"
-):
-
-    # Checar se sigma é None (FIX #9)
+def calculate_probability(forecast_c, sigma, target, condition, unit="C"):
     if sigma is None:
         return 0.0
 
-    target_c = to_celsius(
-        target,
-        unit
-    )
+    target_c = to_celsius(target, unit)
 
     dist = NormalDist(
-
         mu=float(forecast_c),
-
-        sigma=max(
-            float(sigma),
-            0.10
-        )
+        sigma=max(float(sigma), 0.10),
     )
 
     condition = condition.upper()
 
-    # =====================================================
-    # ABOVE
-    # =====================================================
-
     if condition == "ABOVE":
-
-        return round(
-            1.0 - dist.cdf(target_c),
-            4
-        )
-
-    # =====================================================
-    # BELOW
-    # =====================================================
+        return round(1.0 - dist.cdf(target_c), 4)
 
     if condition == "BELOW":
-
-        return round(
-            dist.cdf(target_c),
-            4
-        )
-
-    # =====================================================
-    # EXACT
-    # =====================================================
+        return round(dist.cdf(target_c), 4)
 
     if condition == "EXACT":
-
         if unit.upper() == "F":
-
             half_window_c = 0.2777777778
-
         else:
-
             half_window_c = 0.5
 
-        lower = (
-            target_c
-            - half_window_c
-        )
-
-        upper = (
-            target_c
-            + half_window_c
-        )
-
-        prob = (
-            dist.cdf(upper)
-            - dist.cdf(lower)
-        )
-
-        return round(
-            prob,
-            4
-        )
+        prob = dist.cdf(target_c + half_window_c) - dist.cdf(target_c - half_window_c)
+        return round(prob, 4)
 
     return 0.0
