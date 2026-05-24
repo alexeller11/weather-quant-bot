@@ -3,7 +3,6 @@
 # FIX #20: Guardrail model_prob == 0.50 exato
 # FIX #21: balance/history carregados fora do loop de cidades
 # FIX #22: scheduler roda settlement a cada hora
-# FIX EMERGENCIA: fecha trades presos no boot (remover após rodar uma vez)
 # =========================================================
 
 import os
@@ -24,44 +23,6 @@ def utcnow():
     return datetime.now(
         timezone.utc
     ).replace(tzinfo=None)
-
-# =========================================================
-# FIX EMERGENCIA — fecha trades presos de datas passadas
-# Roda uma vez no boot e não faz nada se não houver trades presos
-# =========================================================
-
-try:
-    from bankroll import load_bankroll, save_bankroll
-
-    _data = load_bankroll()
-    _today = utcnow().date()
-    _fechados = 0
-
-    for _trade in _data["history"]:
-        if _trade.get("result") != "OPEN":
-            continue
-        try:
-            _d = datetime.strptime(_trade["market_date"], "%Y-%m-%d").date()
-        except Exception:
-            continue
-        _IDS_PRESOS = {"2328442", "2328255", "2328520"}
-        if str(_trade.get("market_id", "")) in _IDS_PRESOS:
-            _stake = float(_trade.get("stake", 0))
-            _trade["result"]    = "LOSS"
-            _trade["pnl"]       = round(-_stake, 2)
-            _trade["fee"]       = 0.0
-            _trade["exit_time"] = utcnow().isoformat()
-            print(f"[fix] Fechando trade preso: {_trade.get('city')} {_trade['market_date']} ${_stake:.2f}")
-            _fechados += 1
-
-    if _fechados > 0:
-        save_bankroll(_data)
-        print(f"[fix] {_fechados} trades fechados e salvos. Saldo: ${_data['balance']:.2f}")
-    else:
-        print("[fix] Nenhum trade preso encontrado.")
-
-except Exception as _e:
-    print(f"[fix] Erro no fix de emergencia: {_e}")
 
 # =========================================================
 # IMPORTS
