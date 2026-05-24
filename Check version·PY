@@ -1,0 +1,136 @@
+"""
+check_version.py — Diagnóstico rápido dos guardrails críticos.
+Execute no Railway via: python check_version.py
+
+Verifica:
+  1. Se build_sigma() bloqueia sigma acima do cap
+  2. Se TRADING_ENABLED está desligado
+  3. Exposição atual vs limites
+  4. Trades OPEN com sigma problemático
+"""
+
+import json
+from pathlib import Path
+
+print("=" * 55)
+print("WEATHER QUANT — DIAGNÓSTICO DE VERSÃO")
+print("=" * 55)
+
+# ── 1. Teste do fix crítico de model.py ──────────────────
+
+print("\n[1] Testando build_sigma() ...")
+try:
+    from model import build_sigma
+    from config import SIGMA_MAX_ABOVE_BELOW
+
+    # Deve retornar None (sigma 7.0 > cap 3.6)
+    resultado = build_sigma(
+        city_slug="denver",
+        forecast_day=2,
+        raw_sigma=7.0,
+        condition="ABOVE",
+    )
+
+    if resultado is None:
+        print(f"    OK  build_sigma(sigma=7.0, ABOVE) retornou None — bloqueio ativo")
+        print(f"    cap configurado: SIGMA_MAX_ABOVE_BELOW = {SIGMA_MAX_ABOVE_BELOW}")
+    else:
+        print(f"    PROBLEMA  build_sigma(sigma=7.0, ABOVE) retornou {resultado}")
+        print(f"    ACAO NECESSARIA: substituir model.py pela versão corrigida")
+
+except Exception as e:
+    print(f"    ERRO ao importar model.py: {e}")
+
+# ── 2. TRADING_ENABLED ───────────────────────────────────
+
+print("\n[2] Verificando TRADING_ENABLED ...")
+try:
+    from config import TRADING_ENABLED
+    status = "LIGADO ⚠️" if TRADING_ENABLED else "DESLIGADO (modo observação)"
+    print(f"    TRADING_ENABLED = {TRADING_ENABLED} — {status}")
+    if TRADING_ENABLED:
+        print("    ACAO NECESSARIA: definir TRADING_ENABLED=0 nas variáveis do Railway")
+except Exception as e:
+    print(f"    ERRO: {e}")
+
+# ── 3. Exposição atual ───────────────────────────────────
+
+print("\n[3] Lendo bankroll.json ...")
+bf = Path("bankroll.json")
+if not bf.exists():
+    print("    bankroll.json não encontrado")
+else:
+    try:
+        data = json.loads(bf.read_text(encoding="utf-8"))
+        history = data.get("history", [])
+        balance = float(data.get("balance", 0))
+
+        open_trades = [t for t in history if t.get("result") == "OPEN"]
+        exposure = sum(float(t.get("stake", 0)) for t in open_trades)
+
+        from config import MAX_TOTAL_EXPOSURE, MAX_OPEN_TRADES, MAX_POSITION
+
+        print(f"    Saldo:          ${balance:.2f}")
+        print(f"    Trades OPEN:    {len(open_trades)} / max {MAX_OPEN_TRADES}  {'OK' if len(open_trades) <= MAX_OPEN_TRADES else 'ACIMA DO LIMITE'}")
+        print(f"    Exposição:      ${exposure:.2f} / max ${MAX_TOTAL_EXPOSURE:.2f}  {'OK' if exposure <= MAX_TOTAL_EXPOSURE else 'ACIMA DO LIMITE'}")
+
+        # Trades com sigma problemático
+        sigma_altos = [
+            t for t in open_trades
+            if t.get("sigma_total") and float(t.get("sigma_total", 0)) > MAX_TOTAL_EXPOSURE
+        ]
+
+        # Trades com sigma acima do cap de 3.6
+        from config import SIGMA_MAX_ABOVE_BELOW
+        sigma_bloqueados = [
+            t for t in open_trades
+            if t.get("sigma_total") and float(t.get("sigma_total", 0)) > SIGMA_MAX_ABOVE_BELOW
+        ]
+
+        if sigma_bloqueados:
+            print(f"\n    Trades OPEN com sigma > {SIGMA_MAX_ABOVE_BELOW} (legado, pré-fix):")
+            for t in sigma_bloqueados:
+                print(
+                    f"      {t.get('city'):15} {t.get('market_date')} "
+                    f"sigma={t.get('sigma_total')} stake=${t.get('stake'):.2f}"
+                )
+        else:
+            print(f"    Nenhum trade OPEN com sigma acima do cap — OK")
+
+        # Stakes acima do MAX_POSITION
+        stakes_altos = [
+            t for t in open_trades
+            if float(t.get("stake", 0)) > MAX_POSITION
+        ]
+        if stakes_altos:
+            print(f"\n    Trades OPEN com stake > ${MAX_POSITION} (legado):")
+            for t in stakes_altos:
+                print(
+                    f"      {t.get('city'):15} {t.get('market_date')} "
+                    f"stake=${t.get('stake'):.2f}"
+                )
+
+    except Exception as e:
+        print(f"    ERRO ao ler bankroll: {e}")
+
+# ── 4. validacao.json ────────────────────────────────────
+
+print("\n[4] Verificando validacao.json ...")
+vf = Path("validacao.json")
+if not vf.exists():
+    print("    Arquivo não encontrado — será criado pelo bot")
+else:
+    try:
+        content = vf.read_text(encoding="utf-8").strip()
+        if content.startswith("{") or content.startswith("["):
+            json.loads(content)
+            print("    OK  validacao.json é JSON válido")
+        else:
+            print("    PROBLEMA  validacao.json contém código Python (não JSON)")
+            print("    ACAO NECESSARIA: substituir pelo arquivo validacao.json corrigido")
+    except json.JSONDecodeError:
+        print("    PROBLEMA  validacao.json inválido")
+
+print("\n" + "=" * 55)
+print("FIM DO DIAGNÓSTICO")
+print("=" * 55 + "\n")
