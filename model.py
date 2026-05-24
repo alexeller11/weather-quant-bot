@@ -14,6 +14,10 @@ from config import (
     SIGMA_MIN_EXACT,
 
     CITY_MIN_SIGMA,
+
+    SIGMA_MAX_ABOVE_BELOW,
+
+    SIGMA_MAX_EXACT,
 )
 
 # =========================================================
@@ -50,10 +54,7 @@ def build_sigma(
     condition="",
 ):
 
-    sigma_used = max(
-        float(raw_sigma),
-        0.10
-    )
+    sigma_used = max(float(raw_sigma), 0.10)
 
     inflation = (
         SIGMA_ENSEMBLE_INFLATION.get(
@@ -62,10 +63,7 @@ def build_sigma(
         )
     )
 
-    sigma_ens = (
-        sigma_used
-        * inflation
-    )
+    sigma_ens = sigma_used * inflation
 
     sigma_clim = (
         CITY_SIGMA_CLIMO.get(
@@ -74,20 +72,18 @@ def build_sigma(
         )
     )
 
-    sigma_total = math.sqrt(
-
-        (sigma_ens ** 2)
-
-        +
-
-        (sigma_clim ** 2)
-    )
+    # raw_sigma already represents forecast uncertainty.  The city value is a
+    # floor, not another independent error term; summing both in quadrature was
+    # double counting uncertainty and creating false 40-55% probabilities.
+    sigma_total = max(sigma_ens, sigma_clim)
 
     # =====================================================
     # EXACT — FIX #9: REJEITAR SE MUITO BAIXO
     # =====================================================
 
-    if condition.upper() == "EXACT":
+    condition_upper = condition.upper()
+
+    if condition_upper == "EXACT":
 
         if sigma_total < SIGMA_MIN_EXACT:
 
@@ -106,13 +102,23 @@ def build_sigma(
     # CITY MIN
     # =====================================================
 
-    city_min = CITY_MIN_SIGMA.get(
-        city_slug
-    )
+    city_min = CITY_MIN_SIGMA.get(city_slug)
 
     if city_min and sigma_total < city_min:
-
         sigma_total = city_min
+
+    sigma_cap = (
+        SIGMA_MAX_EXACT
+        if condition_upper == "EXACT"
+        else SIGMA_MAX_ABOVE_BELOW
+    )
+
+    if sigma_total > sigma_cap:
+        print(
+            f"  Sigma alto demais "
+            f"({sigma_total:.2f} > {sigma_cap:.2f}) — skip"
+        )
+        return None
 
     return round(
         sigma_total,

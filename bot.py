@@ -35,6 +35,7 @@ from forecast import get_forecast
 from model import (
     calculate_probability,
     build_sigma,
+    to_celsius,
 )
 
 from bankroll import (
@@ -60,7 +61,18 @@ from config import (
 
     EDGE_THRESHOLD_EXACT,
 
+    TRADING_ENABLED,
+
+    PROBABILITY_DEAD_ZONE_LOW,
+    PROBABILITY_DEAD_ZONE_HIGH,
+    MIN_TARGET_ZSCORE,
+    MIN_EV,
+
     MAX_TOTAL_EXPOSURE,
+    MAX_POSITION,
+    MAX_OPEN_TRADES,
+    MAX_TRADES_PER_CYCLE,
+    MAX_TRADES_PER_CITY,
 
     MIN_MARKET_PRICE,
     MAX_MARKET_PRICE,
@@ -82,7 +94,7 @@ from notificador import (
 # CONFIG
 # =========================================================
 
-MAX_POSITION_DOLARES = 10.0
+MAX_POSITION_DOLARES = MAX_POSITION
 
 # =========================================================
 # RESET
@@ -275,6 +287,52 @@ def exact_market_guard(
     return True
 
 # =========================================================
+# GENERAL TRADE GUARD
+# =========================================================
+
+def trade_quality_guard(
+    condition,
+    forecast_c,
+    sigma_total,
+    target,
+    unit,
+    model_prob,
+    market_price,
+    ev,
+):
+
+    condition = condition.upper()
+
+    if PROBABILITY_DEAD_ZONE_LOW <= model_prob <= PROBABILITY_DEAD_ZONE_HIGH:
+        print(
+            f"  BLOQUEADO prob neutra "
+            f"({model_prob:.4f})"
+        )
+        return False
+
+    if ev < MIN_EV or ev > MAX_EV:
+        print(
+            f"  BLOQUEADO EV fora da faixa "
+            f"({ev:.4f})"
+        )
+        return False
+
+    if market_price <= 0 or market_price >= 1:
+        return False
+
+    target_c = to_celsius(target, unit)
+    zscore = abs(float(forecast_c) - target_c) / max(float(sigma_total), 0.10)
+
+    if condition in ("ABOVE", "BELOW") and zscore < MIN_TARGET_ZSCORE:
+        print(
+            f"  BLOQUEADO target perto do forecast "
+            f"(z={zscore:.2f})"
+        )
+        return False
+
+    return True
+
+# =========================================================
 # START
 # =========================================================
 
@@ -307,7 +365,31 @@ while True:
         balance  = bankroll["balance"]
         history  = bankroll["history"]
 
+        if not TRADING_ENABLED:
+            print(
+                "TRADING_ENABLED=0 - modo observacao, "
+                "nenhuma entrada nova sera aberta."
+            )
+            save_bankroll(bankroll)
+            time.sleep(CYCLE_INTERVAL_SECONDS)
+            continue
+
+        trades_opened_cycle = 0
+
         for city in CITY_SLUGS:
+
+            if trades_opened_cycle >= MAX_TRADES_PER_CYCLE:
+                print("  Limite de entradas do ciclo atingido")
+                break
+
+            opened_this_cycle = len([
+                t for t in history
+                if t.get("result") == "OPEN"
+            ])
+
+            if opened_this_cycle >= MAX_OPEN_TRADES:
+                print("  Limite de trades abertos atingido")
+                break
 
             current_exposure = (
                 open_exposure(history)
@@ -543,13 +625,6 @@ while True:
                         ):
                             continue
 
-                        if abs(model_prob - 0.50) < 0.001:
-                            print(
-                                f"  🚫 model_prob={model_prob:.4f} "
-                                f"(≈0.50) — sem edge, skip"
-                            )
-                            continue
-
                         edge = round(
                             (
                                 model_prob
@@ -568,6 +643,18 @@ while True:
                             model_prob,
                             market_price,
                             ev,
+                        ):
+                            continue
+
+                        if not trade_quality_guard(
+                            condition=condition,
+                            forecast_c=forecast_c,
+                            sigma_total=sigma_total,
+                            target=target,
+                            unit=unit,
+                            model_prob=model_prob,
+                            market_price=market_price,
+                            ev=ev,
                         ):
                             continue
 
@@ -590,9 +677,6 @@ while True:
                         )
 
                         if edge < edge_min:
-                            continue
-
-                        if ev > MAX_EV:
                             continue
 
                         candidatos.append({
@@ -627,6 +711,15 @@ while True:
                         print(
                             f"Erro market: {e}"
                         )
+
+                candidatos = sorted(
+                    candidatos,
+                    key=lambda x: (
+                        x["edge"],
+                        x["ev"],
+                    ),
+                    reverse=True,
+                )[:MAX_TRADES_PER_CITY]
 
                 for cand in candidatos:
 
@@ -673,6 +766,17 @@ while True:
                         )
 
                         if remaining <= 0:
+                            break
+
+                        open_count = len([
+                            t for t in history
+                            if t.get("result") == "OPEN"
+                        ])
+
+                        if open_count >= MAX_OPEN_TRADES:
+                            break
+
+                        if trades_opened_cycle >= MAX_TRADES_PER_CYCLE:
                             break
 
                         print(
@@ -795,6 +899,8 @@ while True:
                         history.append(
                             trade
                         )
+
+                        trades_opened_cycle += 1
 
                         balance -= stake
 

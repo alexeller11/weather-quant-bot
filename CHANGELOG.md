@@ -2,6 +2,31 @@
 
 ## Arquivos modificados
 
+## 2026-05-24 — Emergency model/risk reset
+
+### `bankroll.json`
+- 17 trades `OPEN` foram marcados como `VOID`
+- Exposição paper removida: `$41.90`
+- Saldo recalculado por histórico fechado: `$33.69`
+
+### `model.py` / `forecast.py`
+- Removida a dupla contagem de sigma
+- `CITY_SIGMA_CLIMO` agora atua como piso, não como erro independente somado em quadratura
+- Adicionado teto de sigma para bloquear probabilidades artificiais
+
+### `bot.py` / `config.py`
+- Bot fica em modo observação por padrão (`TRADING_ENABLED=0`)
+- Zona neutra `0.45 <= model_prob <= 0.55` bloqueada
+- Bloqueio por target perto demais do forecast (`MIN_TARGET_ZSCORE`)
+- Risco reduzido: cap por trade `$2`, exposição máxima `$8`, no máximo 4 abertos
+- EV extremo bloqueado para evitar preço stale/ilíquido
+
+### Novos utilitários
+- `audit_model.py`: relatório local de calibração/exposição
+- `emergency_flatten.py`: zera exposição paper com `VOID`
+
+---
+
 ### `notificador.py` (era `telegram.py`)
 **Por que renomear?**
 O Python tem um pacote pip chamado `python-telegram-bot` que instala um módulo
@@ -94,8 +119,8 @@ coordenadas definidas, o que fazia `get_real_temperature` retornar `None`.
 2. **NÃO** copie o `telegram.py` antigo — ele foi substituído por `notificador.py`
 3. Confirme que o `.env` tem as duas linhas:
    ```
-   TELEGRAM_TOKEN=8699341949:AAGwsxpedy4vG-h-aGUeVNOMvsBtBma-NlM
-   CHAT_ID=1174531081
+   TELEGRAM_TOKEN=seu_token_aqui
+   CHAT_ID=seu_chat_id_aqui
    ```
 4. Teste o Telegram: `python notificador.py`
 5. Rode o bot: `python bot.py`

@@ -50,11 +50,31 @@ python settlement.py
 
 | Parâmetro | Valor | Descrição |
 |---|---|---|
-| `EDGE_THRESHOLD` | 0.08 | Edge mínimo (model_prob - market_price) |
-| `MAX_POSITION` | 0.05 | Cap por trade (5% do saldo) |
-| `MAX_TOTAL_EXPOSURE` | 0.15 | Exposição total máxima (15% do saldo) |
+| `TRADING_ENABLED` | `0` por padrão | Modo observação; use `1` para permitir novas entradas |
+| `EDGE_THRESHOLD` | 0.12 | Edge mínimo (model_prob - market_price) |
+| `MAX_POSITION` | 2.0 | Cap em dólares por trade |
+| `MAX_TOTAL_EXPOSURE` | 8.0 | Exposição total máxima em dólares |
+| `MAX_OPEN_TRADES` | 4 | Máximo de trades abertos |
+| `MAX_TRADES_PER_CYCLE` | 2 | Máximo de novas entradas por ciclo |
 | `KELLY_FRACTION` | 0.5 | Multiplicador do Kelly (half-Kelly) |
 | `POLYMARKET_FEE` | 0.02 | Taxa sobre o lucro (2%) |
+
+## Auditoria e emergência
+
+```bash
+# Relatório local de calibração, PnL, exposição e flags de risco
+python audit_model.py
+
+# Zera exposição paper: marca OPEN como VOID e recalcula saldo
+python emergency_flatten.py
+```
+
+Após uma intervenção de modelo, o bot fica pausado por padrão. Reative apenas
+quando o relatório estiver aceitável:
+
+```bash
+TRADING_ENABLED=1 python bot.py
+```
 
 ## Antes de usar capital real
 

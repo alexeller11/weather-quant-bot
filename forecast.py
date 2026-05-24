@@ -125,18 +125,27 @@ def get_forecast(
         # SIGMA BASE
         # =====================================================
 
-        base_sigma = 2.2
-        sigma = base_sigma + (forecast_day * 0.7)
+        # Calibrated conservative baseline for 1-5 day daily max forecasts.
+        # This is intentionally not inflated again in model.py.
+        base_sigma_by_day = {
+            1: 2.0,
+            2: 2.3,
+            3: 2.6,
+            4: 3.0,
+            5: 3.3,
+        }
+
+        sigma = base_sigma_by_day.get(forecast_day, 3.3)
 
         # Ajustes climáticos
         if city_slug in ["hong-kong", "houston", "austin", "miami"]:
-            sigma += 0.4
+            sigma += 0.25
 
         if city_slug in ["denver", "seattle", "london", "boston"]:
-            sigma += 0.2
+            sigma += 0.15
 
         if city_slug == "chicago":
-            sigma += 0.6
+            sigma += 0.30
 
         sigma = round(sigma, 2)
 
