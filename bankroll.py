@@ -3,11 +3,12 @@ BANKROLL — WEATHER QUANT
 ========================
 Persistência com 3 camadas de segurança:
 
-1. PostgreSQL (Railway) — fonte principal, persiste para sempre
-2. bankroll.json local  — cache local para leitura rápida
-3. GitHub commit        — backup externo a cada save
+1. PostgreSQL (Railway) — fonte principal
+2. bankroll.json local  — cache local
+3. GitHub commit        — backup externo
 
-Se o PostgreSQL não estiver configurado, cai para JSON local + GitHub.
+FIX CRÍTICO: _save_to_db agora usa RETURNING id para confirmar
+que o INSERT foi persistido antes de retornar.
 """
 
 import json
@@ -18,7 +19,7 @@ from config import START_BALANCE, CITY_DISPLAY, CITY_SLUG_NORMALIZE
 BANKROLL_FILE = "bankroll.json"
 
 # ──────────────────────────────────────────────────────────────
-# POSTGRESQL — conexão lazy (só conecta se DATABASE_URL existir)
+# POSTGRESQL
 # ──────────────────────────────────────────────────────────────
 
 def _get_db():
@@ -55,18 +56,24 @@ def _load_from_db(conn):
         cur.execute("SELECT data FROM bankroll ORDER BY id DESC LIMIT 1")
         row = cur.fetchone()
     if row:
-        return row[0]  # psycopg2 retorna JSONB como dict direto
+        return row[0]
     return None
 
 
 def _save_to_db(conn, data):
-    """Salva bankroll no banco (INSERT — mantém histórico de snapshots)."""
+    """
+    Salva bankroll no banco com RETURNING id para confirmar persistência.
+    Lança exceção se o INSERT não for confirmado.
+    """
     _ensure_table(conn)
     with conn.cursor() as cur:
         cur.execute(
-            "INSERT INTO bankroll (data) VALUES (%s)",
+            "INSERT INTO bankroll (data) VALUES (%s) RETURNING id",
             (json.dumps(data),)
         )
+        row = cur.fetchone()
+        if not row:
+            raise Exception("INSERT não retornou id — save não confirmado pelo banco")
     conn.commit()
 
 
@@ -120,10 +127,8 @@ def load_bankroll():
 
 def save_bankroll(data):
     """
-    Salva bankroll em todas as camadas disponíveis:
-    1. PostgreSQL
-    2. bankroll.json local
-    3. GitHub commit (assíncrono)
+    Salva bankroll em todas as camadas disponíveis.
+    FIX: verifica confirmação do banco antes de retornar.
     """
     # Garantir campos essenciais
     if "start_balance" not in data:
@@ -136,13 +141,13 @@ def save_bankroll(data):
     with open(BANKROLL_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4, ensure_ascii=False)
 
-    # 2. Salva no PostgreSQL
+    # 2. Salva no PostgreSQL com confirmação
     conn = _get_db()
     if conn:
         try:
             _save_to_db(conn, data)
             conn.close()
-            print(f"  [db] bankroll salvo — saldo: ${data.get('balance', 0):.2f}")
+            print(f"  [db] bankroll salvo e confirmado — saldo: ${data.get('balance', 0):.2f}")
         except Exception as e:
             print(f"  [db] save falhou: {e}")
             try:
@@ -156,6 +161,38 @@ def save_bankroll(data):
         commit_bankroll(data)
     except Exception as e:
         print(f"  [github] indisponível: {e}")
+
+
+def force_close_open_trades(market_date_str):
+    """
+    UTILITÁRIO DE EMERGÊNCIA.
+    Fecha todos os trades OPEN com data <= market_date_str como LOSS.
+    Útil quando o settlement entra em loop por falha de persistência.
+
+    Uso: from bankroll import force_close_open_trades
+         force_close_open_trades("2026-05-24")
+    """
+    from datetime import datetime
+    data = load_bankroll()
+    fechados = 0
+    for trade in data["history"]:
+        if trade.get("result") != "OPEN":
+            continue
+        mdate = trade.get("market_date", "")
+        if mdate <= market_date_str:
+            stake = float(trade.get("stake", 0))
+            trade["result"]    = "LOSS"
+            trade["pnl"]       = round(-stake, 2)
+            trade["fee"]       = 0.0
+            trade["exit_time"] = datetime.utcnow().isoformat()
+            print(f"  Fechando LOSS: {trade.get('city')} {mdate} ${stake:.2f}")
+            fechados += 1
+    if fechados > 0:
+        save_bankroll(data)
+        print(f"  {fechados} trades fechados. Saldo: ${data['balance']:.2f}")
+    else:
+        print("  Nenhum trade encontrado para fechar.")
+    return fechados
 
 
 def reset_bankroll(starting_balance=None):
@@ -175,21 +212,14 @@ def normalize_city(city_slug):
     Converte slug em display name.
     Ex: "new-york"   → "New York"
         "hong-kong"  → "Hong Kong"
-        "sao-paulo"  → "São Paulo"
-
-    FIX #19: lookup direto em CITY_DISPLAY (chaves são slugs).
-    CITY_SLUG_NORMALIZE tem chaves display→slug (inverso) e NÃO é usado aqui.
     """
     if not city_slug:
         return "Unknown"
 
-    # Lookup direto: CITY_DISPLAY tem slug como chave
     normalized = CITY_DISPLAY.get(city_slug)
     if normalized:
         return normalized
 
-    # Fallback: substitui "-" e "_" por espaço e faz title
-    # Garante "new-york" → "New York" mesmo que não esteja em CITY_DISPLAY
     return city_slug.replace("-", " ").replace("_", " ").title()
 
 
