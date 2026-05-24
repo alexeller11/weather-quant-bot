@@ -1,5 +1,7 @@
 # =========================================================
 # WEATHER QUANT BOT — CONFIG
+# FIX: MAX_FORECAST_DAY=3 (era 5)
+#      EDGE_THRESHOLD_BY_DAY: edge mínimo cresce com o horizonte
 # =========================================================
 
 import os
@@ -27,7 +29,6 @@ KELLY_FRACTION = 0.50
 MAX_POSITION = 2.0
 
 # MAX_KELLY_FRACTION_CAP: cap como fração do bankroll (usado em risk.py)
-# 0.20 = nunca apostar mais de 20% do bankroll em um único trade via Kelly
 MAX_KELLY_FRACTION_CAP = 0.05
 
 MAX_TOTAL_EXPOSURE = 8.0
@@ -36,9 +37,27 @@ MAX_TRADES_PER_CYCLE = 2
 MAX_TRADES_PER_CITY = 1
 
 # =========================================================
-# EDGE
+# HORIZONTE
+# FIX: limitar a D3. D4/D5 têm sigma alto demais e edge ilusório.
 # =========================================================
 
+MAX_FORECAST_DAY = 3
+
+# =========================================================
+# EDGE
+# Edge mínimo cresce com o horizonte porque a incerteza cresce.
+# D1: mercado já eficiente, exige edge maior para compensar.
+# D2: sweet spot — forecast bom, mercado ainda imperfeito.
+# D3: começa a degradar, exige edge maior para compensar ruído.
+# =========================================================
+
+EDGE_THRESHOLD_BY_DAY = {
+    1: 0.15,   # D1: mercado já eficiente, exige mais edge
+    2: 0.12,   # D2: sweet spot
+    3: 0.16,   # D3: mais incerteza, exige mais edge
+}
+
+# Fallback para EXACT e casos não mapeados
 EDGE_THRESHOLD       = 0.12
 EDGE_THRESHOLD_EXACT = 0.15
 
@@ -61,17 +80,12 @@ MAX_LIQUIDITY_PRICE = 0.88
 # TRADING SAFETY
 # =========================================================
 
-# Emergency default: keep the bot in observation mode after a model reset.
-# Set TRADING_ENABLED=1 only after checking the validation report.
 TRADING_ENABLED = os.getenv("TRADING_ENABLED", "0") == "1"
 
 PROBABILITY_DEAD_ZONE_LOW  = 0.45
 PROBABILITY_DEAD_ZONE_HIGH = 0.55
 
-# Reject trades where forecast is too close to the target relative to sigma.
 MIN_TARGET_ZSCORE = 0.45
-
-# Extreme quoted EV is usually stale/illiquid pricing or a bad probability.
 MIN_EV = 0.02
 
 # =========================================================
@@ -130,14 +144,13 @@ CITY_DISPLAY = {
     "miami":        "Miami",
     "atlanta":      "Atlanta",
     "boston":       "Boston",
-    # FIX: cidades presentes no bankroll mas ausentes da config
     "toronto":      "Toronto",
     "madrid":       "Madrid",
     "mexico-city":  "Mexico City",
 }
 
 # =========================================================
-# NORMALIZE — chaves são display names, valores são slugs
+# NORMALIZE
 # =========================================================
 
 CITY_SLUG_NORMALIZE = {
@@ -161,7 +174,6 @@ CITY_SLUG_NORMALIZE = {
     "Miami":        "miami",
     "Atlanta":      "atlanta",
     "Boston":       "boston",
-    # FIX: adicionadas
     "Toronto":      "toronto",
     "Madrid":       "madrid",
     "Mexico City":  "mexico-city",
@@ -191,7 +203,6 @@ CITY_COORDS_BY_SLUG = {
     "miami":       (25.7617, -80.1918),
     "atlanta":     (33.7490, -84.3880),
     "boston":      (42.3601, -71.0589),
-    # FIX: adicionadas
     "toronto":     (43.6532, -79.3832),
     "madrid":      (40.4168, -3.7038),
     "mexico-city": (19.4326, -99.1332),
@@ -221,7 +232,6 @@ CITY_TIMEZONE = {
     "miami":       "America/New_York",
     "atlanta":     "America/New_York",
     "boston":      "America/New_York",
-    # FIX: adicionadas
     "toronto":     "America/Toronto",
     "madrid":      "Europe/Madrid",
     "mexico-city": "America/Mexico_City",
@@ -269,7 +279,7 @@ CITY_SIGMA_CLIMO = {
 }
 
 # =========================================================
-# SIGMA MIN
+# SIGMA MIN/MAX
 # =========================================================
 
 SIGMA_MIN_EXACT = 1.6
