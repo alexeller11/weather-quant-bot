@@ -1,6 +1,0 @@
-.env
-*.pyc
-__pycache__/
-*.bak
-*.log
-bankroll_pre_*.json
