@@ -31,9 +31,9 @@ MAX_POSITION = 2.0
 # MAX_KELLY_FRACTION_CAP: cap como fração do bankroll (usado em risk.py)
 MAX_KELLY_FRACTION_CAP = 0.05
 
-MAX_TOTAL_EXPOSURE = 8.0
-MAX_OPEN_TRADES = 4
-MAX_TRADES_PER_CYCLE = 2
+MAX_TOTAL_EXPOSURE = 16.0  # era 8 — aumentado para coletar dados mais rápido
+MAX_OPEN_TRADES = 8        # era 4
+MAX_TRADES_PER_CYCLE = 3   # era 2
 MAX_TRADES_PER_CITY = 1
 
 # =========================================================
