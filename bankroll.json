@@ -172,6 +172,7 @@
         },
         {
             "ev": 0.0938,
+            "fee": 0.0,
             "pnl": -1.17,
             "city": "Austin",
             "edge": 0.0938,
@@ -188,13 +189,13 @@
             "forecast_c": 30.2,
             "model_prob": 0.3288,
             "market_date": "2026-05-25",
-            "sigma_total": 7.0682,
-            "market_price": 0.235,
             "real_temp_c": 31.6,
-            "fee": 0.0
+            "sigma_total": 7.0682,
+            "market_price": 0.235
         },
         {
             "ev": 0.1526,
+            "fee": 0.0,
             "pnl": -1.92,
             "city": "Paris",
             "edge": 0.1526,
@@ -211,13 +212,13 @@
             "forecast_c": 32.3,
             "model_prob": 0.3926,
             "market_date": "2026-05-25",
-            "sigma_total": 6.24,
-            "market_price": 0.24,
             "real_temp_c": 31.0,
-            "fee": 0.0
+            "sigma_total": 6.24,
+            "market_price": 0.24
         },
         {
             "ev": 0.2445,
+            "fee": 0.0,
             "pnl": -2.93,
             "city": "Atlanta",
             "edge": 0.2445,
@@ -234,13 +235,13 @@
             "forecast_c": 25.5,
             "model_prob": 0.4695,
             "market_date": "2026-05-25",
-            "sigma_total": 6.5412,
-            "market_price": 0.225,
             "real_temp_c": 25.5,
-            "fee": 0.0
+            "sigma_total": 6.5412,
+            "market_price": 0.225
         },
         {
             "ev": 0.2102,
+            "fee": 0.0,
             "pnl": -2.3,
             "city": "Houston",
             "edge": 0.2102,
@@ -257,13 +258,13 @@
             "forecast_c": 28.7,
             "model_prob": 0.3102,
             "market_date": "2026-05-25",
-            "sigma_total": 7.1113,
-            "market_price": 0.1,
             "real_temp_c": 28.6,
-            "fee": 0.0
+            "sigma_total": 7.1113,
+            "market_price": 0.1
         },
         {
             "ev": 0.0777,
+            "fee": 0.0,
             "pnl": -0.98,
             "city": "Seoul",
             "edge": 0.0777,
@@ -280,13 +281,13 @@
             "forecast_c": 27.4,
             "model_prob": 0.4027,
             "market_date": "2026-05-25",
-            "sigma_total": 6.4944,
-            "market_price": 0.325,
             "real_temp_c": 28.5,
-            "fee": 0.0
+            "sigma_total": 6.4944,
+            "market_price": 0.325
         },
         {
             "ev": 0.1763,
+            "fee": 0.04,
             "pnl": 2.05,
             "city": "Denver",
             "edge": 0.1763,
@@ -303,13 +304,13 @@
             "forecast_c": 28.7,
             "model_prob": 0.9863,
             "market_date": "2026-05-25",
-            "sigma_total": 6.9661,
-            "market_price": 0.81,
             "real_temp_c": 28.6,
-            "fee": 0.04
+            "sigma_total": 6.9661,
+            "market_price": 0.81
         },
         {
             "ev": 0.1123,
+            "fee": 0.0,
             "pnl": -1.23,
             "city": "Hong-Kong",
             "edge": 0.1123,
@@ -326,13 +327,13 @@
             "forecast_c": 29.6,
             "model_prob": 0.3173,
             "market_date": "2026-05-25",
-            "sigma_total": 7.1554,
-            "market_price": 0.205,
             "real_temp_c": 30.1,
-            "fee": 0.0
+            "sigma_total": 7.1554,
+            "market_price": 0.205
         },
         {
             "ev": 0.1827,
+            "fee": 0.01,
             "pnl": 0.7,
             "city": "Los-Angeles",
             "edge": 0.1827,
@@ -349,10 +350,9 @@
             "forecast_c": 21.8,
             "model_prob": 0.4727,
             "market_date": "2026-05-25",
-            "sigma_total": 6.1658,
-            "market_price": 0.29,
             "real_temp_c": 23.5,
-            "fee": 0.01
+            "sigma_total": 6.1658,
+            "market_price": 0.29
         },
         {
             "ev": 0.0515,
@@ -379,6 +379,7 @@
         },
         {
             "ev": 0.0772,
+            "fee": 0.0,
             "pnl": -1.36,
             "city": "Tokyo",
             "edge": 0.0772,
@@ -395,10 +396,9 @@
             "forecast_c": 21.6,
             "model_prob": 0.1572,
             "market_date": "2026-05-25",
-            "sigma_total": 6.3614,
-            "market_price": 0.08,
             "real_temp_c": 25.1,
-            "fee": 0.0
+            "sigma_total": 6.3614,
+            "market_price": 0.08
         },
         {
             "ev": 0.1024,
@@ -528,6 +528,7 @@
         },
         {
             "ev": 0.1064,
+            "fee": 0.0,
             "pnl": -0.82,
             "city": "São Paulo",
             "edge": 0.1064,
@@ -544,10 +545,9 @@
             "forecast_c": 22.0,
             "model_prob": 0.1884,
             "market_date": "2026-05-25",
-            "sigma_total": 4.5259,
-            "market_price": 0.082,
             "real_temp_c": 20.6,
-            "fee": 0.0
+            "sigma_total": 4.5259,
+            "market_price": 0.082
         },
         {
             "ev": 0.3371,
