@@ -11,7 +11,7 @@ import json
 # Configurações de Risco
 # ============================================================
 
-TRADING_ENABLED = int(os.getenv("TRADING_ENABLED", "0"))
+TRADING_ENABLED = int(os.getenv("TRADING_ENABLED", "1"))
 MIN_PROB_ABOVE_BELOW = float(os.getenv("MIN_PROB_ABOVE_BELOW", "0.70"))
 MIN_TARGET_ZSCORE = float(os.getenv("MIN_TARGET_ZSCORE", "1.50"))
 MAX_POSITION = float(os.getenv("MAX_POSITION", "2.00"))
