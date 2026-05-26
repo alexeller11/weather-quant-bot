@@ -2,6 +2,9 @@
 # WEATHER QUANT BOT — CONFIG
 # FIX: MAX_FORECAST_DAY=3 (era 5)
 #      EDGE_THRESHOLD_BY_DAY: edge mínimo cresce com o horizonte
+# FIX #26: MIN_PROB_ABOVE_BELOW=0.55, MIN_PROB_BELOW=0.55
+#      Impede trades onde o modelo tem < 55% de convicção na direção.
+#      Edge positivo com prob baixa = mercado está certo, não nós.
 # =========================================================
 
 import os
@@ -31,33 +34,27 @@ MAX_POSITION = 2.0
 # MAX_KELLY_FRACTION_CAP: cap como fração do bankroll (usado em risk.py)
 MAX_KELLY_FRACTION_CAP = 0.05
 
-MAX_TOTAL_EXPOSURE = 16.0  # era 8 — aumentado para coletar dados mais rápido
-MAX_OPEN_TRADES = 8        # era 4
-MAX_TRADES_PER_CYCLE = 3   # era 2
-MAX_TRADES_PER_CITY = 1
+MAX_TOTAL_EXPOSURE   = 16.0
+MAX_OPEN_TRADES      = 8
+MAX_TRADES_PER_CYCLE = 3
+MAX_TRADES_PER_CITY  = 1
 
 # =========================================================
 # HORIZONTE
-# FIX: limitar a D3. D4/D5 têm sigma alto demais e edge ilusório.
 # =========================================================
 
 MAX_FORECAST_DAY = 3
 
 # =========================================================
 # EDGE
-# Edge mínimo cresce com o horizonte porque a incerteza cresce.
-# D1: mercado já eficiente, exige edge maior para compensar.
-# D2: sweet spot — forecast bom, mercado ainda imperfeito.
-# D3: começa a degradar, exige edge maior para compensar ruído.
 # =========================================================
 
 EDGE_THRESHOLD_BY_DAY = {
-    1: 0.15,   # D1: mercado já eficiente, exige mais edge
-    2: 0.12,   # D2: sweet spot
-    3: 0.16,   # D3: mais incerteza, exige mais edge
+    1: 0.15,
+    2: 0.12,
+    3: 0.16,
 }
 
-# Fallback para EXACT e casos não mapeados
 EDGE_THRESHOLD       = 0.12
 EDGE_THRESHOLD_EXACT = 0.15
 
@@ -87,6 +84,28 @@ PROBABILITY_DEAD_ZONE_HIGH = 0.55
 
 MIN_TARGET_ZSCORE = 0.45
 MIN_EV = 0.02
+
+# =========================================================
+# FIX #26: PROBABILIDADE MÍNIMA POR TIPO
+#
+# Por que isso é necessário:
+#   Edge = model_prob - market_price
+#   Se market_price = 0.08 e model_prob = 0.20, edge = +0.12
+#   Parece bom, mas estamos dizendo que a prob é 20% — ou seja,
+#   80% de chance de perder. O mercado com 8% está errado, mas
+#   nós com 20% também não temos convicção suficiente para apostar.
+#
+# MIN_PROB_ABOVE_BELOW = 0.55:
+#   Para apostar ABOVE, o modelo precisa achar >55% de chance de ABOVE.
+#   Para apostar BELOW, o modelo precisa achar >55% de chance de BELOW.
+#   Abaixo disso, o modelo está incerto demais na direção.
+#
+# Efeito esperado: reduzir número de trades, aumentar qualidade.
+# =========================================================
+
+MIN_PROB_ABOVE_BELOW = 0.55   # prob mínima para trades ABOVE
+MIN_PROB_BELOW       = 0.55   # prob mínima para trades BELOW
+# EXACT não tem esse filtro (lógica diferente — baixa prob é esperada)
 
 # =========================================================
 # POLYMARKET FEE

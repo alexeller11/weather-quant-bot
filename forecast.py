@@ -1,19 +1,28 @@
 # =========================================================
-# FORECAST ENGINE — OPEN METEO (COM TTL)
-# FIX: Toronto, Madrid, Mexico City adicionados a CITY_COORDS
-#      Sem isso, get_forecast() retornava None para essas cidades
-#      e o bot nunca abria trades nelas.
+# FORECAST ENGINE — OPEN METEO (COM TTL + BIAS CORRECTION)
+#
+# FIX NOVO: bias_correction()
+#   Lê os pares (forecast_c, real_temp_c) dos trades fechados
+#   no bankroll, calcula o erro médio por cidade nos últimos
+#   BIAS_WINDOW_DAYS dias, e subtrai esse bias do forecast
+#   antes de passar para calculate_probability() em bot.py.
+#
+#   Regra: mínimo BIAS_MIN_SAMPLES amostras por cidade para
+#   aplicar a correção — sem amostras suficientes, retorna 0.0
+#   (sem ajuste).
+#
+# FIX ANTERIOR: Toronto, Madrid, Mexico City adicionados.
 # =========================================================
 
 import requests
 import time
+from datetime import datetime, timezone, timedelta
 
 # =========================================================
 # COORDS
 # =========================================================
 
 CITY_COORDS = {
-
     "new-york":    (40.7128, -74.0060),
     "london":      (51.5072, -0.1276),
     "paris":       (48.8566, 2.3522),
@@ -33,12 +42,141 @@ CITY_COORDS = {
     "miami":       (25.7617, -80.1918),
     "atlanta":     (33.7490, -84.3880),
     "boston":      (42.3601, -71.0589),
-
-    # FIX: cidades ausentes — bot retornava None para estas
     "toronto":     (43.6532, -79.3832),
     "madrid":      (40.4168, -3.7038),
     "mexico-city": (19.4326, -99.1332),
 }
+
+# =========================================================
+# BIAS CORRECTION
+# =========================================================
+
+# Janela de dias para calcular o bias (trades mais recentes)
+BIAS_WINDOW_DAYS = 21
+
+# Mínimo de amostras por cidade para aplicar a correção
+BIAS_MIN_SAMPLES = 3
+
+# Cache do bias: {city_slug: (bias_c, n_samples, computed_at)}
+_BIAS_CACHE = {}
+_BIAS_CACHE_TTL = 3600  # Recalcula a cada hora
+
+
+def _city_raw_to_slug(city_raw, slug_normalize):
+    """Converte display name para slug usando o mapeamento do config."""
+    slug = slug_normalize.get(city_raw)
+    if slug:
+        return slug
+    return city_raw.lower().replace(" ", "-").replace("_", "-").strip()
+
+
+def compute_bias(city_slug):
+    """
+    Calcula o bias médio do Open-Meteo para uma cidade:
+        bias = mean(forecast_c - real_temp_c)  para trades fechados
+
+    Bias positivo = Open-Meteo superestima (caso comum para ABOVE).
+    Bias negativo = Open-Meteo subestima.
+
+    Retorna (bias_c, n_samples):
+        bias_c     — correção a subtrair do forecast (°C)
+        n_samples  — quantas amostras foram usadas
+
+    Se não há amostras suficientes, retorna (0.0, 0).
+    """
+    now = time.time()
+
+    cached = _BIAS_CACHE.get(city_slug)
+    if cached:
+        bias_c, n, computed_at = cached
+        if now - computed_at < _BIAS_CACHE_TTL:
+            return bias_c, n
+
+    try:
+        from bankroll import load_bankroll
+        from config import CITY_SLUG_NORMALIZE, CITY_DISPLAY
+    except Exception as e:
+        print(f"[bias] erro ao importar bankroll: {e}")
+        return 0.0, 0
+
+    # Inverter CITY_DISPLAY para slug -> display, depois usar CITY_SLUG_NORMALIZE
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=BIAS_WINDOW_DAYS)
+
+    try:
+        history = load_bankroll().get("history", [])
+    except Exception as e:
+        print(f"[bias] erro ao carregar bankroll: {e}")
+        return 0.0, 0
+
+    errors = []
+    for t in history:
+        if t.get("result") not in ("WIN", "LOSS"):
+            continue
+        if t.get("forecast_c") is None or t.get("real_temp_c") is None:
+            continue
+
+        # Normaliza cidade para slug
+        city_raw = t.get("city", "")
+        t_slug = _city_raw_to_slug(city_raw, CITY_SLUG_NORMALIZE)
+        if t_slug != city_slug:
+            continue
+
+        # Filtro de janela temporal
+        exit_time_str = t.get("exit_time", "")
+        if exit_time_str:
+            try:
+                exit_dt = datetime.fromisoformat(exit_time_str.replace("Z", ""))
+                if exit_dt < cutoff:
+                    continue
+            except Exception:
+                pass
+
+        err = float(t["forecast_c"]) - float(t["real_temp_c"])
+        errors.append(err)
+
+    if len(errors) < BIAS_MIN_SAMPLES:
+        _BIAS_CACHE[city_slug] = (0.0, len(errors), now)
+        return 0.0, len(errors)
+
+    bias_c = sum(errors) / len(errors)
+    _BIAS_CACHE[city_slug] = (round(bias_c, 3), len(errors), now)
+
+    print(
+        f"[bias] {city_slug}: bias={bias_c:+.2f}°C "
+        f"({len(errors)} amostras, últimos {BIAS_WINDOW_DAYS}d)"
+    )
+    return round(bias_c, 3), len(errors)
+
+
+def get_corrected_forecast(city_slug, forecast_day):
+    """
+    Retorna (forecast_c_corrigido, raw_sigma, bias_aplicado).
+
+    forecast_c_corrigido = forecast_c_raw - bias
+    bias_aplicado        = valor subtraído (0.0 se amostras insuficientes)
+
+    Uso em bot.py:
+        forecast_c, raw_sigma, bias = get_corrected_forecast(city, day)
+        # forecast_c já está corrigido — passar direto para build_sigma/calculate_probability
+    """
+    raw = get_forecast(city_slug, forecast_day)
+    if raw is None or raw[0] is None:
+        return None, None, 0.0
+
+    forecast_c, raw_sigma = raw
+    bias_c, n_samples = compute_bias(city_slug)
+
+    corrected = round(float(forecast_c) - bias_c, 2)
+
+    if bias_c != 0.0:
+        print(
+            f"[bias] {city_slug} d{forecast_day}: "
+            f"{forecast_c:.1f}°C → {corrected:.1f}°C "
+            f"(bias={bias_c:+.2f}°C, n={n_samples})"
+        )
+
+    return corrected, raw_sigma, bias_c
+
 
 # =========================================================
 # CACHE COM TTL
@@ -53,11 +191,11 @@ CACHE_TTL_SECONDS = 3600  # 1 hora
 # FORECAST
 # =========================================================
 
-def get_forecast(
-    city_slug,
-    forecast_day=1,
-):
-
+def get_forecast(city_slug, forecast_day=1):
+    """
+    Retorna (forecast_c, raw_sigma) sem correção de bias.
+    Use get_corrected_forecast() em bot.py para ter a correção aplicada.
+    """
     cache_key = (city_slug, forecast_day)
     now       = time.time()
 
@@ -70,37 +208,25 @@ def get_forecast(
             del _CACHE_TIME[cache_key]
 
     if city_slug not in CITY_COORDS:
-        print(
-            f"[forecast] cidade desconhecida: "
-            f"{city_slug}"
-        )
+        print(f"[forecast] cidade desconhecida: {city_slug}")
         return None, None
 
     lat, lon = CITY_COORDS[city_slug]
 
     url = "https://api.open-meteo.com/v1/forecast"
-
     params = {
-        "latitude":     lat,
-        "longitude":    lon,
-        "daily":        "temperature_2m_max",
-        "timezone":     "UTC",
+        "latitude":      lat,
+        "longitude":     lon,
+        "daily":         "temperature_2m_max",
+        "timezone":      "UTC",
         "forecast_days": 7,
     }
 
     try:
-
-        r = requests.get(
-            url,
-            params=params,
-            timeout=20,
-        )
+        r = requests.get(url, params=params, timeout=20)
 
         if r.status_code != 200:
-            print(
-                f"[forecast] erro status="
-                f"{r.status_code}"
-            )
+            print(f"[forecast] erro status={r.status_code}")
             return None, None
 
         data = r.json()
@@ -113,51 +239,29 @@ def get_forecast(
             return None, None
 
         temps = data["daily"]["temperature_2m_max"]
-
-        idx = max(
-            0,
-            min(forecast_day - 1, len(temps) - 1)
-        )
-
+        idx   = max(0, min(forecast_day - 1, len(temps) - 1))
         forecast_c = float(temps[idx])
 
-        # =====================================================
-        # SIGMA BASE
-        # =====================================================
-
-        # Calibrated conservative baseline for 1-5 day daily max forecasts.
-        # This is intentionally not inflated again in model.py.
-        base_sigma_by_day = {
-            1: 2.0,
-            2: 2.3,
-            3: 2.6,
-            4: 3.0,
-            5: 3.3,
-        }
-
+        # Sigma base calibrado por horizonte
+        base_sigma_by_day = {1: 2.0, 2: 2.3, 3: 2.6, 4: 3.0, 5: 3.3}
         sigma = base_sigma_by_day.get(forecast_day, 3.3)
 
-        # Ajustes climáticos
+        # Ajustes climáticos por cidade
         if city_slug in ["hong-kong", "houston", "austin", "miami"]:
             sigma += 0.25
-
         if city_slug in ["denver", "seattle", "london", "boston"]:
             sigma += 0.15
-
         if city_slug == "chicago":
             sigma += 0.30
 
         sigma = round(sigma, 2)
 
         print(
-            f"[forecast] "
-            f"{city_slug} "
-            f"forecast={forecast_c:.1f}C "
-            f"sigma={sigma:.2f}"
+            f"[forecast] {city_slug} "
+            f"forecast={forecast_c:.1f}C sigma={sigma:.2f}"
         )
 
         result = (forecast_c, sigma)
-
         _FORECAST_CACHE[cache_key] = result
         _CACHE_TIME[cache_key]     = now
 

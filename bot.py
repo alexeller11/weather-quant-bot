@@ -5,6 +5,10 @@
 # FIX #22: scheduler roda settlement a cada hora
 # FIX #23: forecast_day limitado a MAX_FORECAST_DAY=3
 # FIX #24: edge mínimo por horizonte (EDGE_THRESHOLD_BY_DAY)
+# FIX #25: bias correction via get_corrected_forecast()
+# FIX #26: prob mínima por tipo (MIN_PROB_ABOVE_BELOW=0.55)
+#          Apostar ABOVE com 30% de prob não faz sentido mesmo
+#          com edge positivo — o mercado pode estar certo.
 # =========================================================
 
 import os
@@ -18,7 +22,7 @@ def utcnow():
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 from gamma_parser import fetch_markets
-from forecast import get_forecast
+from forecast import get_corrected_forecast          # FIX #25: usa versão com bias correction
 from model import calculate_probability, build_sigma, to_celsius
 from bankroll import load_bankroll, save_bankroll, normalize_city, reset_bankroll
 from risk import kelly_stake, expected_value, open_exposure, remaining_capacity, cap_stake_by_type
@@ -27,8 +31,8 @@ from config import (
     CITY_SLUGS,
     EDGE_THRESHOLD,
     EDGE_THRESHOLD_EXACT,
-    EDGE_THRESHOLD_BY_DAY,   # FIX #24
-    MAX_FORECAST_DAY,         # FIX #23
+    EDGE_THRESHOLD_BY_DAY,
+    MAX_FORECAST_DAY,
     TRADING_ENABLED,
     PROBABILITY_DEAD_ZONE_LOW,
     PROBABILITY_DEAD_ZONE_HIGH,
@@ -45,6 +49,9 @@ from config import (
     MAX_LIQUIDITY_PRICE,
     MAX_EV,
     CYCLE_INTERVAL_SECONDS,
+    # FIX #26: novos parâmetros adicionados ao config.py
+    MIN_PROB_ABOVE_BELOW,
+    MIN_PROB_BELOW,
 )
 
 from notificador import notificar_entrada_trade, iniciar_listener
@@ -52,9 +59,9 @@ from notificador import notificar_entrada_trade, iniciar_listener
 MAX_POSITION_DOLARES = MAX_POSITION
 
 if os.getenv("RESET_BANKROLL") == "1":
-    print("⚠️ RESETANDO BANKROLL...")
+    print("RESETANDO BANKROLL...")
     reset_bankroll(50.0)
-    print("✅ BANKROLL RESETADO")
+    print("BANKROLL RESETADO")
 
 # =========================================================
 # SETTLEMENT
@@ -107,24 +114,24 @@ def exact_market_guard(condition, model_prob, market_price, ev):
     if condition.upper() != "EXACT":
         return True
     if market_price > 0.30:
-        print("  🚫 EXACT caro demais")
+        print("  EXACT caro demais")
         return False
     if model_prob > 0.30:
-        print(f"  🚫 EXACT bloqueado (prob={model_prob:.3f})")
+        print(f"  EXACT bloqueado (prob={model_prob:.3f})")
         return False
     if ev > MAX_EV:
-        print(f"  🚫 EXACT bloqueado (ev={ev:.3f})")
+        print(f"  EXACT bloqueado (ev={ev:.3f})")
         return False
     if market_price < 0.10:
-        print(f"  🚫 EXACT bloqueado (price={market_price:.3f})")
+        print(f"  EXACT bloqueado (price={market_price:.3f})")
         return False
     exact_edge = model_prob - market_price
     if exact_edge < 0.07:
-        print(f"  🚫 EXACT edge fraco ({exact_edge:.3f})")
+        print(f"  EXACT edge fraco ({exact_edge:.3f})")
         return False
     ratio = model_prob / max(market_price, 0.01)
     if ratio > 3.5:
-        print(f"  🚫 EXACT distorcido (ratio={ratio:.2f})")
+        print(f"  EXACT distorcido (ratio={ratio:.2f})")
         return False
     return True
 
@@ -135,19 +142,44 @@ def exact_market_guard(condition, model_prob, market_price, ev):
 def trade_quality_guard(condition, forecast_c, sigma_total, target, unit,
                          model_prob, market_price, ev):
     condition = condition.upper()
+
+    # Dead zone
     if PROBABILITY_DEAD_ZONE_LOW <= model_prob <= PROBABILITY_DEAD_ZONE_HIGH:
         print(f"  BLOQUEADO prob neutra ({model_prob:.4f})")
         return False
+
+    # EV fora da faixa
     if ev < MIN_EV or ev > MAX_EV:
         print(f"  BLOQUEADO EV fora da faixa ({ev:.4f})")
         return False
+
     if market_price <= 0 or market_price >= 1:
         return False
+
+    # Target perto demais do forecast
     target_c = to_celsius(target, unit)
     zscore = abs(float(forecast_c) - target_c) / max(float(sigma_total), 0.10)
     if condition in ("ABOVE", "BELOW") and zscore < MIN_TARGET_ZSCORE:
         print(f"  BLOQUEADO target perto do forecast (z={zscore:.2f})")
         return False
+
+    # FIX #26: prob mínima por tipo de aposta
+    # Edge positivo com prob baixa significa que o mercado está certo
+    # e nós é que estamos errados — não é edge, é ruído.
+    if condition == "ABOVE" and model_prob < MIN_PROB_ABOVE_BELOW:
+        print(
+            f"  BLOQUEADO prob insuficiente para ABOVE "
+            f"({model_prob:.3f} < {MIN_PROB_ABOVE_BELOW:.2f})"
+        )
+        return False
+
+    if condition == "BELOW" and model_prob < MIN_PROB_BELOW:
+        print(
+            f"  BLOQUEADO prob insuficiente para BELOW "
+            f"({model_prob:.3f} < {MIN_PROB_BELOW:.2f})"
+        )
+        return False
+
     return True
 
 # =========================================================
@@ -233,7 +265,7 @@ while True:
                             ).date()
                             if market_date_obj <= utcnow().date():
                                 continue
-                        except:
+                        except Exception:
                             continue
 
                         history_ids = [str(t.get("market_id", "")) for t in history]
@@ -244,7 +276,6 @@ while True:
                             mdate = datetime.strptime(
                                 market.get("market_date", ""), "%Y-%m-%d"
                             ).date()
-                            # FIX #23: limitar ao MAX_FORECAST_DAY (3)
                             forecast_day = max(
                                 1,
                                 min(
@@ -252,10 +283,13 @@ while True:
                                     MAX_FORECAST_DAY,
                                 )
                             )
-                        except:
+                        except Exception:
                             forecast_day = 1
 
-                        forecast_c, raw_sigma = get_forecast(city, forecast_day)
+                        # FIX #25: usa forecast corrigido por bias
+                        forecast_c, raw_sigma, bias_aplicado = get_corrected_forecast(
+                            city, forecast_day
+                        )
 
                         if forecast_c is None:
                             print("  Forecast indisponível")
@@ -264,6 +298,7 @@ while True:
                         print(
                             f"  [Forecast] {city} day={forecast_day} "
                             f"temp={forecast_c:.1f}C sigma={raw_sigma:.2f}"
+                            + (f" bias={bias_aplicado:+.2f}C" if bias_aplicado != 0.0 else "")
                         )
 
                         sigma_total = build_sigma(
@@ -312,7 +347,7 @@ while True:
                             f"Edge:{edge:+.3f} EV:{ev:+.3f} [{condition}] D{forecast_day}"
                         )
 
-                        # FIX #24: edge mínimo depende do horizonte
+                        # Edge mínimo por horizonte
                         if condition == "EXACT":
                             edge_min = EDGE_THRESHOLD_EXACT
                         else:
@@ -326,18 +361,19 @@ while True:
                             continue
 
                         candidatos.append({
-                            "market":       market,
-                            "market_price": market_price,
-                            "model_prob":   model_prob,
-                            "edge":         edge,
-                            "ev":           ev,
-                            "condition":    condition,
-                            "target":       target,
-                            "forecast_day": forecast_day,
-                            "forecast_c":   forecast_c,
-                            "sigma_total":  sigma_total,
-                            "market_id":    market_id,
-                            "unit":         unit,
+                            "market":          market,
+                            "market_price":    market_price,
+                            "model_prob":      model_prob,
+                            "edge":            edge,
+                            "ev":              ev,
+                            "condition":       condition,
+                            "target":          target,
+                            "forecast_day":    forecast_day,
+                            "forecast_c":      forecast_c,
+                            "sigma_total":     sigma_total,
+                            "market_id":       market_id,
+                            "unit":            unit,
+                            "bias_aplicado":   bias_aplicado,
                         })
 
                     except Exception as e:
@@ -361,6 +397,7 @@ while True:
                         sigma_total  = cand["sigma_total"]
                         unit         = cand["unit"]
                         forecast_day = cand["forecast_day"]
+                        bias_aplicado = cand["bias_aplicado"]
 
                         remaining = remaining_capacity(history)
                         if remaining <= 0:
@@ -373,7 +410,7 @@ while True:
                         if trades_opened_cycle >= MAX_TRADES_PER_CYCLE:
                             break
 
-                        print(f"  → TRADE {market.get('question','')[:60]}")
+                        print(f"  -> TRADE {market.get('question','')[:60]}")
 
                         stake = kelly_stake(balance, model_prob, market_price)
                         stake = cap_stake_by_type(stake, condition)
@@ -400,26 +437,27 @@ while True:
                         city_display = normalize_city(city)
 
                         trade = {
-                            "market_id":    market_id,
-                            "city":         city_display,
-                            "question":     market.get("question", ""),
-                            "market_date":  market.get("market_date", ""),
-                            "entry_time":   utcnow().isoformat(),
-                            "exit_time":    None,
-                            "type":         condition,
-                            "target":       target,
-                            "forecast_c":   forecast_c,
-                            "sigma_total":  sigma_total,
-                            "shares":       shares,
-                            "model_prob":   round(model_prob, 4),
-                            "market_price": round(market_price, 4),
-                            "edge":         edge,
-                            "ev":           ev,
-                            "stake":        stake,
-                            "result":       "OPEN",
-                            "pnl":          0,
-                            "unit":         unit,
-                            "forecast_day": forecast_day,
+                            "market_id":      market_id,
+                            "city":           city_display,
+                            "question":       market.get("question", ""),
+                            "market_date":    market.get("market_date", ""),
+                            "entry_time":     utcnow().isoformat(),
+                            "exit_time":      None,
+                            "type":           condition,
+                            "target":         target,
+                            "forecast_c":     forecast_c,
+                            "sigma_total":    sigma_total,
+                            "shares":         shares,
+                            "model_prob":     round(model_prob, 4),
+                            "market_price":   round(market_price, 4),
+                            "edge":           edge,
+                            "ev":             ev,
+                            "stake":          stake,
+                            "result":         "OPEN",
+                            "pnl":            0,
+                            "unit":           unit,
+                            "forecast_day":   forecast_day,
+                            "bias_aplicado":  round(bias_aplicado, 3),  # FIX #25: rastrear bias
                         }
 
                         history.append(trade)
@@ -455,7 +493,7 @@ while True:
         bankroll["balance"] = balance
         save_bankroll(bankroll)
 
-        print(f"\nPróximo ciclo em {CYCLE_INTERVAL_SECONDS}s...")
+        print(f"\nProximo ciclo em {CYCLE_INTERVAL_SECONDS}s...")
         time.sleep(CYCLE_INTERVAL_SECONDS)
 
     except Exception as e:
