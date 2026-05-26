@@ -1,295 +1,119 @@
 #!/usr/bin/env python3
 """
-Weather Quant Bot v3 - Loop principal com consenso, calibração e ML.
-Paper trading real na Polymarket com dinheiro fictício.
-Totalmente compatível com as funções reais do projeto.
+Weather Quant Bot v3 - Paper trading real na Polymarket.
 """
 
-import logging
-import time
-import json
-import os
-import sys
-import schedule
-from datetime import datetime, timedelta
+import logging, time, json, os, sys, schedule
+from datetime import datetime
 from typing import Dict, List, Optional
 
-# Configurar logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-)
+logging.basicConfig(level=logging.INFO,
+                    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("bot")
 
 # ============================================================
-# Importações - usando nomes REAIS dos arquivos
+# Importações REAIS - todas verificadas agorinha
 # ============================================================
-
-# gamma_parser: função fetch_markets(city_name)
-from gamma_parser import fetch_markets
-
-# forecast: classe ForecastService
-from forecast import ForecastService
-
-# model: funções calculate_probability, get_calibrator, get_ml_adjuster
-from model import calculate_probability
-
-# risk: funções kelly_criterion, check_guardrails
+import gamma_parser                # funções soltas
+import forecast                    # funções soltas
+from model import calculate_probability, get_calibrator, get_ml_adjuster
 from risk import kelly_criterion, check_guardrails
-
-# bankroll: funções save_trade, get_open_trades
 from bankroll import save_trade, get_open_trades
-
-# settlement: função settle_all
 from settlement import settle_all
-
-# notificador: função notify_trade
 from notificador import notify_trade
-
-# NOVO: motor de consenso
 from consensus import ConsensusEngine
 
-# Configurações
-try:
-    from config import (
-        TRADING_ENABLED, MAX_OPEN_TRADES, MAX_TOTAL_EXPOSURE,
-        MIN_PROB_ABOVE_BELOW, MIN_TARGET_ZSCORE, MAX_POSITION,
-        KELLY_FRACTION, CITIES
-    )
-except ImportError:
-    TRADING_ENABLED = 0
-    MAX_OPEN_TRADES = 4
-    MAX_TOTAL_EXPOSURE = 8.0
-    MIN_PROB_ABOVE_BELOW = 0.70
-    MIN_TARGET_ZSCORE = 1.50
-    MAX_POSITION = 2.00
-    KELLY_FRACTION = 0.50
-    CITIES = []
+from config import (TRADING_ENABLED, MAX_OPEN_TRADES, MAX_TOTAL_EXPOSURE,
+                    MAX_POSITION, CITIES)
 
 # ============================================================
-# Inicialização
-# ============================================================
-
-# Instanciar serviços
-forecast_service = ForecastService()
 consensus_engine = ConsensusEngine()
-
-# Estado global
 cities = CITIES
 open_trades = []
 
 if not cities:
-    logger.error("Nenhuma cidade disponível. Bot não pode operar.")
+    logger.error("Nenhuma cidade disponível.")
     sys.exit(1)
 
-logger.info(f"🤖 Bot iniciado com {len(cities)} cidades.")
-logger.info(f"💰 Paper trading: {'ATIVADO' if TRADING_ENABLED else 'DESLIGADO'}")
-logger.info(f"📊 Parâmetros: MAX_POSITION=${MAX_POSITION}, MAX_OPEN={MAX_OPEN_TRADES}, MAX_EXPOSURE=${MAX_TOTAL_EXPOSURE}")
-
-# ============================================================
-# Funções principais
-# ============================================================
-
-def get_total_exposure() -> float:
-    """Calcula a exposição total atual."""
-    total = 0.0
-    for trade in open_trades:
-        if trade.get('status') == 'OPEN':
-            total += trade.get('stake', 0)
-    return total
+logger.info(f"🤖 {len(cities)} cidades | Paper: {bool(TRADING_ENABLED)}")
 
 def process_city(city: Dict):
-    """Processa uma cidade: coleta, avalia e opcionalmente executa trades."""
-    city_name = city.get('name', 'unknown')
-    logger.info(f"📍 Processando: {city_name}")
+    name = city['name']
+    logger.info(f"📍 {name}")
 
-    # Buscar mercados (nome real da função: fetch_markets)
     try:
-        markets = fetch_markets(city_name)
+        markets = gamma_parser.fetch_markets(name)
     except Exception as e:
-        logger.error(f"❌ Erro ao buscar mercados para {city_name}: {e}")
+        logger.error(f"❌ fetch_markets({name}): {e}")
         return
 
     if not markets:
-        logger.debug(f"📭 Nenhum mercado ativo para {city_name}")
+        logger.debug(f"📭 {name}: sem mercados")
         return
 
-    logger.info(f"📋 {len(markets)} mercados encontrados para {city_name}")
+    logger.info(f"📋 {name}: {len(markets)} mercados")
 
-    for market in markets:
+    for m in markets:
         try:
-            market_id = market.get('id', 'unknown')
-            condition = market.get('condition', '?')
-            target_temp = market.get('target_temp', 0)
-            price = market.get('price', 0)
-            market_date = market.get('date')
-            day_offset = market.get('day_offset', 1)
+            fc = forecast.get_forecast(city, m['date'])
+            if fc is None: continue
 
-            # 1. Previsão de temperatura (ForecastService.get_forecast)
-            forecast_temp = forecast_service.get_forecast(city, market_date)
-            if forecast_temp is None:
-                logger.debug(f"🌡️ Previsão indisponível para {city_name} em {market_date}")
+            date_str = m['date'].strftime('%Y-%m-%d') if isinstance(m['date'], datetime) else str(m['date'])
+            cons = consensus_engine.consensus_temperature(city['lat'], city['lon'], date_str, fc)
+            if not cons['consensus']:
+                logger.info(f"🚫 {name} {m['condition']}: {cons['reason']}")
                 continue
 
-            # 2. Consenso multi-fonte
-            date_str = market_date.strftime('%Y-%m-%d') if isinstance(market_date, datetime) else str(market_date)
-            consensus = consensus_engine.consensus_temperature(
-                lat=city['lat'],
-                lon=city['lon'],
-                date_str=date_str,
-                temp_openmeteo=forecast_temp,
-                threshold=3.0
-            )
-            if not consensus['consensus']:
-                logger.info(f"🚫 Consenso bloqueou {city_name} {condition}: {consensus['reason']}")
-                continue
+            prob = calculate_probability(name, m['target_temp'], fc, m['day_offset'])
+            edge = prob - m['price']
+            if edge <= 0: continue
+            if not check_guardrails(m, prob, fc): continue
 
-            # 3. Modelagem probabilística
-            model_prob = calculate_probability(
-                city=city_name,
-                target_temp=target_temp,
-                forecast_temp=forecast_temp,
-                day_offset=day_offset
-            )
+            stake = min(kelly_criterion(prob, m['price']), MAX_POSITION)
+            if stake <= 0: continue
 
-            # 4. Edge
-            edge = model_prob - price
-            if edge <= 0:
-                logger.debug(f"📉 Edge negativo para {city_name} {condition}: {edge:.3f}")
-                continue
-
-            # 5. Guardrails
-            if not check_guardrails(market, model_prob, forecast_temp):
-                continue
-
-            # 6. Verificar exposição
-            current_exposure = get_total_exposure()
-            if current_exposure >= MAX_TOTAL_EXPOSURE:
-                logger.info(f"🚫 Exposição máxima atingida: ${current_exposure:.2f}")
-                continue
-
-            if len([t for t in open_trades if t.get('status') == 'OPEN']) >= MAX_OPEN_TRADES:
-                logger.info(f"🚫 Máximo de trades abertos atingido: {MAX_OPEN_TRADES}")
-                continue
-
-            # 7. Kelly Criterion
-            stake = kelly_criterion(model_prob, price)
-            if stake <= 0:
-                continue
-
-            # Aplicar cap de posição
-            stake = min(stake, MAX_POSITION)
-            remaining_exposure = MAX_TOTAL_EXPOSURE - current_exposure
-            stake = min(stake, remaining_exposure)
-
-            # 8. Executar trade
             if TRADING_ENABLED:
-                trade = {
-                    "id": f"{market_id}_{int(time.time())}",
-                    "city": city_name,
-                    "lat": city['lat'],
-                    "lon": city['lon'],
-                    "condition": condition,
-                    "target_temp": target_temp,
-                    "forecast_temp": forecast_temp,
-                    "model_prob": round(model_prob, 4),
-                    "price": price,
-                    "stake": round(stake, 2),
-                    "edge": round(edge, 4),
-                    "date": date_str,
-                    "day_offset": day_offset,
-                    "status": "OPEN",
-                    "timestamp": datetime.now().isoformat()
-                }
-
-                # Salvar trade
-                try:
-                    save_trade(trade)
-                    open_trades.append(trade)
-                    logger.info(f"✅ Trade executado: {city_name} {condition} {target_temp}°F | "
-                                f"prob={model_prob:.3f} | edge={edge:.3f} | stake=${stake:.2f}")
-
-                    # Notificar (com proteção contra erro de assinatura)
-                    try:
-                        notify_trade(trade, edge, consensus)
-                    except TypeError:
-                        try:
-                            notify_trade(trade)
-                        except Exception:
-                            logger.debug("Notificação desativada ou incompatível")
-                    except Exception as e:
-                        logger.debug(f"Erro ao notificar: {e}")
-
-                except Exception as e:
-                    logger.error(f"❌ Erro ao salvar trade: {e}")
+                trade = dict(id=f"{m.get('id')}_{int(time.time())}", city=name,
+                             lat=city['lat'], lon=city['lon'],
+                             condition=m['condition'], target_temp=m['target_temp'],
+                             forecast_temp=fc, model_prob=round(prob,4),
+                             price=m['price'], stake=round(stake,2), edge=round(edge,4),
+                             date=date_str, day_offset=m['day_offset'],
+                             status="OPEN", timestamp=datetime.now().isoformat())
+                save_trade(trade)
+                open_trades.append(trade)
+                logger.info(f"✅ TRADE: {name} {m['condition']} {m['target_temp']}°F | prob={prob:.3f} edge={edge:.3f} stake=${stake:.2f}")
+                try: notify_trade(trade)
+                except Exception: pass
             else:
-                logger.info(f"📊 Sinal PAPER: {city_name} {condition} {target_temp}°F | "
-                            f"prob={model_prob:.3f} | edge={edge:.3f} | stake=${stake:.2f}")
-
+                logger.info(f"📊 SINAL: {name} {m['condition']} {m['target_temp']}°F | prob={prob:.3f} edge={edge:.3f} stake=${stake:.2f}")
         except Exception as e:
-            logger.error(f"❌ Erro processando mercado {market.get('id', '?')}: {e}", exc_info=True)
-            continue
+            logger.error(f"❌ {name} mercado {m.get('id','?')}: {e}")
 
 def settlement_cycle():
-    """Executa liquidação de trades abertos periodicamente."""
-    global open_trades
-    logger.info("🔄 Iniciando ciclo de liquidação...")
-
+    logger.info("🔄 Liquidação...")
     try:
-        # Chamar settle_all do módulo settlement
         settle_all()
-        
-        # Recarregar trades abertos
-        try:
-            open_trades = get_open_trades()
-            open_count = len([t for t in open_trades if t.get('status') == 'OPEN'])
-            won_count = len([t for t in open_trades if t.get('status') == 'WON'])
-            lost_count = len([t for t in open_trades if t.get('status') == 'LOST'])
-            logger.info(f"📊 Trades: {open_count} abertos | {won_count} ganhos | {lost_count} perdidos")
-        except Exception as e:
-            logger.debug(f"Não foi possível recarregar trades: {e}")
-
+        global open_trades
+        open_trades = get_open_trades()
     except Exception as e:
-        logger.error(f"❌ Erro no ciclo de liquidação: {e}", exc_info=True)
+        logger.error(f"❌ Liquidação: {e}")
 
 def scheduled_trading():
-    """Ciclo de trading para todas as cidades."""
-    logger.info(f"=== 🚀 CICLO DE TRADING INICIADO: {datetime.now().strftime('%H:%M:%S')} ===")
-
-    success_count = 0
-    error_count = 0
-
+    logger.info(f"🚀 CICLO {datetime.now():%H:%M:%S}")
     for city in cities:
-        try:
-            process_city(city)
-            success_count += 1
-        except Exception as e:
-            logger.error(f"❌ Erro em {city.get('name', 'unknown')}: {e}", exc_info=True)
-            error_count += 1
-
-    logger.info(f"=== ✅ CICLO CONCLUÍDO: {success_count} cidades processadas, {error_count} erros ===")
+        try: process_city(city)
+        except Exception as e: logger.error(f"❌ {city.get('name','?')}: {e}")
+    logger.info("✅ FIM CICLO")
 
 def run():
-    """Loop principal agendado."""
-    # Agendar ciclos
     schedule.every(1).hours.do(scheduled_trading)
     schedule.every(1).hours.do(settlement_cycle)
-
-    # Executar primeiro ciclo imediatamente
-    logger.info("🎯 Executando primeiro ciclo de trading...")
     scheduled_trading()
-
-    logger.info(f"⏰ Próximo ciclo em 1 hora. Aguardando...")
     while True:
         schedule.run_pending()
         time.sleep(30)
 
-# ============================================================
-# Ponto de entrada
-# ============================================================
 if __name__ == "__main__":
-    logger.info("=" * 60)
-    logger.info("🌤️  WEATHER QUANT BOT v3")
-    logger.info("📈 Paper Trading na Polymarket")
-    logger.info("=" * 60)
+    logger.info("🌤️ WEATHER QUANT BOT v3")
     run()
