@@ -1,4 +1,12 @@
 requests
 python-dotenv
-scipy
 psycopg2-binary
+numpy
+scipy
+fastapi
+uvicorn
+plotly
+dash
+pandas
+schedule
+scikit-learn

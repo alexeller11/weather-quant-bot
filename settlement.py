@@ -6,6 +6,8 @@ Integrado ao método settle_all original.
 """
 
 import logging
+import json
+import os
 import requests
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
@@ -66,7 +68,7 @@ class SettlementEngine:
         city = trade['city']
         date = trade['date']
         forecast_temp = trade['forecast_temp']
-        model_prob = trade.get('model_prob', 0.5)  # fallback se não existir
+        model_prob = trade.get('model_prob', 0.5)
         day_offset = trade.get('day_offset', 1)
         lat = trade.get('lat')
         lon = trade.get('lon')
@@ -124,8 +126,6 @@ class SettlementEngine:
 
     def _get_city_coordinates(self, city_name: str) -> tuple:
         """Busca coordenadas da cidade no arquivo cities.json"""
-        import json
-        import os
         try:
             cities_path = os.path.join(os.path.dirname(__file__), 'cities.json')
             with open(cities_path, 'r') as f:
@@ -149,7 +149,7 @@ class SettlementEngine:
 
         logger.info(f"Liquidando {len(open_trades)} trades abertos...")
         
-        for i, trade in enumerate(open_trades):
+        for trade in open_trades:
             try:
                 settled_trade = self.settle_trade(trade)
                 # Atualiza o trade no bankroll

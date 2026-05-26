@@ -32,7 +32,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("bot")
 
-# Carrega cidades do arquivo JSON (solução para o problema 1)
+# Carrega cidades do arquivo JSON
 def load_cities():
     """Carrega a lista de cidades do arquivo cities.json"""
     cities_path = os.path.join(os.path.dirname(__file__), 'cities.json')
@@ -58,7 +58,7 @@ class WeatherQuantBot:
         self.bankroll = Bankroll()
         self.settlement_engine = SettlementEngine()
         self.notificador = Notificador()
-        self.consensus_engine = ConsensusEngine()  # chave WEATHERAPI_KEY do ambiente
+        self.consensus_engine = ConsensusEngine()
         
         self.cities = load_cities()
         if not self.cities:
@@ -143,8 +143,8 @@ class WeatherQuantBot:
         trade = {
             "id": f"{market['id']}_{int(time.time())}",
             "city": city['name'],
-            "lat": city['lat'],          # NOVO: necessário para liquidação
-            "lon": city['lon'],          # NOVO: necessário para liquidação
+            "lat": city['lat'],
+            "lon": city['lon'],
             "condition": market['condition'],
             "target_temp": market['target_temp'],
             "forecast_temp": forecast_temp,
@@ -165,7 +165,6 @@ class WeatherQuantBot:
         """Executa liquidação de trades abertos periodicamente."""
         logger.info("Iniciando ciclo de liquidação...")
         try:
-            # Usa o método original do settlement.py (settle_all)
             self.settlement_engine.settle_all()
             self.bankroll.sync()
         except Exception as e:
