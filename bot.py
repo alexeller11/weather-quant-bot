@@ -12,13 +12,13 @@ logging.basicConfig(level=logging.INFO,
 logger = logging.getLogger("bot")
 
 # ============================================================
-# Importações REAIS - todas verificadas agorinha
+# Importações REAIS - VERIFICADAS UMA POR UMA
 # ============================================================
-import gamma_parser                # funções soltas
-import forecast                    # funções soltas
-from model import calculate_probability, get_calibrator, get_ml_adjuster
+from gamma_parser import fetch_markets
+from forecast import get_forecast
+from model import calculate_probability
 from risk import kelly_criterion, check_guardrails
-from bankroll import save_trade, get_open_trades
+from bankroll import _save_to_db, get_open_trades, update_trade
 from settlement import settle_all
 from notificador import notify_trade
 from consensus import ConsensusEngine
@@ -42,7 +42,7 @@ def process_city(city: Dict):
     logger.info(f"📍 {name}")
 
     try:
-        markets = gamma_parser.fetch_markets(name)
+        markets = fetch_markets(name)
     except Exception as e:
         logger.error(f"❌ fetch_markets({name}): {e}")
         return
@@ -55,7 +55,7 @@ def process_city(city: Dict):
 
     for m in markets:
         try:
-            fc = forecast.get_forecast(city, m['date'])
+            fc = get_forecast(city, m['date'])
             if fc is None: continue
 
             date_str = m['date'].strftime('%Y-%m-%d') if isinstance(m['date'], datetime) else str(m['date'])
@@ -80,7 +80,7 @@ def process_city(city: Dict):
                              price=m['price'], stake=round(stake,2), edge=round(edge,4),
                              date=date_str, day_offset=m['day_offset'],
                              status="OPEN", timestamp=datetime.now().isoformat())
-                save_trade(trade)
+                _save_to_db(trade)
                 open_trades.append(trade)
                 logger.info(f"✅ TRADE: {name} {m['condition']} {m['target_temp']}°F | prob={prob:.3f} edge={edge:.3f} stake=${stake:.2f}")
                 try: notify_trade(trade)
