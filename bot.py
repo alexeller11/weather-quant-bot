@@ -9,6 +9,8 @@
 # FIX #26: prob mínima por tipo (MIN_PROB_ABOVE_BELOW=0.55)
 #          Apostar ABOVE com 30% de prob não faz sentido mesmo
 #          com edge positivo — o mercado pode estar certo.
+# FIX #27: módulo macro integrado como thread daemon separada
+#          MACRO_TRADING_ENABLED=1 ativa CPI/NFP/FOMC/GDP
 # =========================================================
 
 import os
@@ -22,7 +24,7 @@ def utcnow():
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 from gamma_parser import fetch_markets
-from forecast import get_corrected_forecast          # FIX #25: usa versão com bias correction
+from forecast import get_corrected_forecast
 from model import calculate_probability, build_sigma, to_celsius
 from bankroll import load_bankroll, save_bankroll, normalize_city, reset_bankroll
 from risk import kelly_stake, expected_value, open_exposure, remaining_capacity, cap_stake_by_type
@@ -49,7 +51,6 @@ from config import (
     MAX_LIQUIDITY_PRICE,
     MAX_EV,
     CYCLE_INTERVAL_SECONDS,
-    # FIX #26: novos parâmetros adicionados ao config.py
     MIN_PROB_ABOVE_BELOW,
     MIN_PROB_BELOW,
 )
@@ -143,12 +144,10 @@ def trade_quality_guard(condition, forecast_c, sigma_total, target, unit,
                          model_prob, market_price, ev):
     condition = condition.upper()
 
-    # Dead zone
     if PROBABILITY_DEAD_ZONE_LOW <= model_prob <= PROBABILITY_DEAD_ZONE_HIGH:
         print(f"  BLOQUEADO prob neutra ({model_prob:.4f})")
         return False
 
-    # EV fora da faixa
     if ev < MIN_EV or ev > MAX_EV:
         print(f"  BLOQUEADO EV fora da faixa ({ev:.4f})")
         return False
@@ -156,16 +155,12 @@ def trade_quality_guard(condition, forecast_c, sigma_total, target, unit,
     if market_price <= 0 or market_price >= 1:
         return False
 
-    # Target perto demais do forecast
     target_c = to_celsius(target, unit)
     zscore = abs(float(forecast_c) - target_c) / max(float(sigma_total), 0.10)
     if condition in ("ABOVE", "BELOW") and zscore < MIN_TARGET_ZSCORE:
         print(f"  BLOQUEADO target perto do forecast (z={zscore:.2f})")
         return False
 
-    # FIX #26: prob mínima por tipo de aposta
-    # Edge positivo com prob baixa significa que o mercado está certo
-    # e nós é que estamos errados — não é edge, é ruído.
     if condition == "ABOVE" and model_prob < MIN_PROB_ABOVE_BELOW:
         print(
             f"  BLOQUEADO prob insuficiente para ABOVE "
@@ -183,14 +178,26 @@ def trade_quality_guard(condition, forecast_c, sigma_total, target, unit,
     return True
 
 # =========================================================
-# START
+# START — Inicializa módulos auxiliares
 # =========================================================
 
 iniciar_listener()
 iniciar_scheduler()
 
+# FIX #27: Inicia módulo macro como thread separada
+# Compartilha bankroll mas opera de forma totalmente independente.
+# Para ativar: adicione MACRO_TRADING_ENABLED=1 no Railway.
+try:
+    from macro_bot import iniciar_macro_bot
+    iniciar_macro_bot()
+    print("[macro] Módulo macro iniciado como thread daemon")
+except ImportError as e:
+    print(f"[macro] Módulo macro não encontrado (normal se não instalado): {e}")
+except Exception as e:
+    print(f"[macro] Erro ao iniciar módulo macro: {e}")
+
 # =========================================================
-# MAIN LOOP
+# MAIN LOOP — Módulo Weather (original)
 # =========================================================
 
 while True:
@@ -286,7 +293,6 @@ while True:
                         except Exception:
                             forecast_day = 1
 
-                        # FIX #25: usa forecast corrigido por bias
                         forecast_c, raw_sigma, bias_aplicado = get_corrected_forecast(
                             city, forecast_day
                         )
@@ -347,7 +353,6 @@ while True:
                             f"Edge:{edge:+.3f} EV:{ev:+.3f} [{condition}] D{forecast_day}"
                         )
 
-                        # Edge mínimo por horizonte
                         if condition == "EXACT":
                             edge_min = EDGE_THRESHOLD_EXACT
                         else:
@@ -429,7 +434,6 @@ while True:
                         real_cost = round(shares * market_price, 2)
                         stake = real_cost
 
-                        # Sanity check final
                         if stake > MAX_POSITION_DOLARES:
                             print(f"  BLOQUEADO stake ${stake:.2f} > MAX ${MAX_POSITION_DOLARES:.2f}")
                             continue
@@ -457,7 +461,7 @@ while True:
                             "pnl":            0,
                             "unit":           unit,
                             "forecast_day":   forecast_day,
-                            "bias_aplicado":  round(bias_aplicado, 3),  # FIX #25: rastrear bias
+                            "bias_aplicado":  round(bias_aplicado, 3),
                         }
 
                         history.append(trade)
