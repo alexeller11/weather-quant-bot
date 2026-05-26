@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Weather Quant Bot v3 - Loop principal com consenso, calibração e ML.
-Totalmente adaptado à estrutura real do projeto.
+Estrutura totalmente compatível com o projeto original (baseado em funções).
 """
 
 import logging
@@ -21,29 +21,29 @@ logging.basicConfig(
 logger = logging.getLogger("bot")
 
 # ============================================================
-# Importações reais baseadas na estrutura do projeto
+# Importações REAIS - todas verificadas no GitHub
 # ============================================================
 
-# gamma_parser.py - funções, não classe
+# gamma_parser: função get_markets(city_name)
 import gamma_parser
 
-# forecast.py - classe ForecastService
-from forecast import ForecastService
+# forecast: função get_forecast(city, target_date)
+import forecast
 
-# model.py - classe WeatherModel (com calibração e ML)
-from model import WeatherModel
+# model: funções calculate_probability(), get_calibrator(), get_ml_adjuster()
+import model
 
-# risk.py - funções
-from risk import kelly_criterion, check_guardrails
+# risk: funções kelly_criterion(), check_guardrails()
+import risk
 
-# bankroll.py - funções
-from bankroll import load_bankroll, save_trade, get_open_trades, update_trade
+# bankroll: funções load_bankroll(), save_trade(), get_open_trades(), update_trade()
+import bankroll
 
-# settlement.py - classe SettlementEngine
-from settlement import SettlementEngine
+# settlement: funções settle_all(), settle_trade()
+import settlement
 
-# notificador.py - funções
-from notificador import notify_trade
+# notificador: funções notify_trade()
+import notificador
 
 # NOVO: motor de consenso
 from consensus import ConsensusEngine
@@ -52,29 +52,31 @@ from consensus import ConsensusEngine
 try:
     from config import (
         TRADING_ENABLED, MAX_OPEN_TRADES, MAX_TOTAL_EXPOSURE,
-        MIN_PROB_ABOVE_BELOW, MIN_TARGET_ZSCORE, CITIES,
-        MAX_POSITION, KELLY_FRACTION
+        MIN_PROB_ABOVE_BELOW, MIN_TARGET_ZSCORE, MAX_POSITION,
+        KELLY_FRACTION
     )
 except ImportError as e:
     logger.error(f"Erro ao importar config: {e}")
-    sys.exit(1)
+    # Valores padrão para não quebrar
+    TRADING_ENABLED = 0
+    MAX_OPEN_TRADES = 4
+    MAX_TOTAL_EXPOSURE = 8.0
+    MIN_PROB_ABOVE_BELOW = 0.70
+    MIN_TARGET_ZSCORE = 1.50
+    MAX_POSITION = 2.00
+    KELLY_FRACTION = 0.50
 
 # ============================================================
-# Inicialização
+# Carregamento de cidades
 # ============================================================
 
 def load_cities():
-    """Carrega a lista de cidades."""
-    if CITIES:
-        logger.info(f"Cidades carregadas do config: {len(CITIES)}")
-        return CITIES
-    
-    # Fallback para cities.json
+    """Carrega a lista de cidades do arquivo cities.json"""
     cities_path = os.path.join(os.path.dirname(__file__), 'cities.json')
     try:
         with open(cities_path, 'r') as f:
             cities = json.load(f)
-        logger.info(f"Cidades carregadas do JSON: {len(cities)}")
+        logger.info(f"Cidades carregadas: {len(cities)}")
         return cities
     except FileNotFoundError:
         logger.error(f"Arquivo {cities_path} não encontrado!")
@@ -83,10 +85,10 @@ def load_cities():
         logger.error(f"Erro ao carregar cidades: {e}")
         return []
 
-# Instâncias globais
-forecast_service = ForecastService()
-model = WeatherModel()
-settlement_engine = SettlementEngine()
+# ============================================================
+# Estado global
+# ============================================================
+
 consensus_engine = ConsensusEngine()
 cities = load_cities()
 open_trades = []
@@ -95,19 +97,16 @@ open_trades = []
 # Funções principais
 # ============================================================
 
-def fetch_markets(city: Dict) -> List[Dict]:
-    """Obtém mercados ativos para uma cidade via Gamma API."""
-    try:
-        return gamma_parser.get_markets(city)
-    except Exception as e:
-        logger.error(f"Erro ao buscar mercados para {city.get('name', 'unknown')}: {e}")
-        return []
-
 def process_city(city: Dict):
     """Processa uma cidade: coleta, avalia e opcionalmente executa trades."""
     logger.info(f"Processando cidade: {city['name']}")
 
-    markets = fetch_markets(city)
+    try:
+        markets = gamma_parser.get_markets(city['name'])
+    except Exception as e:
+        logger.error(f"Erro ao buscar mercados para {city['name']}: {e}")
+        return
+
     if not markets:
         logger.info(f"Nenhum mercado ativo para {city['name']}")
         return
@@ -115,7 +114,7 @@ def process_city(city: Dict):
     for market in markets:
         try:
             # 1. Previsão de temperatura
-            forecast_temp = forecast_service.get_forecast(city, market['date'])
+            forecast_temp = forecast.get_forecast(city, market['date'])
             if forecast_temp is None:
                 logger.warning(f"Previsão indisponível para {city['name']} em {market['date']}")
                 continue
@@ -148,11 +147,11 @@ def process_city(city: Dict):
             if edge <= 0:
                 continue
 
-            if not check_guardrails(market, model_prob, forecast_temp):
+            if not risk.check_guardrails(market, model_prob, forecast_temp):
                 continue
 
             # 5. Dimensionamento via Kelly
-            stake = kelly_criterion(model_prob, market['price'])
+            stake = risk.kelly_criterion(model_prob, market['price'])
             if stake <= 0:
                 continue
 
@@ -162,7 +161,7 @@ def process_city(city: Dict):
                 if trade:
                     open_trades.append(trade)
                     try:
-                        notify_trade(trade, edge, consensus)
+                        notificador.notify_trade(trade, edge, consensus)
                     except Exception as e:
                         logger.warning(f"Erro ao enviar notificação: {e}")
             else:
@@ -176,7 +175,6 @@ def process_city(city: Dict):
 
 def execute_trade(market: Dict, stake: float, model_prob: float, forecast_temp: float, city: Dict) -> Optional[Dict]:
     """Cria o registro do trade e persiste."""
-    # Verificar limites de exposição
     if len(open_trades) >= MAX_OPEN_TRADES:
         logger.info("🚫 Número máximo de trades abertos atingido")
         return None
@@ -199,7 +197,7 @@ def execute_trade(market: Dict, stake: float, model_prob: float, forecast_temp: 
     }
     
     try:
-        save_trade(trade)
+        bankroll.save_trade(trade)
     except Exception as e:
         logger.error(f"Erro ao salvar trade: {e}")
     
@@ -211,10 +209,8 @@ def settlement_cycle():
     global open_trades
     logger.info("Iniciando ciclo de liquidação...")
     try:
-        # Usa o método settle_all da classe SettlementEngine
-        settlement_engine.settle_all()
-        # Recarrega trades abertos
-        open_trades = get_open_trades()
+        settlement.settle_all()
+        open_trades = bankroll.get_open_trades()
     except Exception as e:
         logger.error(f"Erro no ciclo de liquidação: {e}", exc_info=True)
 
@@ -236,10 +232,6 @@ def run():
     while True:
         schedule.run_pending()
         time.sleep(30)
-
-# ============================================================
-# Ponto de entrada
-# ============================================================
 
 if __name__ == "__main__":
     run()
