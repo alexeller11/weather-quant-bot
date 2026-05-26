@@ -11,7 +11,7 @@ import json
 # Configurações de Risco
 # ============================================================
 
-TRADING_ENABLED = int(os.getenv("TRADING_ENABLED", "1"))
+TRADING_ENABLED = int(os.getenv("TRADING_ENABLED", "1"))  # Paper trading ativado
 MIN_PROB_ABOVE_BELOW = float(os.getenv("MIN_PROB_ABOVE_BELOW", "0.70"))
 MIN_TARGET_ZSCORE = float(os.getenv("MIN_TARGET_ZSCORE", "1.50"))
 MAX_POSITION = float(os.getenv("MAX_POSITION", "2.00"))
@@ -97,14 +97,13 @@ CITY_SLUG_NORMALIZE = {
 # ============================================================
 
 def load_cities():
-    """Carrega a lista de cidades do arquivo cities.json"""
+    """Carrega a lista de cidades"""
     cities_path = os.path.join(os.path.dirname(__file__), 'cities.json')
     try:
         with open(cities_path, 'r') as f:
             cities = json.load(f)
         return cities
     except FileNotFoundError:
-        # Fallback: cidades padrão embutidas
         return [
             {"name": "New York", "lat": 40.7128, "lon": -74.0060},
             {"name": "London", "lat": 51.5074, "lon": -0.1278},
