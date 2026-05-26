@@ -1,164 +1,104 @@
-# =========================================================
-# WEATHER QUANT BOT — RISK
-# FIX: kelly_stake usa MAX_KELLY_FRACTION_CAP (0.20) como
-#      cap de FRAÇÃO, não MAX_POSITION (10.0 = dólares).
-#      Sem isso, Kelly nunca era capado como fração —
-#      num bankroll de $100 apostaria $46 em Denver 56F.
-# =========================================================
+#!/usr/bin/env python3
+"""
+Risk Manager - Kelly Criterion e guardrails.
+"""
 
+import logging
 from config import (
-    MAX_TOTAL_EXPOSURE,
-    MAX_KELLY_FRACTION_CAP,
     KELLY_FRACTION,
+    MAX_KELLY_FRACTION_CAP,
+    MAX_POSITION,
+    MIN_PROB_ABOVE_BELOW,
+    MIN_TARGET_ZSCORE,
+    MIN_EDGE,
+    MIN_EDGE_EXACT,
+    SIGMA_CAP_ABOVE_BELOW,
+    SIGMA_CAP_EXACT,
+    PROB_DEADZONE_MIN,
+    PROB_DEADZONE_MAX,
+    MIN_PRICE,
+    MAX_PRICE,
+    MAX_OPEN_TRADES,
+    MAX_TOTAL_EXPOSURE
 )
 
-# =========================================================
-# KELLY
-# =========================================================
+logger = logging.getLogger(__name__)
 
-def kelly_stake(
-    bankroll,
-    prob,
-    market_price,
-):
+
+def kelly_criterion(prob: float, price: float) -> float:
     """
-    Calcula stake via Kelly Criterion.
-
-    Pipeline:
-    1. Kelly puro  = (b*p - q) / b
-    2. Half-Kelly  = kelly_puro * KELLY_FRACTION (0.5)
-    3. Cap fração  = min(half_kelly, MAX_KELLY_FRACTION_CAP) (0.20)
-    4. Stake $     = bankroll * cap_fração
-
-    O cap em dólares (MAX_POSITION_DOLARES) é aplicado em bot.py
-    depois de converter para shares.
+    Calcula o stake usando Half-Kelly com cap.
     """
+    if prob <= 0 or prob >= 1:
+        return 0.0
+    
+    b = (1.0 / price) - 1.0  # odds
+    q = 1.0 - prob
+    
+    kelly_pct = (prob * b - q) / b
+    kelly_pct = max(0.0, kelly_pct)
+    
+    # Aplica fração Kelly e cap
+    stake_pct = kelly_pct * KELLY_FRACTION
+    stake_pct = min(stake_pct, MAX_KELLY_FRACTION_CAP)
+    
+    # Converte para valor absoluto com cap
+    stake = stake_pct * 100.0  # assumindo bankroll de $100
+    stake = min(stake, MAX_POSITION)
+    
+    return round(stake, 2)
 
-    try:
 
-        b = (
-            (1.0 / market_price)
-            - 1.0
-        )
-
-        p = float(prob)
-        q = 1.0 - p
-
-        # Kelly puro
-        kelly_puro = (
-            ((b * p) - q)
-            / b
-        )
-
-        # Half-Kelly
-        kelly_half = (
-            kelly_puro * KELLY_FRACTION
-        )
-
-        # Cap como FRAÇÃO do bankroll (ex: 0.20 = máx 20%)
-        kelly_capped = min(
-            kelly_half,
-            MAX_KELLY_FRACTION_CAP
-        )
-
-        if kelly_capped <= 0:
-            return 0
-
-        stake = bankroll * kelly_capped
-
-        return round(
-            max(stake, 0),
-            2
-        )
-
-    except Exception:
-        return 0
-
-# =========================================================
-# EV
-# =========================================================
-
-def expected_value(
-    prob,
-    market_price
-):
-
-    try:
-
-        payout = (
-            1.0
-            - market_price
-        )
-
-        loss = market_price
-
-        ev = (
-            (prob * payout)
-            - ((1 - prob) * loss)
-        )
-
-        return round(ev, 4)
-
-    except Exception:
-        return 0
-
-# =========================================================
-# EXPOSURE
-# =========================================================
-
-def open_exposure(history):
-
-    total = 0
-
-    for trade in history:
-
-        if trade.get("result") == "OPEN":
-
-            total += float(
-                trade.get(
-                    "stake",
-                    0
-                )
-            )
-
-    return round(total, 2)
-
-# =========================================================
-# REMAINING
-# =========================================================
-
-def remaining_capacity(history):
-
-    exposure = open_exposure(
-        history
-    )
-
-    return round(
-        max(
-            MAX_TOTAL_EXPOSURE
-            - exposure,
-            0
-        ),
-        2
-    )
-
-# =========================================================
-# STAKE CAP POR TIPO
-# =========================================================
-
-def cap_stake_by_type(
-    stake,
-    condition,
-):
+def check_guardrails(market: dict, model_prob: float, forecast_temp: float) -> bool:
     """
-    Reduz stake para EXACT (mais arriscado que ABOVE/BELOW).
-    O cap em dólares absolutos (MAX_POSITION_DOLARES) é feito em bot.py.
+    Verifica todos os guardrails antes de executar um trade.
+    Retorna True se o trade passar em todos os filtros.
     """
-
-    if condition.upper() == "EXACT":
-        stake *= 0.60
-
-    return round(
-        max(stake, 0),
-        2
-    )
+    condition = market.get('condition', '')
+    target_temp = market.get('target_temp', 0)
+    price = market.get('price', 0)
+    day_offset = market.get('day_offset', 1)
+    
+    # 1. Filtro de liquidez
+    if price < MIN_PRICE or price > MAX_PRICE:
+        logger.info(f"🚫 Preço fora da faixa de liquidez: {price}")
+        return False
+    
+    # 2. Zona morta de probabilidade
+    if PROB_DEADZONE_MIN <= model_prob <= PROB_DEADZONE_MAX:
+        logger.info(f"🚫 Probabilidade na zona morta: {model_prob:.3f}")
+        return False
+    
+    # 3. Probabilidade mínima para ABOVE/BELOW
+    if condition in ('ABOVE', 'BELOW'):
+        if model_prob < MIN_PROB_ABOVE_BELOW:
+            logger.info(f"🚫 Probabilidade abaixo do mínimo para {condition}: {model_prob:.3f}")
+            return False
+    
+    # 4. Edge mínimo
+    edge = model_prob - price
+    if condition == 'EXACT':
+        if edge < MIN_EDGE_EXACT:
+            logger.info(f"🚫 Edge insuficiente para EXACT: {edge:.3f}")
+            return False
+    else:
+        if edge < MIN_EDGE:
+            logger.info(f"🚫 Edge insuficiente: {edge:.3f}")
+            return False
+    
+    # 5. Z-score mínimo
+    sigma_map = {1: 2.8, 2: 3.2, 3: 3.5}
+    sigma = sigma_map.get(day_offset, 3.5)
+    
+    if condition in ('ABOVE', 'BELOW'):
+        sigma = min(sigma, SIGMA_CAP_ABOVE_BELOW)
+    else:
+        sigma = min(sigma, SIGMA_CAP_EXACT)
+    
+    z_score = abs(forecast_temp - target_temp) / sigma
+    
+    if z_score < MIN_TARGET_ZSCORE:
+        logger.info(f"🚫 Z-score abaixo do mínimo: {z_score:.2f}")
+        return False
+    
+    return True

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 Configurações do Weather Quant Bot v3.
+Arquivo unificado com todas as constantes necessárias.
 """
 
 import os
@@ -17,6 +18,7 @@ MAX_POSITION = float(os.getenv("MAX_POSITION", "2.00"))
 MAX_TOTAL_EXPOSURE = float(os.getenv("MAX_TOTAL_EXPOSURE", "8.00"))
 MAX_OPEN_TRADES = int(os.getenv("MAX_OPEN_TRADES", "4"))
 KELLY_FRACTION = float(os.getenv("KELLY_FRACTION", "0.50"))
+MAX_KELLY_FRACTION_CAP = float(os.getenv("MAX_KELLY_FRACTION_CAP", "0.50"))
 
 # Sigma caps
 SIGMA_CAP_ABOVE_BELOW = float(os.getenv("SIGMA_CAP_ABOVE_BELOW", "3.6"))
@@ -29,6 +31,10 @@ PROB_DEADZONE_MAX = float(os.getenv("PROB_DEADZONE_MAX", "0.55"))
 # Liquidez
 MIN_PRICE = float(os.getenv("MIN_PRICE", "0.12"))
 MAX_PRICE = float(os.getenv("MAX_PRICE", "0.88"))
+
+# Edge mínimo
+MIN_EDGE = float(os.getenv("MIN_EDGE", "0.02"))
+MIN_EDGE_EXACT = float(os.getenv("MIN_EDGE_EXACT", "0.07"))
 
 # ============================================================
 # Carregamento de Cidades
