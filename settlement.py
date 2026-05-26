@@ -2,18 +2,19 @@
 """
 Settlement Engine - Liquidação de trades com base em resultados reais.
 Atualiza calibrador de sigma e modelo ML.
+Integrado ao método settle_all original.
 """
 
 import logging
+import requests
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
-
-import requests
 
 # NOVO: integração com módulos de calibração e ML
 from sigma_calibrator import SigmaCalibrator
 from ml_adjuster import MLProbabilityAdjuster
 from model import get_calibrator, get_ml_adjuster
+from bankroll import Bankroll
 
 logger = logging.getLogger("settlement")
 
@@ -26,21 +27,31 @@ class SettlementEngine:
     """Resolve trades abertos usando dados observados."""
 
     def __init__(self):
-        # Estratégias de liquidação: 1. Polymarket API, 2. arquivo histórico, 3. previsão curta
-        self.sources = ["polymarket", "historical_file", "short_forecast"]
+        self.bankroll = Bankroll()
 
-    def get_actual_temperature(self, city: str, date: str) -> Optional[float]:
+    def get_actual_temperature(self, lat: float, lon: float, date: str) -> Optional[float]:
         """
-        Obtém a temperatura real observada. Tenta múltiplas fontes.
-        Substitua com a implementação real do seu bot (ex: Open-Meteo historical).
+        Consulta a temperatura máxima real na Open-Meteo Archive API.
         """
-        # Exemplo simplificado: Open-Meteo historical API
-        # Você deve adaptar com a lógica real do seu settlement original.
         try:
-            # Placeholder: retorna None para forçar fallback
-            return None
+            url = "https://archive-api.open-meteo.com/v1/archive"
+            params = {
+                "latitude": lat,
+                "longitude": lon,
+                "start_date": date,
+                "end_date": date,
+                "daily": "temperature_2m_max",
+                "timezone": "auto"
+            }
+            resp = requests.get(url, params=params, timeout=15)
+            resp.raise_for_status()
+            data = resp.json()
+            temp = data['daily']['temperature_2m_max'][0]
+            if temp is None:
+                raise ValueError("Temperatura ausente na resposta")
+            return float(temp)
         except Exception as e:
-            logger.error(f"Erro ao obter temperatura real para {city} em {date}: {e}")
+            logger.error(f"Falha ao obter temperatura real para ({lat},{lon}) em {date}: {e}")
             return None
 
     def settle_trade(self, trade: Dict) -> Dict:
@@ -48,17 +59,30 @@ class SettlementEngine:
         Liquida um trade individual, atualiza calibração e ML.
         Retorna o trade com status atualizado.
         """
+        # Verificar se já está liquidado
+        if trade.get('status') != 'OPEN':
+            return trade
+
         city = trade['city']
-        target_date = trade['date']
+        date = trade['date']
         forecast_temp = trade['forecast_temp']
-        model_prob = trade['model_prob']
-        day_offset = trade['day_offset']
+        model_prob = trade.get('model_prob', 0.5)  # fallback se não existir
+        day_offset = trade.get('day_offset', 1)
+        lat = trade.get('lat')
+        lon = trade.get('lon')
+
+        # Se não tiver coordenadas no trade, tenta buscar do cities.json
+        if lat is None or lon is None:
+            logger.warning(f"Trade {trade['id']} sem coordenadas. Tentando buscar...")
+            lat, lon = self._get_city_coordinates(city)
+            if lat is None:
+                logger.error(f"Não foi possível obter coordenadas para {city}")
+                return trade
 
         # 1. Obter temperatura real
-        actual_temp = self.get_actual_temperature(city, target_date)
-
+        actual_temp = self.get_actual_temperature(lat, lon, date)
         if actual_temp is None:
-            logger.warning(f"Temperatura real não disponível para {city} em {target_date}. Trade permanece OPEN.")
+            logger.warning(f"Temperatura real não disponível para {city} em {date}. Trade permanece OPEN.")
             return trade
 
         # 2. Determinar resultado
@@ -68,14 +92,14 @@ class SettlementEngine:
             won = actual_temp > target_temp
         elif condition == 'BELOW':
             won = actual_temp < target_temp
-        else:  # EXACT (aproximado)
+        else:  # EXACT
             won = abs(actual_temp - target_temp) <= 0.5
 
         trade['status'] = 'WON' if won else 'LOST'
         trade['actual_temp'] = actual_temp
         trade['settled_at'] = datetime.now().isoformat()
 
-        # 3. Registrar no calibrador de sigma
+        # 3. Registrar no calibrador de sigma (NOVO)
         _calibrator.record_trade_result(
             city=city,
             day_offset=day_offset,
@@ -83,7 +107,7 @@ class SettlementEngine:
             actual_temp=actual_temp
         )
 
-        # 4. Atualizar modelo ML
+        # 4. Atualizar modelo ML (NOVO)
         _ml_adjuster.update(
             model_prob=model_prob,
             day_offset=day_offset,
@@ -98,35 +122,39 @@ class SettlementEngine:
         )
         return trade
 
-    def settle_open_trades(self, open_trades: List[Dict]):
+    def _get_city_coordinates(self, city_name: str) -> tuple:
+        """Busca coordenadas da cidade no arquivo cities.json"""
+        import json
+        import os
+        try:
+            cities_path = os.path.join(os.path.dirname(__file__), 'cities.json')
+            with open(cities_path, 'r') as f:
+                cities = json.load(f)
+            for city in cities:
+                if city['name'].lower() == city_name.lower():
+                    return city['lat'], city['lon']
+        except Exception as e:
+            logger.error(f"Erro ao buscar coordenadas para {city_name}: {e}")
+        return None, None
+
+    def settle_all(self):
         """
-        Itera sobre todos os trades abertos e tenta liquidá-los.
-        Atualiza a lista in-place.
+        Método original de liquidação em lote.
+        Itera sobre todos os trades OPEN e tenta liquidar.
         """
+        open_trades = self.bankroll.get_open_trades()
+        if not open_trades:
+            logger.info("Nenhum trade aberto para liquidar.")
+            return
+
+        logger.info(f"Liquidando {len(open_trades)} trades abertos...")
+        
         for i, trade in enumerate(open_trades):
-            if trade['status'] == 'OPEN':
-                try:
-                    open_trades[i] = self.settle_trade(trade)
-                except Exception as e:
-                    logger.error(f"Falha ao liquidar trade {trade['id']}: {e}", exc_info=True)
+            try:
+                settled_trade = self.settle_trade(trade)
+                # Atualiza o trade no bankroll
+                self.bankroll.update_trade(trade['id'], settled_trade)
+            except Exception as e:
+                logger.error(f"Erro ao liquidar trade {trade.get('id', 'unknown')}: {e}", exc_info=True)
 
-
-# Exemplo de uso independente (caso settlement.py seja executado diretamente)
-if __name__ == "__main__":
-    # Teste rápido
-    engine = SettlementEngine()
-    dummy_trade = {
-        "id": "test123",
-        "city": "New York",
-        "condition": "ABOVE",
-        "target_temp": 25.0,
-        "forecast_temp": 27.0,
-        "model_prob": 0.75,
-        "price": 0.60,
-        "stake": 1.0,
-        "date": "2026-05-26",
-        "day_offset": 1,
-        "status": "OPEN"
-    }
-    result = engine.settle_trade(dummy_trade)
-    print(result)
+        logger.info("Ciclo de liquidação concluído.")
