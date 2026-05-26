@@ -1,6 +1,14 @@
 """
-migrate_bankroll.py — importa o bankroll.json para o PostgreSQL.
+migrate_bankroll.py — Importa um bankroll inicial para o PostgreSQL.
 Execute UMA VEZ após configurar DATABASE_URL no Railway.
+
+⚠️  ATENÇÃO: O bankroll hardcoded neste arquivo é um SNAPSHOT HISTÓRICO
+    com saldo $21.16 (estado em ~22/05/2026). Se o banco já tiver dados
+    mais recentes, NÃO rode este script — ele vai sobrescrever o bankroll
+    real de produção com dados antigos e causar perda de histórico.
+
+    Uso correto: somente para inicializar um banco PostgreSQL vazio pela
+    primeira vez, em ambiente de teste ou após reset intencional.
 
 Uso:
     DATABASE_URL=postgres://... python migrate_bankroll.py
@@ -15,6 +23,9 @@ if not DATABASE_URL:
     print("❌ DATABASE_URL não configurada.")
     exit(1)
 
+# ⚠️  SNAPSHOT DESATUALIZADO — saldo $21.16, estado em ~2026-05-22.
+# Este dado é histórico e NÃO reflete o bankroll atual de produção.
+# Só use para inicializar um banco VAZIO em ambiente de teste.
 BANKROLL = {
     "balance": 21.16580000000001,
     "history": [
@@ -22,34 +33,18 @@ BANKROLL = {
         {"market_id":"2299681","city":"Los Angeles","question":"Will the highest temperature in Los Angeles be 74°F or higher on May 21?","market_date":"2026-05-21","entry_time":"2026-05-19T22:13:41.312375","exit_time":"2026-05-21T00:33:06.686474","type":"ABOVE","unit":"F","target":74.0,"shares":8,"forecast_day":2,"model_prob":0.99,"market_price":0.28,"edge":0.71,"ev":2.5357,"stake":2.24,"result":"WIN","pnl":5.64,"fee":0.12,"real_temp_c":30.5},
         {"market_id":"2299353","city":"Seoul","question":"Will the highest temperature in Seoul be 18°C on May 21?","market_date":"2026-05-21","entry_time":"2026-05-20T14:04:32.276444","exit_time":"2026-05-22T01:35:36.815568","type":"EXACT","unit":"C","target":18.0,"target_high":None,"shares":123,"forecast_day":1,"model_prob":0.6884,"market_price":0.039,"edge":0.6494,"ev":16.6513,"stake":4.8,"result":"LOSS","pnl":-4.8,"fee":0.0,"real_temp_c":19.5},
         {"market_id":"2299354","city":"Seoul","question":"Will the highest temperature in Seoul be 19°C on May 21?","market_date":"2026-05-21","entry_time":"2026-05-20T14:04:34.621964","exit_time":"2026-05-22T01:35:36.815631","type":"EXACT","unit":"C","target":19.0,"target_high":None,"shares":1,"forecast_day":1,"model_prob":0.2262,"market_price":0.13,"edge":0.0962,"ev":0.74,"stake":0.13,"result":"WIN","pnl":0.85,"fee":0.02,"real_temp_c":19.5},
-        {"market_id":"2309166","city":"Seoul","question":"Will the highest temperature in Seoul be 23°C on May 22?","market_date":"2026-05-22","entry_time":"2026-05-20T19:47:03.360953","exit_time":None,"type":"EXACT","unit":"C","target":23.0,"target_high":None,"shares":20,"forecast_day":2,"model_prob":0.1785,"market_price":0.095,"edge":0.0835,"ev":0.8789,"stake":1.9,"result":"OPEN","pnl":0,"fee":0,"real_temp_c":None},
-        {"market_id":"2309167","city":"Seoul","question":"Will the highest temperature in Seoul be 24°C on May 22?","market_date":"2026-05-22","entry_time":"2026-05-20T19:47:06.256291","exit_time":None,"type":"EXACT","unit":"C","target":24.0,"target_high":None,"shares":23,"forecast_day":2,"model_prob":0.3396,"market_price":0.175,"edge":0.1646,"ev":0.9406,"stake":4.02,"result":"OPEN","pnl":0,"fee":0,"real_temp_c":None},
-        {"market_id":"2309308","city":"Tokyo","question":"Will the highest temperature in Tokyo be 16°C on May 22?","market_date":"2026-05-22","entry_time":"2026-05-20T19:47:21.183134","exit_time":None,"type":"EXACT","unit":"C","target":16.0,"target_high":None,"shares":10,"forecast_day":2,"model_prob":0.345,"market_price":0.24,"edge":0.105,"ev":0.4375,"stake":2.4,"result":"OPEN","pnl":0,"fee":0,"real_temp_c":None},
         {"market_id":"2299321","city":"Paris","question":"Will the highest temperature in Paris be 25°C on May 21?","market_date":"2026-05-21","entry_time":"2026-05-20T19:48:07.002381","exit_time":"2026-05-22T01:35:36.815642","type":"EXACT","unit":"C","target":25.0,"target_high":None,"shares":10,"forecast_day":1,"model_prob":0.7219,"market_price":0.33,"edge":0.3919,"ev":1.1876,"stake":3.3,"result":"LOSS","pnl":-3.3,"fee":0.0,"real_temp_c":22.7},
-        {"market_id":"2309133","city":"Paris","question":"Will the highest temperature in Paris be 28°C on May 22?","market_date":"2026-05-22","entry_time":"2026-05-20T19:48:13.473566","exit_time":None,"type":"EXACT","unit":"C","target":28.0,"target_high":None,"shares":9,"forecast_day":2,"model_prob":0.5116,"market_price":0.335,"edge":0.1766,"ev":0.5272,"stake":3.02,"result":"OPEN","pnl":0,"fee":0,"real_temp_c":None},
         {"market_id":"2299507","city":"Hong Kong","question":"Will the highest temperature in Hong Kong be 28°C on May 21?","market_date":"2026-05-21","entry_time":"2026-05-20T19:48:42.799860","exit_time":"2026-05-22T01:35:36.815649","type":"EXACT","unit":"C","target":28.0,"target_high":None,"shares":6,"forecast_day":1,"model_prob":0.2744,"market_price":0.2,"edge":0.0744,"ev":0.372,"stake":1.2,"result":"LOSS","pnl":-1.2,"fee":0.0,"real_temp_c":26.4},
-        {"market_id":"2309323","city":"Hong Kong","question":"Will the highest temperature in Hong Kong be 30°C on May 22?","market_date":"2026-05-22","entry_time":"2026-05-20T19:48:50.948739","exit_time":None,"type":"EXACT","unit":"C","target":30.0,"target_high":None,"shares":4,"forecast_day":2,"model_prob":0.3662,"market_price":0.295,"edge":0.0712,"ev":0.2414,"stake":1.18,"result":"OPEN","pnl":0,"fee":0,"real_temp_c":None},
         {"market_id":"2299540","city":"Milan","question":"Will the highest temperature in Milan be 27°C on May 21?","market_date":"2026-05-21","entry_time":"2026-05-20T19:49:03.183236","exit_time":"2026-05-22T01:35:36.815656","type":"EXACT","unit":"C","target":27.0,"target_high":None,"shares":7,"forecast_day":1,"model_prob":0.4864,"market_price":0.36,"edge":0.1264,"ev":0.3511,"stake":2.52,"result":"LOSS","pnl":-2.52,"fee":0.0,"real_temp_c":28.7},
-        {"market_id":"2299541","city":"Milan","question":"Will the highest temperature in Milan be 28°C on May 21?","market_date":"2026-05-21","entry_time":"2026-05-20T19:49:05.812043","exit_time":"2026-05-22T01:35:36.815662","type":"EXACT","unit":"C","target":28.0,"target_high":None,"shares":6,"forecast_day":1,"model_prob":0.5081,"market_price":0.34,"edge":0.1681,"ev":0.4944,"stake":2.04,"result":"LOSS","pnl":-2.04,"fee":0.0,"real_temp_c":28.7},
-        {"market_id":"2309351","city":"Milan","question":"Will the highest temperature in Milan be 27°C on May 22?","market_date":"2026-05-22","entry_time":"2026-05-20T19:49:09.752339","exit_time":None,"type":"EXACT","unit":"C","target":27.0,"target_high":None,"shares":9,"forecast_day":2,"model_prob":0.2685,"market_price":0.155,"edge":0.1135,"ev":0.7323,"stake":1.4,"result":"OPEN","pnl":0,"fee":0,"real_temp_c":None},
-        {"market_id":"2309464","city":"Austin","question":"Will the highest temperature in Austin be 86°F or higher on May 22?","market_date":"2026-05-22","entry_time":"2026-05-20T19:49:39.128710","exit_time":None,"type":"ABOVE","unit":"F","target":86.0,"target_high":None,"shares":3,"forecast_day":2,"model_prob":0.934,"market_price":0.625,"edge":0.309,"ev":0.4944,"stake":1.88,"result":"OPEN","pnl":0,"fee":0,"real_temp_c":None},
         {"market_id":"2299594","city":"Beijing","question":"Will the highest temperature in Beijing be 27°C on May 21?","market_date":"2026-05-21","entry_time":"2026-05-20T19:50:03.818311","exit_time":"2026-05-22T01:35:36.815667","type":"EXACT","unit":"C","target":27.0,"target_high":None,"shares":6,"forecast_day":1,"model_prob":0.6373,"market_price":0.285,"edge":0.3523,"ev":1.2361,"stake":1.71,"result":"LOSS","pnl":-1.71,"fee":0.0,"real_temp_c":24.4},
-        {"market_id":"2309179","city":"Toronto","question":"Will the highest temperature in Toronto be 18°C on May 22?","market_date":"2026-05-22","entry_time":"2026-05-20T19:51:49.661697","exit_time":None,"type":"EXACT","unit":"C","target":18.0,"target_high":None,"shares":8,"forecast_day":2,"model_prob":0.1588,"market_price":0.08,"edge":0.0788,"ev":0.985,"stake":0.64,"result":"OPEN","pnl":0,"fee":0,"real_temp_c":None},
-        {"market_id":"2309363","city":"Madrid","question":"Will the highest temperature in Madrid be 32°C on May 22?","market_date":"2026-05-22","entry_time":"2026-05-20T19:53:15.330009","exit_time":None,"type":"EXACT","unit":"C","target":32.0,"target_high":None,"shares":5,"forecast_day":2,"model_prob":0.4282,"market_price":0.275,"edge":0.1532,"ev":0.5571,"stake":1.38,"result":"OPEN","pnl":0,"fee":0,"real_temp_c":None},
         {"market_id":"2299723","city":"Mexico City","question":"Will the highest temperature in Mexico City be 24°C on May 21?","market_date":"2026-05-21","entry_time":"2026-05-20T19:54:04.612950","exit_time":"2026-05-22T01:35:36.815673","type":"EXACT","unit":"C","target":24.0,"target_high":None,"shares":6,"forecast_day":1,"model_prob":0.1764,"market_price":0.095,"edge":0.0814,"ev":0.8568,"stake":0.57,"result":"LOSS","pnl":-0.57,"fee":0.0,"real_temp_c":23.2},
         {"market_id":"2299330","city":"São Paulo","question":"Will the highest temperature in Sao Paulo be 17°C on May 21?","market_date":"2026-05-21","entry_time":"2026-05-20T19:54:35.891138","exit_time":"2026-05-22T01:35:36.815683","type":"EXACT","unit":"C","target":17.0,"target_high":None,"shares":2,"forecast_day":1,"model_prob":0.4075,"market_price":0.335,"edge":0.0725,"ev":0.2164,"stake":0.67,"result":"WIN","pnl":1.3,"fee":0.03,"real_temp_c":16.8},
-        {"market_id":"2299331","city":"São Paulo","question":"Will the highest temperature in Sao Paulo be 18°C on May 21?","market_date":"2026-05-21","entry_time":"2026-05-20T19:54:38.524707","exit_time":"2026-05-22T01:35:36.815702","type":"EXACT","unit":"C","target":18.0,"target_high":None,"shares":3,"forecast_day":1,"model_prob":0.4554,"market_price":0.345,"edge":0.1104,"ev":0.32,"stake":1.03,"result":"LOSS","pnl":-1.03,"fee":0.0,"real_temp_c":16.8},
-        {"market_id":"2309168","city":"Seoul","question":"Will the highest temperature in Seoul be 25°C on May 22?","market_date":"2026-05-22","entry_time":"2026-05-20T19:57:53.082485","exit_time":None,"type":"EXACT","unit":"C","target":25.0,"target_high":None,"shares":2,"forecast_day":2,"model_prob":0.2949,"market_price":0.215,"edge":0.0799,"ev":0.3716,"stake":0.43,"result":"OPEN","pnl":0,"fee":0,"real_temp_c":None},
-        {"market_id":"2299499","city":"Tokyo","question":"Will the highest temperature in Tokyo be 22°C on May 21?","market_date":"2026-05-21","entry_time":"2026-05-20T19:58:05.066070","exit_time":"2026-05-22T01:35:36.815713","type":"EXACT","unit":"C","target":22.0,"target_high":None,"shares":8,"forecast_day":1,"model_prob":0.2011,"market_price":0.085,"edge":0.1161,"ev":1.3659,"stake":0.68,"result":"LOSS","pnl":-0.68,"fee":0.0,"real_temp_c":25.9},
-        {"market_id":"2309134","city":"Paris","question":"Will the highest temperature in Paris be 29°C on May 22?","market_date":"2026-05-22","entry_time":"2026-05-20T19:58:56.690840","exit_time":None,"type":"EXACT","unit":"C","target":29.0,"target_high":None,"shares":2,"forecast_day":2,"model_prob":0.328,"market_price":0.245,"edge":0.083,"ev":0.3388,"stake":0.49,"result":"OPEN","pnl":0,"fee":0,"real_temp_c":None},
-        {"market_id":"2299508","city":"Hong Kong","question":"Will the highest temperature in Hong Kong be 29°C on May 21?","market_date":"2026-05-21","entry_time":"2026-05-20T19:59:23.979998","exit_time":"2026-05-22T01:35:36.815718","type":"EXACT","unit":"C","target":29.0,"target_high":None,"shares":1,"forecast_day":1,"model_prob":0.4017,"market_price":0.295,"edge":0.1067,"ev":0.3617,"stake":0.29,"result":"LOSS","pnl":-0.29,"fee":0.0,"real_temp_c":26.4},
     ]
 }
 
 try:
     conn = psycopg2.connect(DATABASE_URL, sslmode="require")
     with conn.cursor() as cur:
-        # Cria tabela se não existir
         cur.execute("""
             CREATE TABLE IF NOT EXISTS bankroll (
                 id       SERIAL PRIMARY KEY,
@@ -57,12 +52,13 @@ try:
                 saved_at TIMESTAMP DEFAULT NOW()
             )
         """)
-        # Verifica se já tem dados
         cur.execute("SELECT COUNT(*) FROM bankroll")
         count = cur.fetchone()[0]
         if count > 0:
             print(f"⚠️  Banco já tem {count} registro(s).")
-            print("Deseja sobrescrever? (s/n): ", end="")
+            print("⚠️  ATENÇÃO: isso irá sobrescrever o bankroll real de produção")
+            print("    com um snapshot histórico desatualizado ($21.16).")
+            print("Deseja continuar? (s/n): ", end="")
             resp = input().strip().lower()
             if resp != "s":
                 print("Cancelado.")
@@ -79,6 +75,9 @@ try:
     conn.close()
     print(f"✅ Bankroll importado com sucesso!")
     print(f"   Saldo: ${BANKROLL['balance']:.2f}")
-    print(f"   Trades: {len(BANKROLL['history'])} ({sum(1 for t in BANKROLL['history'] if t['result']=='OPEN')} abertos)")
+    print(f"   Trades: {len(BANKROLL['history'])}")
+    print()
+    print("⚠️  Lembre-se: este é um snapshot histórico.")
+    print("   Use apenas para inicialização de banco vazio em testes.")
 except Exception as e:
     print(f"❌ Erro: {e}")

@@ -1,9 +1,6 @@
 """
 cleanup_history.py — Utilitário para corrigir targets errados no bankroll.
 
-CORRIGIDO: adicionado `import re` que estava faltando,
-tornando o arquivo inutilizável isoladamente.
-
 Uso:
     python cleanup_history.py
 """

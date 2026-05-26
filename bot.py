@@ -12,15 +12,19 @@ logging.basicConfig(level=logging.INFO,
 logger = logging.getLogger("bot")
 
 # ============================================================
-# Importações REAIS - VERIFICADAS UMA POR UMA
+# Importações — verificadas contra as APIs reais exportadas
 # ============================================================
 from gamma_parser import fetch_markets
-from forecast import get_forecast
+from forecast import get_forecast, get_corrected_forecast
 from model import calculate_probability
 from risk import kelly_criterion, check_guardrails
-from bankroll import _save_to_db, get_open_trades, update_trade
+
+# FIX: bankroll não exporta _save_to_db, get_open_trades nem update_trade.
+# Usar save_bankroll / load_bankroll / already_traded que são a API pública.
+from bankroll import load_bankroll, save_bankroll, already_traded
+
 from settlement import settle_all
-from notificador import notify_trade
+from notificador import notificar_entrada_trade
 from consensus import ConsensusEngine
 
 from config import (TRADING_ENABLED, MAX_OPEN_TRADES, MAX_TOTAL_EXPOSURE,
@@ -29,16 +33,21 @@ from config import (TRADING_ENABLED, MAX_OPEN_TRADES, MAX_TOTAL_EXPOSURE,
 # ============================================================
 consensus_engine = ConsensusEngine()
 cities = CITIES
-open_trades = []
 
 if not cities:
     logger.error("Nenhuma cidade disponível.")
     sys.exit(1)
 
-logger.info(f"🤖 {len(cities)} cidades | Paper: {bool(TRADING_ENABLED)}")
+logger.info(f"🤖 {len(cities)} cidades | Trading: {'ON' if TRADING_ENABLED else 'OFF (observação)'}")
+
+
+def _get_open_trades(history):
+    """Retorna trades com resultado OPEN da lista de histórico."""
+    return [t for t in history if t.get("result") == "OPEN"]
+
 
 def process_city(city: Dict):
-    name = city['name']
+    name = city["name"]
     logger.info(f"📍 {name}")
 
     try:
@@ -53,58 +62,165 @@ def process_city(city: Dict):
 
     logger.info(f"📋 {name}: {len(markets)} mercados")
 
+    # Carrega bankroll uma vez por cidade para evitar race conditions
+    data = load_bankroll()
+    history = data.get("history", [])
+    balance = float(data.get("balance", 0))
+
     for m in markets:
         try:
-            fc = get_forecast(city, m['date'])
-            if fc is None: continue
+            market_date = m.get("market_date", "")
+            market_id   = str(m.get("market_id", ""))
 
-            date_str = m['date'].strftime('%Y-%m-%d') if isinstance(m['date'], datetime) else str(m['date'])
-            cons = consensus_engine.consensus_temperature(city['lat'], city['lon'], date_str, fc)
-            if not cons['consensus']:
-                logger.info(f"🚫 {name} {m['condition']}: {cons['reason']}")
+            # Ignora mercado já negociado
+            if already_traded(history, market_id):
+                logger.debug(f"  Já negociado: {market_id}")
                 continue
 
-            prob = calculate_probability(name, m['target_temp'], fc, m['day_offset'])
-            edge = prob - m['price']
-            if edge <= 0: continue
-            if not check_guardrails(m, prob, fc): continue
+            # Verifica limite de trades abertos
+            open_count = len(_get_open_trades(history))
+            if open_count >= MAX_OPEN_TRADES:
+                logger.info(f"🛑 Limite de {MAX_OPEN_TRADES} trades abertos atingido")
+                break
 
-            stake = min(kelly_criterion(prob, m['price']), MAX_POSITION)
-            if stake <= 0: continue
+            # Verifica exposição total
+            exposure = sum(float(t.get("stake", 0)) for t in _get_open_trades(history))
+            if exposure >= MAX_TOTAL_EXPOSURE:
+                logger.info(f"🛑 Exposição máxima ${MAX_TOTAL_EXPOSURE:.2f} atingida")
+                break
+
+            # FIX: get_forecast retorna (forecast_c, sigma) — desempacotar antes de usar.
+            # O bot anterior passava a tupla inteira como forecast_temp para calculate_probability.
+            forecast_result = get_forecast(name.lower().replace(" ", "-"), 1)
+            if forecast_result is None or forecast_result[0] is None:
+                logger.debug(f"  Forecast indisponível para {name}")
+                continue
+
+            forecast_c, sigma = forecast_result  # desempacotar corretamente
+
+            date_str = market_date if isinstance(market_date, str) else str(market_date)
+
+            # Consenso entre fontes
+            cons = consensus_engine.consensus_temperature(
+                city["lat"], city["lon"], date_str, forecast_c
+            )
+            if not cons["consensus"]:
+                logger.info(f"🚫 {name}: {cons['reason']}")
+                continue
+
+            condition  = m.get("condition", "above").upper()
+            target     = float(m.get("target", 0))
+            unit       = m.get("unit", "C")
+            yes_price  = float(m.get("yes_price", 0))
+
+            # FIX: calculate_probability(city, target_temp, forecast_temp, day_offset)
+            # forecast_temp deve ser float, não tupla.
+            day_offset = 1
+            try:
+                from datetime import date as _date
+                mdate = datetime.strptime(date_str, "%Y-%m-%d").date()
+                day_offset = max(1, (mdate - datetime.utcnow().date()).days)
+            except Exception:
+                pass
+
+            prob = calculate_probability(name, target, forecast_c, day_offset)
+            edge = prob - yes_price
+
+            if edge <= 0:
+                continue
+
+            # Guardrails
+            market_dict = {
+                "condition":   condition,
+                "target_temp": target,
+                "price":       yes_price,
+                "day_offset":  day_offset,
+            }
+            if not check_guardrails(market_dict, prob, forecast_c):
+                continue
+
+            stake = min(kelly_criterion(prob, yes_price), MAX_POSITION)
+            if stake <= 0:
+                continue
+
+            shares    = int(stake / yes_price) if yes_price > 0 else 0
+            real_cost = round(shares * yes_price, 2)
+            stake     = real_cost
+
+            if stake <= 0:
+                continue
+
+            trade = dict(
+                market_id    = market_id,
+                city         = name,
+                question     = m.get("question", ""),
+                market_date  = date_str,
+                entry_time   = datetime.utcnow().isoformat(),
+                exit_time    = None,
+                type         = condition,
+                unit         = unit,
+                target       = target,
+                forecast_c   = forecast_c,
+                sigma_total  = round(sigma, 4),
+                shares       = shares,
+                model_prob   = round(prob, 4),
+                market_price = yes_price,
+                edge         = round(edge, 4),
+                ev           = round(prob / yes_price - 1, 4) if yes_price > 0 else 0,
+                stake        = stake,
+                result       = "OPEN",
+                pnl          = 0,
+                fee          = 0.0,
+                forecast_day = day_offset,
+                real_temp_c  = None,
+            )
 
             if TRADING_ENABLED:
-                trade = dict(id=f"{m.get('id')}_{int(time.time())}", city=name,
-                             lat=city['lat'], lon=city['lon'],
-                             condition=m['condition'], target_temp=m['target_temp'],
-                             forecast_temp=fc, model_prob=round(prob,4),
-                             price=m['price'], stake=round(stake,2), edge=round(edge,4),
-                             date=date_str, day_offset=m['day_offset'],
-                             status="OPEN", timestamp=datetime.now().isoformat())
-                _save_to_db(trade)
-                open_trades.append(trade)
-                logger.info(f"✅ TRADE: {name} {m['condition']} {m['target_temp']}°F | prob={prob:.3f} edge={edge:.3f} stake=${stake:.2f}")
-                try: notify_trade(trade)
-                except Exception: pass
+                history.append(trade)
+                balance -= stake
+                data["history"] = history
+                data["balance"]  = round(balance, 4)
+                save_bankroll(data)
+                logger.info(
+                    f"✅ TRADE: {name} {condition} {target}°{unit} | "
+                    f"prob={prob:.3f} edge={edge:.3f} stake=${stake:.2f}"
+                )
+                try:
+                    notificar_entrada_trade(
+                        city=name, market_date=date_str, target=target,
+                        unit=unit, stake=stake, model_prob=prob,
+                        market_price=yes_price, edge=edge,
+                        balance=balance, shares=shares,
+                    )
+                except Exception:
+                    pass
             else:
-                logger.info(f"📊 SINAL: {name} {m['condition']} {m['target_temp']}°F | prob={prob:.3f} edge={edge:.3f} stake=${stake:.2f}")
+                logger.info(
+                    f"📊 SINAL: {name} {condition} {target}°{unit} | "
+                    f"prob={prob:.3f} edge={edge:.3f} stake=${stake:.2f}"
+                )
+
         except Exception as e:
-            logger.error(f"❌ {name} mercado {m.get('id','?')}: {e}")
+            logger.error(f"❌ {name} mercado {m.get('market_id','?')}: {e}", exc_info=True)
+
 
 def settlement_cycle():
     logger.info("🔄 Liquidação...")
     try:
         settle_all()
-        global open_trades
-        open_trades = get_open_trades()
     except Exception as e:
-        logger.error(f"❌ Liquidação: {e}")
+        logger.error(f"❌ Liquidação: {e}", exc_info=True)
+
 
 def scheduled_trading():
     logger.info(f"🚀 CICLO {datetime.now():%H:%M:%S}")
     for city in cities:
-        try: process_city(city)
-        except Exception as e: logger.error(f"❌ {city.get('name','?')}: {e}")
+        try:
+            process_city(city)
+        except Exception as e:
+            logger.error(f"❌ {city.get('name','?')}: {e}", exc_info=True)
     logger.info("✅ FIM CICLO")
+
 
 def run():
     schedule.every(1).hours.do(scheduled_trading)
@@ -113,6 +229,7 @@ def run():
     while True:
         schedule.run_pending()
         time.sleep(30)
+
 
 if __name__ == "__main__":
     logger.info("🌤️ WEATHER QUANT BOT v3")
