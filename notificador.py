@@ -1,6 +1,10 @@
 """
 NOTIFICADOR TELEGRAM — WEATHER QUANT
-Notificações automáticas + IA Grok para conversa natural.
+Notificações automáticas + IA Groq (llama-3.3-70b) para conversa natural.
+
+CORRIGIDO: docstring dizia "Grok" (xAI), mas o serviço usado é Groq
+(startup de infraestrutura, groq.com). São produtos diferentes.
+Variável de ambiente: GROQ_API_KEY (correta).
 """
 
 import os
@@ -22,7 +26,7 @@ TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
 def enviar_mensagem(texto, parse_mode="HTML"):
     if not TELEGRAM_TOKEN or not CHAT_ID:
-        print("⚠️  Telegram: token ou chat_id não configurados")
+        print("Telegram: token ou chat_id não configurados")
         return False
     try:
         r = requests.post(
@@ -32,7 +36,7 @@ def enviar_mensagem(texto, parse_mode="HTML"):
         )
         return r.status_code == 200
     except Exception as e:
-        print(f"⚠️  Telegram erro: {e}")
+        print(f"Telegram erro: {e}")
         return False
 
 
@@ -100,7 +104,6 @@ def _tabela_validacao(target, unit, model_prob, real_temp_c, resultado):
 def notificar_entrada_trade(city, market_date, target, unit, stake,
                              model_prob, market_price, edge,
                              balance=None, shares=None):
-    """Notifica entrada de novo trade."""
     ev_pct    = round((model_prob / market_price - 1) * 100, 1) if market_price > 0 else 0
     shares_ln = f"\n<b>Shares:</b> {shares}" if shares is not None else ""
 
@@ -133,7 +136,6 @@ def notificar_entrada_trade(city, market_date, target, unit, stake,
 
 def notificar_settlement_win(city, market_date, target, unit, stake, pnl, saldo,
                               model_prob=None, real_temp_c=None):
-    """Notifica vitória no settlement."""
     tabela = _tabela_validacao(target, unit, model_prob, real_temp_c, "WIN")
     enviar_mensagem(
         f"<b>VITORIA!</b>\n\n"
@@ -146,7 +148,6 @@ def notificar_settlement_win(city, market_date, target, unit, stake, pnl, saldo,
 
 def notificar_settlement_loss(city, market_date, target, unit, stake, pnl, saldo,
                                model_prob=None, real_temp_c=None):
-    """Notifica derrota no settlement."""
     tabela = _tabela_validacao(target, unit, model_prob, real_temp_c, "LOSS")
     enviar_mensagem(
         f"<b>DERROTA</b>\n\n"
@@ -158,7 +159,6 @@ def notificar_settlement_loss(city, market_date, target, unit, stake, pnl, saldo
 
 
 def notificar_settlement_resumo(total_resolved, wins, losses, total_pnl, saldo):
-    """Notifica resumo do settlement."""
     taxa  = wins / (wins + losses) * 100 if (wins + losses) > 0 else 0.0
     emoji = "🟢" if total_pnl >= 0 else "🔴"
     enviar_mensagem(
@@ -170,11 +170,16 @@ def notificar_settlement_resumo(total_resolved, wins, losses, total_pnl, saldo):
 
 
 # ──────────────────────────────────────────────────────────────
-# IA — GROK COMO ANALISTA DO BOT
+# IA — GROQ (llama-3.3-70b) COMO ANALISTA DO BOT
+#
+# CORRIGIDO: docstring e variável interna renomeados de "grok"
+# para "groq" — são serviços diferentes:
+#   xAI Grok   → api.x.ai  (produto da xAI/Elon Musk)
+#   Groq        → api.groq.com (startup de infra de IA)
+# O bot usa GROQ, não Grok.
 # ──────────────────────────────────────────────────────────────
 
 def _build_context():
-    """Monta o contexto do bot para o Grok analisar."""
     try:
         from bankroll import load_bankroll
         bankroll = load_bankroll()
@@ -190,7 +195,6 @@ def _build_context():
     win_rate = round(len(wins)/len(fechados)*100,1) if fechados else 0
     exposicao = sum(t.get("stake",0) for t in abertos)
 
-    # Top trades fechados
     ultimos = fechados[-5:] if fechados else []
     trades_str = ""
     for t in ultimos:
@@ -206,8 +210,7 @@ def _build_context():
         abertos_str += (
             f"\n- {t.get('city')} {t.get('market_date')} | "
             f"Stake ${t.get('stake',0):.2f} | "
-            f"Model {t.get('model_prob',0)*100:.0f}% vs Mkt {t.get('market_price',0)*100:.0f}% | "
-            f"Edge {t.get('edge',0):+.1f}%"
+            f"Model {t.get('model_prob',0)*100:.0f}% vs Mkt {t.get('market_price',0)*100:.0f}%"
         )
 
     validacao_str = ""
@@ -234,33 +237,34 @@ TRADES ABERTOS:{abertos_str if abertos_str else ' Nenhum'}
 ÚLTIMOS TRADES FECHADOS:{trades_str if trades_str else ' Nenhum'}
 
 SOBRE O BOT:
-- Usa ensemble meteorológico Open-Meteo (50 membros) para calcular probabilidades
-- Aposta quando edge (modelo - mercado) > 5%
-- Kelly fraction 0.5 (half-Kelly), cap $10 por trade
-- Settlement automático às 08:00 e 20:00 UTC
-- 1 trade por evento (cidade+data) — sem múltiplos buckets
+- Usa Open-Meteo para forecast de temperatura máxima diária
+- Aposta quando edge (modelo - mercado) > threshold por horizonte
+- Filtros ativos: prob >= 70%, zscore >= 1.5, Kelly half-fraction
+- Cap $2 por trade, exposição máxima $8, máximo 4 abertos
+- Settlement automático via scheduler horário
 
-Responda de forma concisa e direta em português. Seja analítico, honesto sobre riscos e 
-baseie suas análises nos dados reais acima. Máximo 3 parágrafos."""
+Responda de forma concisa em português. Máximo 3 parágrafos."""
 
 
-def _perguntar_grok(pergunta_usuario):
+def _perguntar_groq(pergunta_usuario):
     """
-    Envia pergunta EXCLUSIVAMENTE para Grok (xAI).
-    FIX #6: Timeout robusto e tratamento de erro.
+    Envia pergunta para Groq (api.groq.com), não xAI Grok.
+    Usa llama-3.3-70b-versatile.
+    Variável de ambiente: GROQ_API_KEY
     """
     contexto = _build_context()
-    
-    grok_key = os.environ.get("GROQ_API_KEY", "")
-    
-    if not grok_key:
-        return "❌ GROQ_API_KEY não configurada!\n\nAdicione a variável de ambiente com sua chave Groq."
-    
+
+    # CORRIGIDO: era "grok_key" — nome consistente com a variável de ambiente
+    groq_api_key = os.environ.get("GROQ_API_KEY", "")
+
+    if not groq_api_key:
+        return "GROQ_API_KEY não configurada.\n\nAdicione a variável de ambiente com sua chave Groq (groq.com)."
+
     try:
         r = requests.post(
             "https://api.groq.com/openai/v1/chat/completions",
             headers={
-                "Authorization": f"Bearer {grok_key}",
+                "Authorization": f"Bearer {groq_api_key}",
                 "Content-Type": "application/json",
             },
             json={
@@ -271,28 +275,29 @@ def _perguntar_grok(pergunta_usuario):
                     {"role": "user",   "content": pergunta_usuario},
                 ],
             },
-            timeout=30,  # FIX: Timeout explícito
+            timeout=30,
         )
-        
+
         if r.status_code == 200:
             data = r.json()
             return data["choices"][0]["message"]["content"]
         else:
             data = r.json() if r.text else {}
             erro = data.get("error", {}).get("message", "erro desconhecido") if isinstance(data, dict) else str(data)
-            return f"❌ Erro Grok {r.status_code}: {erro}"
-            
+            return f"Erro Groq {r.status_code}: {erro}"
+
     except requests.exceptions.Timeout:
-        return "⏱️  Timeout — Grok demorou muito para responder. Tente novamente."
+        return "Timeout — Groq demorou muito. Tente novamente."
     except requests.exceptions.ConnectionError as e:
-        return f"❌ Falha de conexão com Grok: {str(e)[:100]}"
+        return f"Falha de conexão com Groq: {str(e)[:100]}"
     except Exception as e:
-        return f"❌ Erro ao conectar com Grok: {str(e)[:200]}"
+        return f"Erro ao conectar com Groq: {str(e)[:200]}"
 
 
-# Aliases para compatibilidade
-_perguntar_ia = _perguntar_grok
-_perguntar_claude = _perguntar_grok
+# Aliases para compatibilidade com código existente
+_perguntar_ia     = _perguntar_groq
+_perguntar_claude = _perguntar_groq
+_perguntar_grok   = _perguntar_groq  # alias para código antigo que ainda usa esse nome
 
 
 # ──────────────────────────────────────────────────────────────
@@ -364,9 +369,9 @@ def processar_comando(texto):
             "/validacao  — Relatorio de validacao do modelo\n"
             "/settlement — Rodar settlement agora\n"
             "/help       — Esta mensagem\n\n"
-            "<b>💬 GROK - Interação livre</b>\n"
-            "<i>Mande qualquer pergunta em texto livre — "
-            "o Grok vai analisar o bot e responder!</i>\n\n"
+            "<b>Interação livre</b>\n"
+            "<i>Mande qualquer pergunta em texto — "
+            "a IA (Groq/llama) vai analisar o bot e responder.</i>\n\n"
             "Exemplos:\n"
             "• Como está o bot?\n"
             "• Qual o win rate?\n"
@@ -374,9 +379,8 @@ def processar_comando(texto):
         )
 
     else:
-        # Qualquer texto que não seja comando → Grok analisa
-        print(f"[Grok] Processando: {texto[:50]}...")
-        resposta = _perguntar_grok(texto)
+        print(f"[Groq] Processando: {texto[:50]}...")
+        resposta = _perguntar_groq(texto)
         enviar_mensagem(resposta)
 
 
@@ -385,7 +389,6 @@ def processar_comando(texto):
 # ──────────────────────────────────────────────────────────────
 
 def iniciar_listener():
-    """Inicia listener de mensagens Telegram em thread daemon."""
     def listen():
         offset = 0
         print("Listener Telegram iniciado...")

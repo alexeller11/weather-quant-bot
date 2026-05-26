@@ -10,15 +10,32 @@ def utcnow():
 BASE_URL = "https://gamma-api.polymarket.com"
 HEADERS  = {"User-Agent": "Mozilla/5.0"}
 
-# ==========================================
+# =========================================================
+# MAPEAMENTO DE SLUGS ALTERNATIVOS POR CIDADE
+# A Polymarket usa slugs diferentes ao longo do tempo.
+# CORRIGIDO: "new-york" → testa "nyc" e "new-york".
+# =========================================================
+
+CITY_SLUG_ALIASES = {
+    "new-york":    ["new-york", "nyc", "new york"],
+    "hong-kong":   ["hong-kong", "hongkong"],
+    "los-angeles": ["los-angeles", "la", "losangeles"],
+    "sao-paulo":   ["sao-paulo", "são paulo", "saopaulo"],
+    "mexico-city": ["mexico-city", "mexicocity", "mexico city"],
+    "toronto":     ["toronto"],
+    "madrid":      ["madrid"],
+}
+
+def _get_city_slugs(city):
+    """Retorna lista de slugs a tentar para a cidade."""
+    return CITY_SLUG_ALIASES.get(city, [city])
+
+
+# =========================================================
 # SAFE REQUEST — com tratamento de 429
-# ==========================================
+# =========================================================
 
 def safe_request(url, retries=5, timeout=15):
-    """
-    Diferencia HTTP 429 (rate limit) dos demais erros.
-    Em 429 espera 60s antes de tentar de novo.
-    """
     for attempt in range(retries):
         try:
             r = requests.get(url, headers=HEADERS, timeout=timeout)
@@ -37,89 +54,63 @@ def safe_request(url, retries=5, timeout=15):
         time.sleep(sleep_time)
     return None
 
-# ==========================================
+# =========================================================
 # DETECÇÃO DE UNIDADE
-# ==========================================
+# =========================================================
 
 def detect_unit(question):
-    """
-    Detecta se a pergunta usa Fahrenheit ou Celsius.
-    Prioridade: °F > número+F em contexto > Fahrenheit > °C > Celsius > default C.
-    """
     q = question.lower()
-    
-    # Padrões Fahrenheit com contexto (para evitar falsos positivos)
+
     fahrenheit_patterns = [
-        r"°[Ff]",  # °F ou °f
-        r"(?:temperature|temp|be|reach|hit)\s+\d+\s*[Ff](?![a-z])",  # "temperature 60F" mas não "far"
-        r"\d+\s*[Ff](?:\s|,|\?|$)",  # "60F " (espaço após)
+        r"°[Ff]",
+        r"(?:temperature|temp|be|reach|hit)\s+\d+\s*[Ff](?![a-z])",
+        r"\d+\s*[Ff](?:\s|,|\?|$)",
         r"[Ff]ahrenheit",
     ]
-    
+
     for pattern in fahrenheit_patterns:
         if re.search(pattern, question):
             return "F"
 
-    # Padrões Celsius
     celsius_patterns = [
         r"°[Cc]",
         r"[Cc]elsius"
     ]
-    
+
     for pattern in celsius_patterns:
         if re.search(pattern, question):
             return "C"
 
     return "C"
 
-# ==========================================
+# =========================================================
 # EXTRAI NÚMERO DA TEMPERATURA
-# ==========================================
+# =========================================================
 
 def _extract_temp_candidates(question, unit):
-    """
-    Extrai candidatos de temperatura da pergunta, filtrando
-    números que são claramente datas (dias do mês ≤ 31 em contexto de data).
-    """
     if unit == "F":
-        # Tenta colado com unidade primeiro
         attached = re.findall(r"(\d+(?:\.\d+)?)\s*(?:°[Ff]|[Ff](?![a-z]))", question)
         if attached:
             return [float(n) for n in attached if 50 <= float(n) <= 130]
-        # Fallback: range razoável de Fahrenheit
         return [float(n) for n in re.findall(r"\d+(?:\.\d+)?", question)
                 if 50 <= float(n) <= 130]
     else:
-        # Tenta colado com grau primeiro
         attached = re.findall(r"(\d+(?:\.\d+)?)\s*°[Cc]", question)
         if attached:
             return [float(n) for n in attached if -10 <= float(n) <= 55]
-        # Fallback: range razoável de Celsius, excluindo dias do mês isolados
         candidates = [float(n) for n in re.findall(r"\d+(?:\.\d+)?", question)
                       if 10 <= float(n) <= 55]
-        # Se houver candidatos acima de 31, prefira eles (dias do mês ≤ 31)
         non_day = [n for n in candidates if n > 31]
         return non_day if non_day else candidates
 
-# ==========================================
+# =========================================================
 # PARSE QUESTION
-# ==========================================
+# =========================================================
 
 def parse_question(question):
-    """
-    Extrai condição, target e unidade da pergunta do mercado.
-
-    Suporta três formatos que a Polymarket usa:
-      1. "22°C or higher"  → condition=above, target=22
-      2. "Will ... be 22°C"  → condition=exact, target=22
-      3. "between 74-75°F"   → condition=range, target_low=74, target_high=75
-
-    Retorna dict {condition, target, [target_high], unit} ou None.
-    """
     q = question.lower()
     unit = detect_unit(question)
 
-    # ── Formato 1: "or higher" / "or above" / "or lower" / "or below" ──────
     if "or higher" in q or "or above" in q:
         condition = "above"
         candidates = _extract_temp_candidates(question, unit)
@@ -142,15 +133,12 @@ def parse_question(question):
             unit = "F"
         return {"condition": condition, "target": target, "unit": unit}
 
-    # ── Formato 2: "between X-Y" ou "between X and Y" ───────────────────────
-    # FIX #4: Corrigir regex
     range_match = re.search(
         r"between\s+(\d+(?:\.\d+)?)\s*(?:[-–]|and)\s*(\d+(?:\.\d+)?)", q
     )
     if range_match:
         low  = float(range_match.group(1))
         high = float(range_match.group(2))
-        # Verifica range razoável
         valid_f = 50 <= low <= 130 and 50 <= high <= 130
         valid_c = -10 <= low <= 55 and -10 <= high <= 55
         if valid_f or valid_c:
@@ -165,9 +153,6 @@ def parse_question(question):
         print(f"  Range fora de limites: {question}")
         return None
 
-    # ── Formato 3: temperatura exata — "Will ... be 22°C" ───────────────────
-    # Detecta "be <número><unidade>" ou apenas um número de temperatura isolado
-    # Só aceita se tiver número colado com unidade ou grau, para evitar falsos positivos
     exact_with_unit = re.findall(r"(\d+(?:\.\d+)?)\s*°[CcFf]", question)
     if not exact_with_unit and unit == "F":
         exact_with_unit = re.findall(r"(\d+(?:\.\d+)?)\s*[Ff](?![a-z])", question)
@@ -184,9 +169,9 @@ def parse_question(question):
     print(f"  Ignorado (formato não reconhecido): {question}")
     return None
 
-# ==========================================
+# =========================================================
 # HEALTH CHECK
-# ==========================================
+# =========================================================
 
 def market_is_healthy(yes_price, no_price):
     try:
@@ -198,45 +183,46 @@ def market_is_healthy(yes_price, no_price):
     if yes_price <= 0 or yes_price >= 1:
         return False
 
-    # Yes + No devem somar perto de 1 (spread max 8%)
     if abs((yes_price + no_price) - 1.0) > 0.08:
         return False
 
     return True
 
-# ==========================================
+# =========================================================
 # FETCH MARKETS
-# ==========================================
+# =========================================================
 
 def _slug_variants(city, d):
     """
-    Gera variantes de slug para uma cidade e data.
-    A Polymarket às vezes usa formatos ligeiramente diferentes ao longo do tempo.
+    Gera variantes de slug para uma cidade e data,
+    testando todos os aliases conhecidos da cidade.
+    CORRIGIDO: incluí alias nyc para new-york.
     """
     month = d.strftime('%B').lower()
     day   = d.day
     year  = d.year
-    variants = [
-        f"highest-temperature-in-{city}-on-{month}-{day}-{year}",
-        f"highest-temperature-in-{city}-on-{month}-{day}",
-    ]
+    variants = []
+
+    for alias in _get_city_slugs(city):
+        variants.append(f"highest-temperature-in-{alias}-on-{month}-{day}-{year}")
+        variants.append(f"highest-temperature-in-{alias}-on-{month}-{day}")
+
     return variants
 
 
 def _search_fallback(city, d):
     """
-    Quando o slug não retorna resultado, tenta buscar via
-    endpoint /events com query de texto.
-    Retorna o event dict ou None.
+    Fallback via busca textual quando slug não funciona.
+    CORRIGIDO: usa nome de exibição limpo sem hífens.
     """
     month = d.strftime('%B').lower()
     day   = d.day
-    query = f"highest temperature {city} {month} {day}"
-    url   = f"{BASE_URL}/events?limit=5&active=true&q={requests.utils.quote(query)}"
+    city_clean = city.replace("-", " ")
+    query = f"highest temperature {city_clean} {month} {day}"
+    url   = f"{BASE_URL}/events?limit=10&active=true&q={requests.utils.quote(query)}"
     data  = safe_request(url)
     if not data or not isinstance(data, list):
         return None
-    city_clean = city.replace("-", " ")
     for event in data:
         title = (event.get("title") or event.get("name") or "").lower()
         if city_clean in title and month[:3] in title:
@@ -247,9 +233,7 @@ def _search_fallback(city, d):
 def fetch_markets(city):
     """
     Busca mercados de temperatura para a cidade nos próximos 3 dias.
-
-    Tenta múltiplas variantes de slug e, se todas falharem,
-    usa busca por texto como fallback.
+    CORRIGIDO: testa múltiplos slugs por cidade incluindo aliases.
     """
     all_markets = []
 
@@ -258,7 +242,6 @@ def fetch_markets(city):
 
         event = None
 
-        # Tenta variantes de slug
         for slug in _slug_variants(city, d):
             print(f"  Slug: {slug}")
             data = safe_request(f"{BASE_URL}/events?slug={slug}")
@@ -267,7 +250,6 @@ def fetch_markets(city):
                 break
             time.sleep(0.3)
 
-        # Fallback: busca por texto
         if event is None:
             event = _search_fallback(city, d)
             if event:

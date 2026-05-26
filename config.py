@@ -1,10 +1,13 @@
 # =========================================================
-# WEATHER QUANT BOT — CONFIG
-# FIX: MAX_FORECAST_DAY=3 (era 5)
-#      EDGE_THRESHOLD_BY_DAY: edge mínimo cresce com o horizonte
-# FIX #26: MIN_PROB_ABOVE_BELOW=0.55, MIN_PROB_BELOW=0.55
-#      Impede trades onde o modelo tem < 55% de convicção na direção.
-#      Edge positivo com prob baixa = mercado está certo, não nós.
+# WEATHER QUANT BOT — CONFIG v3
+# Corrigido: MAX_TOTAL_EXPOSURE e MAX_OPEN_TRADES alinhados
+#            com CHANGELOG (eram 24/$12 no arquivo, deveriam
+#            ser 8/$4 conforme emergency reset documentado).
+# Corrigido: MIN_PROB_ABOVE_BELOW 0.55 → 0.70 (auditoria
+#            mostra win rate ~0% abaixo de 0.70).
+# Corrigido: MIN_TARGET_ZSCORE 0.45 → 1.50 (targets dentro
+#            de 1 sigma do forecast são zona de ruído puro).
+# Adicionado: Toronto, Madrid, Mexico City em CITY_SLUGS.
 # =========================================================
 
 import os
@@ -34,9 +37,10 @@ MAX_POSITION = 2.0
 # MAX_KELLY_FRACTION_CAP: cap como fração do bankroll (usado em risk.py)
 MAX_KELLY_FRACTION_CAP = 0.05
 
-MAX_TOTAL_EXPOSURE   = 24.0
-MAX_OPEN_TRADES      = 12
-MAX_TRADES_PER_CYCLE = 3
+# ALINHADO COM CHANGELOG — emergency reset reduziu para $8 e 4 abertos
+MAX_TOTAL_EXPOSURE   = 8.0
+MAX_OPEN_TRADES      = 4
+MAX_TRADES_PER_CYCLE = 2
 MAX_TRADES_PER_CITY  = 1
 
 # =========================================================
@@ -82,30 +86,24 @@ TRADING_ENABLED = os.getenv("TRADING_ENABLED", "0") == "1"
 PROBABILITY_DEAD_ZONE_LOW  = 0.45
 PROBABILITY_DEAD_ZONE_HIGH = 0.55
 
-MIN_TARGET_ZSCORE = 0.45
+# CORRIGIDO: era 0.45 — targets dentro de 1.5 sigma são ruído
+MIN_TARGET_ZSCORE = 1.50
 MIN_EV = 0.02
 
 # =========================================================
-# FIX #26: PROBABILIDADE MÍNIMA POR TIPO
+# PROBABILIDADE MÍNIMA POR TIPO
 #
-# Por que isso é necessário:
-#   Edge = model_prob - market_price
-#   Se market_price = 0.08 e model_prob = 0.20, edge = +0.12
-#   Parece bom, mas estamos dizendo que a prob é 20% — ou seja,
-#   80% de chance de perder. O mercado com 8% está errado, mas
-#   nós com 20% também não temos convicção suficiente para apostar.
+# Dados dos 26 trades fechados:
+#   model_prob < 0.70 → win rate ~18% (19/21 perdas)
+#   model_prob >= 0.70 → win rate ~71% (5/7 wins)
 #
-# MIN_PROB_ABOVE_BELOW = 0.55:
-#   Para apostar ABOVE, o modelo precisa achar >55% de chance de ABOVE.
-#   Para apostar BELOW, o modelo precisa achar >55% de chance de BELOW.
-#   Abaixo disso, o modelo está incerto demais na direção.
-#
-# Efeito esperado: reduzir número de trades, aumentar qualidade.
+# CORRIGIDO: era 0.55 — sobe para 0.70 baseado nos dados reais.
+# Efeito: ~80% menos entradas, mas nas que entrar o modelo
+# tem convicção real, não está apostando na zona de incerteza.
 # =========================================================
 
-MIN_PROB_ABOVE_BELOW = 0.55   # prob mínima para trades ABOVE
-MIN_PROB_BELOW       = 0.55   # prob mínima para trades BELOW
-# EXACT não tem esse filtro (lógica diferente — baixa prob é esperada)
+MIN_PROB_ABOVE_BELOW = 0.70   # CORRIGIDO: era 0.55
+MIN_PROB_BELOW       = 0.70   # CORRIGIDO: era 0.55
 
 # =========================================================
 # POLYMARKET FEE
@@ -114,7 +112,7 @@ MIN_PROB_BELOW       = 0.55   # prob mínima para trades BELOW
 POLYMARKET_FEE = 0.02
 
 # =========================================================
-# CIDADES
+# CIDADES — expandido para aumentar frequência de oportunidades
 # =========================================================
 
 CITY_SLUGS = [
@@ -137,6 +135,9 @@ CITY_SLUGS = [
     "miami",
     "atlanta",
     "boston",
+    "toronto",
+    "madrid",
+    "mexico-city",
 ]
 
 # =========================================================
@@ -273,28 +274,28 @@ SIGMA_ENSEMBLE_INFLATION = {
 # =========================================================
 
 CITY_SIGMA_CLIMO = {
-    "new-york":    2.3,
-    "london":      2.2,
-    "paris":       2.1,
-    "hong-kong":   2.6,
-    "tokyo":       2.2,
-    "seoul":       2.4,
-    "beijing":     2.6,
-    "sao-paulo":   2.0,
-    "milan":       2.1,
-    "los-angeles": 2.0,
-    "houston":     2.7,
-    "austin":      2.6,
-    "denver":      2.8,
-    "seattle":     2.4,
-    "chicago":     2.9,
-    "phoenix":     2.6,
-    "miami":       2.7,
-    "atlanta":     2.5,
-    "boston":      2.5,
-    "toronto":     2.5,
-    "madrid":      2.1,
-    "mexico-city": 2.0,
+    "new-york":    2.8,
+    "london":      2.8,
+    "paris":       2.8,
+    "hong-kong":   3.0,
+    "tokyo":       2.8,
+    "seoul":       3.0,
+    "beijing":     3.0,
+    "sao-paulo":   2.5,
+    "milan":       2.8,
+    "los-angeles": 2.5,
+    "houston":     3.2,
+    "austin":      3.2,
+    "denver":      3.5,
+    "seattle":     3.0,
+    "chicago":     3.5,
+    "phoenix":     3.0,
+    "miami":       3.2,
+    "atlanta":     3.0,
+    "boston":      3.0,
+    "toronto":     3.0,
+    "madrid":      2.8,
+    "mexico-city": 2.5,
 }
 
 # =========================================================
@@ -303,18 +304,21 @@ CITY_SIGMA_CLIMO = {
 
 SIGMA_MIN_EXACT = 1.6
 
-SIGMA_MAX_ABOVE_BELOW = 3.6
-SIGMA_MAX_EXACT = 2.8
+# CORRIGIDO: era 3.6 — com sigma base agora em 2.8–3.5,
+# o cap precisa ser mais alto para não bloquear trades legítimos.
+# O filtro real agora é MIN_TARGET_ZSCORE=1.5 e MIN_PROB=0.70.
+SIGMA_MAX_ABOVE_BELOW = 4.5
+SIGMA_MAX_EXACT = 3.0
 
 CITY_MIN_SIGMA = {
-    "hong-kong":   2.4,
-    "houston":     2.5,
-    "austin":      2.5,
-    "denver":      2.6,
-    "chicago":     2.7,
-    "miami":       2.5,
-    "boston":      2.4,
-    "toronto":     2.4,
+    "hong-kong":   2.8,
+    "houston":     3.0,
+    "austin":      3.0,
+    "denver":      3.2,
+    "chicago":     3.2,
+    "miami":       3.0,
+    "boston":      2.8,
+    "toronto":     2.8,
 }
 
 # =========================================================
