@@ -126,7 +126,17 @@ def process_city(city: Dict):
             except Exception:
                 pass
 
-            prob = calculate_probability(name, target, forecast_c, day_offset)
+            # FIX: passa condition e unit para que o modelo calcule corretamente:
+            # ABOVE → P(temp > target), BELOW → P(temp < target)
+            # EXACT → P(|temp - target| <= 0.5°C)  ← nunca deve chegar a 90%+
+            prob = calculate_probability(
+                city=name,
+                target_temp=target,
+                forecast_temp=forecast_c,
+                day_offset=day_offset,
+                condition=condition,
+                unit=unit,
+            )
             edge = prob - yes_price
 
             if edge <= 0:
