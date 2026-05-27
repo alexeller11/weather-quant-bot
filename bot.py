@@ -50,10 +50,13 @@ def process_city(city: Dict):
     name = city["name"]
     logger.info(f"📍 {name}")
 
+    # FIX: fetch_markets espera slug (ex: "new-york"), não nome de exibição ("New York").
+    # Nomes com espaços e maiúsculas geram slugs inválidos na Polymarket API.
+    city_slug = name.lower().replace(" ", "-")
     try:
-        markets = fetch_markets(name)
+        markets = fetch_markets(city_slug)
     except Exception as e:
-        logger.error(f"❌ fetch_markets({name}): {e}")
+        logger.error(f"❌ fetch_markets({city_slug}): {e}")
         return
 
     if not markets:
