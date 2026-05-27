@@ -1,0 +1,37 @@
+# Variáveis de ambiente
+.env
+
+# Arquivos de modelo ML e calibração
+# Atenção: no Railway o filesystem é efêmero — esses arquivos são perdidos
+# a cada deploy. Persistir no PostgreSQL junto com o bankroll.
+ml_adjuster.pkl
+sigma_calibration.json
+
+# Backups automáticos gerados por migration.py e reset_bankroll.py
+bankroll_backup_*.json
+bankroll_pre_migration_*.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Ambientes virtuais
+venv/
+env/
+.venv/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
