@@ -1,5 +1,5 @@
 {
-    "balance": 30.0532,
+    "balance": 28.1532,
     "history": [
         {
             "ev": 0.3158,
@@ -775,6 +775,30 @@
             "sigma_total": 2.8,
             "forecast_day": 1,
             "market_price": 0.1855
+        },
+        {
+            "market_id": "2375672",
+            "city": "Seoul",
+            "question": "Will the highest temperature in Seoul be 18°C on May 30?",
+            "market_date": "2026-05-30",
+            "entry_time": "2026-05-28T04:38:40.964605",
+            "exit_time": null,
+            "type": "EXACT",
+            "unit": "C",
+            "target": 18.0,
+            "forecast_c": 26.3,
+            "sigma_total": 2.8,
+            "shares": 10,
+            "model_prob": 0.9953,
+            "market_price": 0.19,
+            "edge": 0.8053,
+            "ev": 4.2382,
+            "stake": 1.9,
+            "result": "OPEN",
+            "pnl": 0,
+            "fee": 0.0,
+            "forecast_day": 2,
+            "real_temp_c": null
         }
     ],
     "created_at": "2026-05-23T00:31:38.634156+00:00",
