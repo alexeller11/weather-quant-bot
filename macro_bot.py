@@ -1,6 +1,12 @@
 """
 macro_bot.py — Módulo de trading em mercados macroeconômicos.
 
+CORRIGIDO:
+- `import re` e `import json` estavam no meio do arquivo, depois de funções
+  que já os usavam. Isso causava NameError em runtime para qualquer chamada
+  a _handle_nfp_window() ou ao bloco de observação do loop principal.
+  Ambos movidos para o topo junto com os demais imports.
+
 Roda como thread daemon dentro do bot.py existente.
 Compartilha bankroll, risk, notificador com o módulo de temperatura.
 
@@ -11,18 +17,8 @@ Estratégia:
   4. Calcula qual bucket da Polymarket o dado resolve
   5. Aposta YES nos buckets corretos / NO nos incorretos
   6. Janela típica: 30s a 5 minutos após publicação
-
-Limitações honestas:
-  - BLS API pode demorar 1-3 minutos para atualizar após publicação
-  - Polymarket pode atualizar preços antes da BLS API
-  - Risco de latência: o edge pode desaparecer rapidamente
-  - Use apenas com MACRO_TRADING_ENABLED=1 nas variáveis do Railway
 """
 
-# FIX: import re e import json estavam no meio do arquivo, depois de funções
-# que já os usavam (_handle_nfp_window usa re.search, loop usa json.dumps).
-# Movidos para o topo — Python executa imports de cima para baixo, e um
-# import após o ponto de uso levanta NameError em runtime.
 import os
 import re
 import json
@@ -31,13 +27,8 @@ import traceback
 from datetime import datetime, timezone
 from threading import Thread
 
-# =========================================================
-# DEPENDÊNCIAS EXTERNAS (compartilhadas com weather bot)
-# =========================================================
-
 from bankroll import load_bankroll, save_bankroll, already_traded
-from risk import kelly_criterion
-from notificador import enviar_mensagem, notificar_entrada_trade
+from notificador import enviar_mensagem
 
 from config import (
     MAX_TOTAL_EXPOSURE,
@@ -46,10 +37,6 @@ from config import (
     KELLY_FRACTION,
     TRADING_ENABLED,
 )
-
-# =========================================================
-# MÓDULOS MACRO
-# =========================================================
 
 from macro_calendar import (
     get_active_windows,
@@ -69,21 +56,15 @@ from macro_parser import (
 )
 
 # =========================================================
-# CONFIG MACRO (separado do weather para controle independente)
+# CONFIG MACRO
 # =========================================================
 
 MACRO_TRADING_ENABLED = os.getenv("MACRO_TRADING_ENABLED", "0") == "1"
+MACRO_MIN_EDGE        = float(os.getenv("MACRO_MIN_EDGE", "0.20"))
+MACRO_MAX_POSITION    = float(os.getenv("MACRO_MAX_POSITION", "2.00"))
+MACRO_POLL_INTERVAL   = 30
+MACRO_IDLE_INTERVAL   = 300
 
-# Edge mínimo em mercados macro — mais alto que weather porque
-# a janela é estreita e o risco de preço stale é real
-MACRO_MIN_EDGE      = float(os.getenv("MACRO_MIN_EDGE", "0.20"))
-MACRO_MAX_POSITION  = float(os.getenv("MACRO_MAX_POSITION", "2.00"))
-
-# Intervalo de polling quando dentro de janela ativa (segundos)
-MACRO_POLL_INTERVAL = 30
-
-# Intervalo de polling fora de janela (segundos)
-MACRO_IDLE_INTERVAL = 300
 
 # =========================================================
 # UTILS
@@ -98,9 +79,21 @@ def _log(msg):
     print(f"[macro] {ts} | {msg}")
 
 
-# =========================================================
-# HELPERS DE RISCO (sem depender de funções inexistentes)
-# =========================================================
+def _kelly_stake(balance, prob, price):
+    """Half-Kelly simplificado para macros."""
+    if prob <= 0 or prob >= 1 or price <= 0:
+        return 0.0
+    b = (1.0 / price) - 1.0
+    q = 1.0 - prob
+    f = max((prob * b - q) / b, 0.0) if b > 0 else 0.0
+    return round(balance * f * KELLY_FRACTION, 2)
+
+
+def _expected_value(prob, price):
+    if price <= 0:
+        return 0.0
+    return round(prob / price - 1.0, 4)
+
 
 def _open_exposure(history):
     return sum(float(t.get("stake", 0)) for t in history if t.get("result") == "OPEN")
@@ -110,29 +103,11 @@ def _remaining_capacity(history):
     return max(0.0, MAX_TOTAL_EXPOSURE - _open_exposure(history))
 
 
-def kelly_stake(balance, model_prob, market_price):
-    """Wrapper simples de Kelly para o módulo macro."""
-    if model_prob <= 0 or model_prob >= 1 or market_price <= 0:
-        return 0.0
-    b = (1.0 / market_price) - 1.0
-    q = 1.0 - model_prob
-    kelly_pct = max((model_prob * b - q) / b, 0.0) if b > 0 else 0.0
-    stake = balance * kelly_pct * KELLY_FRACTION
-    return min(stake, MAX_POSITION)
-
-
-def expected_value(model_prob, market_price):
-    if market_price <= 0:
-        return 0.0
-    return model_prob / market_price - 1.0
-
-
 # =========================================================
-# LEITURA DE DADO REAL POR TIPO
+# LEITURA DE DADO REAL
 # =========================================================
 
 def _get_real_data(event_type):
-    """Lê o dado real publicado para o tipo de evento."""
     try:
         if event_type == "CPI":
             return get_cpi_latest()
@@ -141,7 +116,7 @@ def _get_real_data(event_type):
         elif event_type == "FOMC":
             return get_fomc_rate()
         else:
-            _log(f"Tipo de evento não suportado: {event_type}")
+            _log(f"Tipo não suportado: {event_type}")
             return None
     except Exception as e:
         _log(f"Erro ao ler dado real ({event_type}): {e}")
@@ -149,19 +124,15 @@ def _get_real_data(event_type):
 
 
 # =========================================================
-# PROCESSAMENTO DE OPORTUNIDADE
+# PROCESSAMENTO DE OPORTUNIDADES
 # =========================================================
 
 def _process_opportunities(opportunities, bankroll, session_tag):
-    """
-    Dado uma lista de oportunidades com edge, tenta abrir trades.
-    Compartilha limites de risco com o módulo weather.
-    """
     if not opportunities:
         return 0
 
     history  = bankroll.get("history", [])
-    balance  = bankroll.get("balance", 0.0)
+    balance  = float(bankroll.get("balance", 0))
     opened   = 0
 
     for opp in opportunities:
@@ -188,21 +159,21 @@ def _process_opportunities(opportunities, bankroll, session_tag):
             continue
 
         if abs(edge) < MACRO_MIN_EDGE:
-            _log(f"Edge insuficiente: {edge:.3f} < {MACRO_MIN_EDGE}")
+            _log(f"Edge insuficiente: {edge:.3f}")
             continue
 
         if trade_price < 0.10 or trade_price > 0.92:
             _log(f"Preço fora do range: {trade_price:.3f}")
             continue
 
-        ev = expected_value(model_prob, trade_price)
+        ev = _expected_value(model_prob, trade_price)
         if ev <= 0:
             _log(f"EV negativo: {ev:.4f}")
             continue
 
-        stake  = kelly_stake(balance, model_prob, trade_price)
+        stake  = _kelly_stake(balance, model_prob, trade_price)
         stake  = min(stake, remaining, MACRO_MAX_POSITION, MAX_POSITION)
-        shares = int(stake / trade_price)
+        shares = int(stake / trade_price) if trade_price > 0 else 0
         if shares <= 0:
             continue
 
@@ -213,12 +184,12 @@ def _process_opportunities(opportunities, bankroll, session_tag):
 
         _log(
             f"TRADE [{event_type}] {trade_side} | "
-            f"market={market_id} | "
-            f"edge={edge:+.3f} | prob={model_prob:.2f} | "
-            f"stake=${stake:.2f}"
+            f"market={market_id} | edge={edge:+.3f} | "
+            f"prob={model_prob:.2f} | stake=${stake:.2f}"
         )
 
         trade = {
+            "id":           f"macro_{market_id}_{int(time.time())}",
             "market_id":    market_id,
             "city":         f"[MACRO] {event_type}",
             "question":     question[:120],
@@ -252,7 +223,6 @@ def _process_opportunities(opportunities, bankroll, session_tag):
             enviar_mensagem(
                 f"<b>MACRO TRADE [{event_type}]</b>\n\n"
                 f"<b>Side:</b> {trade_side}\n"
-                f"<b>Evento:</b> {event_type}\n"
                 f"<b>Pergunta:</b> {question[:80]}\n"
                 f"<b>Aposta:</b> <b>${stake:.2f}</b> ({shares} shares)\n\n"
                 f"Modelo: <b>{model_prob*100:.0f}%</b> | "
@@ -267,12 +237,11 @@ def _process_opportunities(opportunities, bankroll, session_tag):
 
 
 # =========================================================
-# PROCESSAMENTO POR EVENTO
+# HANDLERS POR EVENTO
 # =========================================================
 
 def _handle_cpi_window(bankroll, secs_since_release):
     _log(f"Janela CPI ativa ({secs_since_release:.0f}s após publicação)")
-
     if secs_since_release < 90:
         _log("Aguardando BLS API atualizar (< 90s)...")
         return 0
@@ -283,28 +252,19 @@ def _handle_cpi_window(bankroll, secs_since_release):
         return 0
 
     _log(f"CPI: YoY={cpi_data['yoy']:+.1f}% | MoM={cpi_data['mom']:+.1f}%")
-
     markets = fetch_macro_markets(event_types=["CPI"])
     opps    = find_edge_cpi(markets, cpi_data)
-
     if not opps:
         _log("CPI: nenhuma oportunidade com edge suficiente")
         return 0
 
     _log(f"CPI: {len(opps)} oportunidades encontradas")
-    for o in opps[:3]:
-        _log(
-            f"  [{o['trade_side']}] {o['question'][:60]} | "
-            f"edge={o['edge']:+.3f} | prob={o['model_prob']:.2f}"
-        )
-
     session_tag = f"CPI_{cpi_data['month']}_{cpi_data['year']}"
     return _process_opportunities(opps, bankroll, session_tag)
 
 
 def _handle_fomc_window(bankroll, secs_since_release):
     _log(f"Janela FOMC ativa ({secs_since_release:.0f}s após publicação)")
-
     if secs_since_release < 30:
         _log("Aguardando FRED API atualizar (< 30s)...")
         return 0
@@ -327,10 +287,8 @@ def _handle_fomc_window(bankroll, secs_since_release):
         decision = "hold"
 
     _log(f"FOMC: decisão inferida = {decision}")
-
     markets = fetch_macro_markets(event_types=["FOMC"])
     opps    = find_edge_fomc(markets, rate, decision)
-
     if not opps:
         _log("FOMC: nenhuma oportunidade")
         return 0
@@ -340,9 +298,7 @@ def _handle_fomc_window(bankroll, secs_since_release):
 
 
 def _handle_nfp_window(bankroll, secs_since_release):
-    # FIX: re.search é usado aqui — re agora está importado no topo do arquivo.
     _log(f"Janela NFP ativa ({secs_since_release:.0f}s após publicação)")
-
     if secs_since_release < 90:
         _log("Aguardando BLS API atualizar (< 90s)...")
         return 0
@@ -367,7 +323,6 @@ def _handle_nfp_window(bankroll, secs_since_release):
 
         q         = mkt["question"].lower()
         yes_price = mkt["yes_price"]
-
         resolves_yes = None
 
         match_above = re.search(r"(?:above|more than|over)\s+(\d+)k", q)
@@ -394,20 +349,19 @@ def _handle_nfp_window(bankroll, secs_since_release):
 
         model_prob = 0.95 if resolves_yes else 0.05
         edge       = model_prob - yes_price
-
         if abs(edge) < MACRO_MIN_EDGE:
             continue
 
         opps.append({
-            "market_id":   mkt["market_id"],
-            "question":    mkt["question"],
-            "event_type":  "NFP",
+            "market_id":    mkt["market_id"],
+            "question":     mkt["question"],
+            "event_type":   "NFP",
             "resolves_yes": resolves_yes,
-            "model_prob":  model_prob,
-            "yes_price":   yes_price,
-            "edge":        round(edge, 4),
-            "trade_side":  "YES" if resolves_yes else "NO",
-            "trade_price": yes_price if resolves_yes else (1 - yes_price),
+            "model_prob":   model_prob,
+            "yes_price":    yes_price,
+            "edge":         round(edge, 4),
+            "trade_side":   "YES" if resolves_yes else "NO",
+            "trade_price":  yes_price if resolves_yes else (1 - yes_price),
             "release_date": str(nfp_data.get("year", "")),
         })
 
@@ -424,12 +378,7 @@ def _handle_nfp_window(bankroll, secs_since_release):
 # =========================================================
 
 def macro_loop():
-    """
-    Loop principal do módulo macro.
-    Roda como thread daemon — não bloqueia o bot de temperatura.
-    """
     _log("Módulo macro iniciado")
-
     if not MACRO_TRADING_ENABLED:
         _log("MACRO_TRADING_ENABLED=0 — modo observação")
 
@@ -471,18 +420,19 @@ def macro_loop():
                             opened = _handle_nfp_window(bankroll, secs_since)
                     else:
                         _log(
-                            f"[OBSERVAÇÃO] {event_key} publicado há {secs_since:.0f}s "
-                            f"— trading desabilitado"
+                            f"[OBSERVAÇÃO] {event_key} publicado há {secs_since:.0f}s"
                         )
-                        # FIX: json.dumps agora disponível (import no topo)
                         real_data = _get_real_data(event_key)
                         if real_data:
                             _log(f"Dado real: {real_data}")
-                            enviar_mensagem(
-                                f"<b>📊 MACRO DATA [{event_key}]</b>\n\n"
-                                f"Dado publicado: <pre>{json.dumps(real_data, indent=2)}</pre>\n"
-                                f"<i>MACRO_TRADING_ENABLED=0 — observação apenas</i>"
-                            )
+                            try:
+                                enviar_mensagem(
+                                    f"<b>MACRO DATA [{event_key}]</b>\n\n"
+                                    f"<pre>{json.dumps(real_data, indent=2)}</pre>\n"
+                                    f"<i>MACRO_TRADING_ENABLED=0 — observação apenas</i>"
+                                )
+                            except Exception:
+                                pass
 
                     if opened > 0:
                         save_bankroll(bankroll)
@@ -504,7 +454,6 @@ def macro_loop():
                         f"{next_ev['hours_ahead']:.1f}h "
                         f"({next_ev['release_date']})"
                     )
-
                 sleep_time = MACRO_IDLE_INTERVAL
 
         except Exception as e:
@@ -527,7 +476,7 @@ def iniciar_macro_bot():
 
 
 # =========================================================
-# EXECUÇÃO STANDALONE (teste)
+# EXECUÇÃO STANDALONE
 # =========================================================
 
 if __name__ == "__main__":
@@ -535,9 +484,7 @@ if __name__ == "__main__":
     print("MACRO BOT — TESTE STANDALONE")
     print("=" * 55)
 
-    from macro_calendar import get_upcoming_events
     upcoming = get_upcoming_events(days_ahead=30)
-
     print(f"\nPróximos eventos ({len(upcoming)}):")
     for ev in upcoming[:5]:
         print(
@@ -548,10 +495,8 @@ if __name__ == "__main__":
     print("\nBuscando mercados macro na Polymarket...")
     markets = fetch_macro_markets(event_types=["CPI", "FOMC", "NFP"])
     print(f"Encontrados: {len(markets)} mercados")
-
     for m in markets[:5]:
         print(f"  [{m['event_type']}] {m['question'][:70]}")
-        print(f"      YES={m['yes_price']:.3f}")
 
     print("\n" + "=" * 55)
     print("Para ativar: MACRO_TRADING_ENABLED=1 no Railway")

@@ -1,100 +1,183 @@
 """
 Ajuste de probabilidade via Regressão Logística online.
-Utiliza features derivadas do erro histórico para refinar a estimativa do modelo base.
+
+CORRIGIDO:
+- A versão anterior salvava o modelo em ml_adjuster.pkl no filesystem local.
+  No Railway, o filesystem é efêmero — o modelo é perdido a cada deploy,
+  zerando o aprendizado. Agora persiste o modelo serializado no PostgreSQL
+  (tabela kv_store, mesma usada pelo SigmaCalibrator).
+- Fallback limpo: se não houver DB, usa arquivo local como antes.
 """
 
 import os
-import logging
+import io
 import pickle
+import logging
 from typing import Optional
+
 import numpy as np
-from sklearn.linear_model import SGDClassifier  # permite aprendizado incremental
+from sklearn.linear_model import SGDClassifier
 
 logger = logging.getLogger(__name__)
 
 MODEL_FILE = "ml_adjuster.pkl"
+_DB_KEY    = "ml_adjuster_pkl"
 
 
 class MLProbabilityAdjuster:
     def __init__(self):
         self.model: Optional[SGDClassifier] = None
-        self.feature_names = [
-            "model_prob",
-            "day_offset",
-            "city_error_mean",
-            "city_error_std",
-            "recent_trend"
-        ]
         self._init_model()
 
-    def _init_model(self):
+    # ──────────────────────────────────────────────────────
+    # PERSISTÊNCIA
+    # ──────────────────────────────────────────────────────
+
+    def _load_pkl_bytes(self) -> Optional[bytes]:
+        """Tenta carregar bytes do modelo do PostgreSQL, depois do arquivo local."""
+        # 1. PostgreSQL
+        url = os.environ.get("DATABASE_URL", "")
+        if url:
+            try:
+                import psycopg2
+                conn = psycopg2.connect(url, sslmode="require")
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS kv_store (
+                            key      TEXT PRIMARY KEY,
+                            value    JSONB NOT NULL,
+                            saved_at TIMESTAMP DEFAULT NOW()
+                        )
+                    """)
+                    conn.commit()
+                    cur.execute(
+                        "SELECT value FROM kv_store WHERE key = %s",
+                        (_DB_KEY,)
+                    )
+                    row = cur.fetchone()
+                conn.close()
+                if row and row[0]:
+                    import base64
+                    return base64.b64decode(row[0].get("pkl_b64", ""))
+            except Exception as e:
+                logger.debug(f"[ml_adjuster] db load: {e}")
+
+        # 2. Arquivo local
         if os.path.exists(MODEL_FILE):
             try:
                 with open(MODEL_FILE, "rb") as f:
-                    self.model = pickle.load(f)
-                logger.info("Modelo ML carregado do disco.")
+                    return f.read()
+            except Exception:
+                pass
+        return None
+
+    def _save_pkl_bytes(self, data: bytes):
+        """Salva bytes do modelo no arquivo local e no PostgreSQL."""
+        # Local (rápido)
+        try:
+            with open(MODEL_FILE, "wb") as f:
+                f.write(data)
+        except Exception as e:
+            logger.warning(f"ml_adjuster.pkl: {e}")
+
+        # PostgreSQL
+        url = os.environ.get("DATABASE_URL", "")
+        if not url:
+            return
+        try:
+            import psycopg2
+            import base64
+            import json
+            conn = psycopg2.connect(url, sslmode="require")
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO kv_store (key, value)
+                    VALUES (%s, %s)
+                    ON CONFLICT (key) DO UPDATE
+                        SET value = EXCLUDED.value,
+                            saved_at = NOW()
+                """, (
+                    _DB_KEY,
+                    json.dumps({"pkl_b64": base64.b64encode(data).decode()}),
+                ))
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            logger.debug(f"[ml_adjuster] db save: {e}")
+
+    # ──────────────────────────────────────────────────────
+    # INICIALIZAÇÃO
+    # ──────────────────────────────────────────────────────
+
+    def _init_model(self):
+        pkl_bytes = self._load_pkl_bytes()
+        if pkl_bytes:
+            try:
+                self.model = pickle.loads(pkl_bytes)
+                logger.info("Modelo ML carregado.")
+                return
             except Exception as e:
-                logger.warning(f"Erro ao carregar modelo ML: {e}. Criando novo.")
-                self.model = SGDClassifier(loss="log_loss", random_state=42)
-        else:
-            self.model = SGDClassifier(loss="log_loss", random_state=42)
-            # Treino inicial com dados dummy para ter ambas as classes
-            X_init = np.array([
-                [0.7, 1, 2.0, 1.0, 0.0],
-                [0.3, 3, 3.5, 1.5, -0.5]
-            ])
-            y_init = np.array([1, 0])
-            self.model.partial_fit(X_init, y_init, classes=np.array([0, 1]))
+                logger.warning(f"Erro ao desserializar modelo ML: {e}. Criando novo.")
+
+        # Modelo novo com treino inicial (precisa de ambas as classes)
+        self.model = SGDClassifier(loss="log_loss", random_state=42)
+        X_init = np.array([
+            [0.7, 1, 2.0, 1.0,  0.0],
+            [0.3, 3, 3.5, 1.5, -0.5],
+        ])
+        y_init = np.array([1, 0])
+        self.model.partial_fit(X_init, y_init, classes=np.array([0, 1]))
 
     def _save_model(self):
-        with open(MODEL_FILE, "wb") as f:
-            pickle.dump(self.model, f)
+        data = pickle.dumps(self.model)
+        self._save_pkl_bytes(data)
 
-    def compute_features(self, model_prob: float, day_offset: int,
-                         city_errors: list) -> np.ndarray:
-        """
-        Calcula o vetor de features a partir dos dados disponíveis.
-        city_errors: lista de erros absolutos dos últimos trades na cidade (float).
-        """
+    # ──────────────────────────────────────────────────────
+    # API PÚBLICA
+    # ──────────────────────────────────────────────────────
+
+    def compute_features(
+        self,
+        model_prob: float,
+        day_offset: int,
+        city_errors: list,
+    ) -> np.ndarray:
         if not city_errors:
-            mean_err, std_err = 2.0, 1.0  # defaults conservadores
+            mean_err, std_err = 2.0, 1.0
         else:
             mean_err = np.mean(city_errors)
-            std_err = np.std(city_errors) if len(city_errors) > 1 else 1.0
+            std_err  = np.std(city_errors) if len(city_errors) > 1 else 1.0
 
-        # Tendência recente: diferença entre os dois últimos erros (se houver)
         recent_trend = 0.0
         if len(city_errors) >= 2:
             recent_trend = city_errors[-1] - city_errors[-2]
 
-        return np.array([model_prob, day_offset, mean_err, std_err, recent_trend]).reshape(1, -1)
+        return np.array(
+            [model_prob, day_offset, mean_err, std_err, recent_trend]
+        ).reshape(1, -1)
 
     def adjust_probability(
         self,
         model_prob: float,
         day_offset: int,
         city: str,
-        calibrator
+        calibrator,
     ) -> float:
-        """
-        Retorna probabilidade ajustada.
-        Usa o histórico de erros do SigmaCalibrator (calibrator) para extrair features.
-        """
         city_key = city.strip().lower()
-        errors = [
+        errors   = [
             e["error"]
             for e in calibrator.calibration_data.get(city_key, {}).get("errors", [])
         ]
-        X = self.compute_features(model_prob, day_offset, errors)
-        # predict_proba retorna [prob_classe_0, prob_classe_1]
+        X     = self.compute_features(model_prob, day_offset, errors)
         proba = self.model.predict_proba(X)[0]
-        # A probabilidade ajustada é uma combinação da original com a saída do modelo
-        # (apenas se houver dados suficientes)
+
+        # Aplica ajuste ML somente com dados suficientes (≥5 observações)
         if len(errors) >= 5:
-            adjusted = 0.7 * model_prob + 0.3 * proba[1]  # peso para o modelo
+            adjusted = 0.7 * model_prob + 0.3 * proba[1]
         else:
             adjusted = model_prob
-        return max(0.0, min(1.0, adjusted))
+
+        return float(max(0.0, min(1.0, adjusted)))
 
     def update(
         self,
@@ -102,14 +185,10 @@ class MLProbabilityAdjuster:
         day_offset: int,
         city: str,
         calibrator,
-        trade_success: bool
+        trade_success: bool,
     ):
-        """
-        Atualiza o modelo online com o resultado do trade.
-        trade_success: True se o trade foi lucrativo (acertou a direção), False caso contrário.
-        """
         city_key = city.strip().lower()
-        errors = [
+        errors   = [
             e["error"]
             for e in calibrator.calibration_data.get(city_key, {}).get("errors", [])
         ]
@@ -117,4 +196,4 @@ class MLProbabilityAdjuster:
         y = np.array([1 if trade_success else 0])
         self.model.partial_fit(X, y)
         self._save_model()
-        logger.info("Modelo ML atualizado com novo trade.")
+        logger.info("Modelo ML atualizado.")

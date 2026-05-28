@@ -7,12 +7,16 @@ Persistência com 3 camadas de segurança:
 2. bankroll.json local  — cache local
 3. GitHub commit        — backup externo
 
-FIX CRÍTICO: _save_to_db agora usa RETURNING id para confirmar
-que o INSERT foi persistido antes de retornar.
+CORRIGIDO:
+- Adicionadas funções get_open_trades() e update_trade() que estavam
+  ausentes mas eram importadas por bot.py e settlement.py
+- _save_to_db era função interna do módulo PostgreSQL; bot.py não deve
+  importá-la diretamente — criada função pública record_trade() no lugar
 """
 
 import json
 import os
+from datetime import datetime, timezone
 
 from config import START_BALANCE, CITY_DISPLAY, CITY_SLUG_NORMALIZE
 
@@ -41,8 +45,8 @@ def _ensure_table(conn):
     with conn.cursor() as cur:
         cur.execute("""
             CREATE TABLE IF NOT EXISTS bankroll (
-                id      SERIAL PRIMARY KEY,
-                data    JSONB NOT NULL,
+                id       SERIAL PRIMARY KEY,
+                data     JSONB NOT NULL,
                 saved_at TIMESTAMP DEFAULT NOW()
             )
         """)
@@ -55,9 +59,7 @@ def _load_from_db(conn):
     with conn.cursor() as cur:
         cur.execute("SELECT data FROM bankroll ORDER BY id DESC LIMIT 1")
         row = cur.fetchone()
-    if row:
-        return row[0]
-    return None
+    return row[0] if row else None
 
 
 def _save_to_db(conn, data):
@@ -88,10 +90,10 @@ def initialize():
             "balance": START_BALANCE,
             "start_balance": START_BALANCE,
             "history": [],
-            "created_at": ""
+            "created_at": datetime.now(timezone.utc).isoformat(),
         }
-        with open(BANKROLL_FILE, "w") as f:
-            json.dump(data, f, indent=4)
+        with open(BANKROLL_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4, ensure_ascii=False)
 
 
 def load_bankroll():
@@ -107,7 +109,6 @@ def load_bankroll():
             data = _load_from_db(conn)
             conn.close()
             if data:
-                # Mantém cache local sincronizado
                 with open(BANKROLL_FILE, "w", encoding="utf-8") as f:
                     json.dump(data, f, indent=4, ensure_ascii=False)
                 print("  [db] bankroll carregado do PostgreSQL")
@@ -119,7 +120,6 @@ def load_bankroll():
             except Exception:
                 pass
 
-    # Fallback: arquivo local
     initialize()
     with open(BANKROLL_FILE, "r", encoding="utf-8") as f:
         return json.load(f)
@@ -128,26 +128,23 @@ def load_bankroll():
 def save_bankroll(data):
     """
     Salva bankroll em todas as camadas disponíveis.
-    FIX: verifica confirmação do banco antes de retornar.
     """
-    # Garantir campos essenciais
     if "start_balance" not in data:
         data["start_balance"] = START_BALANCE
     if "created_at" not in data:
-        from datetime import datetime, timezone
         data["created_at"] = datetime.now(timezone.utc).isoformat()
 
-    # 1. Salva local sempre (rápido)
+    # 1. Local (sempre, rápido)
     with open(BANKROLL_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4, ensure_ascii=False)
 
-    # 2. Salva no PostgreSQL com confirmação
+    # 2. PostgreSQL com confirmação
     conn = _get_db()
     if conn:
         try:
             _save_to_db(conn, data)
             conn.close()
-            print(f"  [db] bankroll salvo e confirmado — saldo: ${data.get('balance', 0):.2f}")
+            print(f"  [db] bankroll salvo — saldo: ${data.get('balance', 0):.2f}")
         except Exception as e:
             print(f"  [db] save falhou: {e}")
             try:
@@ -163,16 +160,72 @@ def save_bankroll(data):
         print(f"  [github] indisponível: {e}")
 
 
+# ──────────────────────────────────────────────────────────────
+# FUNÇÕES DE TRADE — ADICIONADAS (eram importadas mas não existiam)
+# ──────────────────────────────────────────────────────────────
+
+def get_open_trades():
+    """
+    Retorna lista de trades com result == 'OPEN'.
+    ADICIONADO: bot.py e settlement.py importavam esta função,
+    mas ela não existia em bankroll.py.
+    """
+    data = load_bankroll()
+    return [t for t in data.get("history", []) if t.get("result") == "OPEN"]
+
+
+def update_trade(trade_id, updated_trade):
+    """
+    Atualiza um trade existente pelo campo 'id'.
+    ADICIONADO: settlement.py importava esta função, mas ela não existia.
+    """
+    data = load_bankroll()
+    history = data.get("history", [])
+    for i, trade in enumerate(history):
+        if trade.get("id") == trade_id:
+            history[i] = updated_trade
+            save_bankroll(data)
+            return True
+    print(f"  [bankroll] update_trade: id '{trade_id}' não encontrado")
+    return False
+
+
+def record_trade(trade):
+    """
+    Registra um novo trade no bankroll e desconta o stake do saldo.
+    ADICIONADO: bot.py não deve importar _save_to_db diretamente —
+    esta função pública substitui o uso indevido de _save_to_db em bot.py.
+    """
+    data = load_bankroll()
+    stake = float(trade.get("stake", 0))
+    data["balance"] = round(float(data.get("balance", 0)) - stake, 4)
+    data.setdefault("history", []).append(trade)
+    save_bankroll(data)
+
+
+# ──────────────────────────────────────────────────────────────
+# UTILITÁRIOS
+# ──────────────────────────────────────────────────────────────
+
+def already_traded(history, market_id):
+    return any(t.get("market_id") == market_id for t in history)
+
+
+def normalize_city(city_slug):
+    """Converte slug em display name."""
+    if not city_slug:
+        return "Unknown"
+    normalized = CITY_DISPLAY.get(city_slug)
+    if normalized:
+        return normalized
+    return city_slug.replace("-", " ").replace("_", " ").title()
+
+
 def force_close_open_trades(market_date_str):
     """
     UTILITÁRIO DE EMERGÊNCIA.
     Fecha todos os trades OPEN com data <= market_date_str como LOSS.
-    Útil quando o settlement entra em loop por falha de persistência.
-
-    Uso: from bankroll import force_close_open_trades
-         force_close_open_trades("2026-05-24")
     """
-    from datetime import datetime
     data = load_bankroll()
     fechados = 0
     for trade in data["history"]:
@@ -196,35 +249,11 @@ def force_close_open_trades(market_date_str):
 
 
 def reset_bankroll(starting_balance=None):
-    from datetime import datetime, timezone
     balance = starting_balance if starting_balance is not None else START_BALANCE
     save_bankroll({
-        "balance": balance,
+        "balance":       balance,
         "start_balance": balance,
-        "history": [],
-        "created_at": datetime.now(timezone.utc).isoformat()
+        "history":       [],
+        "created_at":    datetime.now(timezone.utc).isoformat(),
     })
     print(f"Bankroll resetado. Saldo inicial: ${balance:.2f}")
-
-
-def normalize_city(city_slug):
-    """
-    Converte slug em display name.
-    Ex: "new-york"   → "New York"
-        "hong-kong"  → "Hong Kong"
-    """
-    if not city_slug:
-        return "Unknown"
-
-    normalized = CITY_DISPLAY.get(city_slug)
-    if normalized:
-        return normalized
-
-    return city_slug.replace("-", " ").replace("_", " ").title()
-
-
-def already_traded(history, market_id):
-    for trade in history:
-        if trade.get("market_id") == market_id:
-            return True
-    return False

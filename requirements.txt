@@ -1,8 +1,12 @@
+# Weather Quant Bot — dependências
+# CORRIGIDO: removidos fastapi, uvicorn, dash e plotly — nenhum arquivo
+# do projeto usa FastAPI ou Dash. O dashboard usa http.server da stdlib.
+# pandas também não é usado diretamente — removido.
+
 requests
 python-dotenv
 psycopg2-binary
 numpy
 scipy
-pandas
 schedule
 scikit-learn
