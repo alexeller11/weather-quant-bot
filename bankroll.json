@@ -1,5 +1,5 @@
 {
-    "balance": 39.3132,
+    "balance": 37.4332,
     "history": [
         {
             "ev": 0.3158,
@@ -679,6 +679,30 @@
             "sigma_total": 2.8,
             "forecast_day": 1,
             "market_price": 0.24
+        },
+        {
+            "market_id": "2367216",
+            "city": "London",
+            "question": "Will the highest temperature in London be 25°C on May 29?",
+            "market_date": "2026-05-29",
+            "entry_time": "2026-05-28T00:30:54.972275",
+            "exit_time": null,
+            "type": "EXACT",
+            "unit": "C",
+            "target": 25.0,
+            "forecast_c": 30.8,
+            "sigma_total": 3.0,
+            "shares": 13,
+            "model_prob": 0.9808,
+            "market_price": 0.145,
+            "edge": 0.8358,
+            "ev": 5.7644,
+            "stake": 1.88,
+            "result": "OPEN",
+            "pnl": 0,
+            "fee": 0.0,
+            "forecast_day": 1,
+            "real_temp_c": null
         }
     ],
     "created_at": "2026-05-23T00:31:38.634156+00:00",
