@@ -1,5 +1,5 @@
 {
-    "balance": 23.7432,
+    "balance": 21.9732,
     "history": [
         {
             "ev": 0.3158,
@@ -842,6 +842,30 @@
             "edge": 0.7003,
             "ev": 2.5464,
             "stake": 1.93,
+            "result": "OPEN",
+            "pnl": 0,
+            "fee": 0.0,
+            "forecast_day": 1,
+            "real_temp_c": null
+        },
+        {
+            "market_id": "2375689",
+            "city": "Toronto",
+            "question": "Will the highest temperature in Toronto be 20°C on May 30?",
+            "market_date": "2026-05-30",
+            "entry_time": "2026-05-29T00:05:41.195654",
+            "exit_time": null,
+            "type": "EXACT",
+            "unit": "C",
+            "target": 20.0,
+            "forecast_c": 24.5,
+            "sigma_total": 2.8,
+            "shares": 6,
+            "model_prob": 0.946,
+            "market_price": 0.295,
+            "edge": 0.651,
+            "ev": 2.2067,
+            "stake": 1.77,
             "result": "OPEN",
             "pnl": 0,
             "fee": 0.0,
