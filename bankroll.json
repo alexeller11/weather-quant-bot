@@ -1,5 +1,5 @@
 {
-    "balance": 5.7632,
+    "balance": 3.8132,
     "history": [
         {
             "ev": 0.3158,
@@ -967,6 +967,30 @@
             "sigma_total": 2.8,
             "forecast_day": 1,
             "market_price": 0.22
+        },
+        {
+            "market_id": "2391237",
+            "city": "New York",
+            "question": "Will the highest temperature in New York City be between 68-69°F on June 1?",
+            "market_date": "2026-06-01",
+            "entry_time": "2026-06-01T00:04:11.175234",
+            "exit_time": null,
+            "type": "RANGE",
+            "unit": "F",
+            "target": 68.0,
+            "forecast_c": 22.2,
+            "sigma_total": 2.8,
+            "shares": 15,
+            "model_prob": 0.784,
+            "market_price": 0.13,
+            "edge": 0.654,
+            "ev": 5.0306,
+            "stake": 1.95,
+            "result": "OPEN",
+            "pnl": 0,
+            "fee": 0.0,
+            "forecast_day": 1,
+            "real_temp_c": null
         }
     ],
     "created_at": "2026-05-23T00:31:38.634156+00:00",
