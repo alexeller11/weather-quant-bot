@@ -82,14 +82,13 @@ def process_city(city: Dict):
 
     logger.info(f"{name}: {len(markets)} mercados")
 
+    # Carrega bankroll uma vez por cidade; atualiza em memória após cada trade
+    data    = load_bankroll()
+    history = data.get("history", [])
+    balance = float(data.get("balance", 0))
+
     for m in markets:
         try:
-            # Recarrega bankroll a cada mercado para evitar race condition
-            # (saldo e exposição podem mudar entre iterações)
-            data    = load_bankroll()
-            history = data.get("history", [])
-            balance = float(data.get("balance", 0))
-
             market_date = m.get("market_date", "")
             market_id   = str(m.get("market_id", ""))
 
@@ -130,9 +129,10 @@ def process_city(city: Dict):
 
             day_offset = 1
             try:
-                from datetime import date as _date
+                from datetime import timezone as _tz
                 mdate      = datetime.strptime(date_str, "%Y-%m-%d").date()
-                day_offset = max(1, (mdate - datetime.utcnow().date()).days)
+                today_utc  = datetime.now(_tz.utc).date()
+                day_offset = max(1, (mdate - today_utc).days)
             except Exception:
                 pass
 

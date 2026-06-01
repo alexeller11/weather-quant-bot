@@ -183,6 +183,11 @@ def market_is_healthy(yes_price, no_price):
     if yes_price <= 0 or yes_price >= 1:
         return False
 
+    # Descarta mercados praticamente resolvidos (preço < 5% ou > 95%)
+    # Esses mercados já têm resultado quase certo e não há edge real
+    if yes_price < 0.05 or yes_price > 0.95:
+        return False
+
     if abs((yes_price + no_price) - 1.0) > 0.08:
         return False
 

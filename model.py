@@ -99,9 +99,9 @@ def calculate_probability(
         model_prob = stats.norm.cdf(z_high) - stats.norm.cdf(z_low)
 
     else:
-        logger.warning(f"Condição desconhecida: {condition}, usando ABOVE")
-        z = (forecast_temp - target_c) / sigma
-        model_prob = stats.norm.cdf(z)
+        # RANGE e outros tipos desconhecidos: retorna 0 para não entrar no trade
+        # (check_guardrails bloqueia RANGE explicitamente)
+        return 0.0
 
     model_prob = max(0.0, min(1.0, model_prob))
 
