@@ -1,181 +1,118 @@
 """
-check_version.py — Diagnóstico rápido dos guardrails críticos.
+check_version.py — Diagnóstico rápido v5.
 Execute no Railway via: python check_version.py
-
-Verifica:
-  1. Se build_sigma() bloqueia sigma acima do cap
-  2. Se build_sigma() PASSA sigma dentro do cap (teste positivo)
-  3. Se TRADING_ENABLED está desligado
-  4. Exposição atual vs limites
-  5. Consistência de config.py vs CHANGELOG (exposição $8/4 trades)
 """
 
 import json
 from pathlib import Path
 
 print("=" * 55)
-print("WEATHER QUANT — DIAGNÓSTICO DE VERSÃO")
+print("WEATHER QUANT v5 — DIAGNÓSTICO")
 print("=" * 55)
 
-# ── 1. Teste do fix crítico de model.py ──────────────────
-
-print("\n[1] Testando build_sigma() ...")
+# ── 1. Testa calculate_probability com range2 ────────────
+print("\n[1] Testando model.py v5 ...")
 try:
-    from model import build_sigma
-    from config import SIGMA_MAX_ABOVE_BELOW
-
-    # Deve retornar None (sigma 8.0 > cap)
-    resultado_alto = build_sigma(
-        city_slug="denver",
-        forecast_day=2,
-        raw_sigma=8.0,
-        condition="ABOVE",
+    from model import calculate_probability
+    # Testa range2: forecast=74°F≈23.3°C, bucket 72-73°F
+    prob = calculate_probability(
+        city="New York", target_temp=72.5, forecast_temp=23.3,
+        day_offset=1, condition="RANGE2", unit="F",
+        sigma=4.0, target_lo=72.0, target_hi=73.0,
     )
-
-    if resultado_alto is None:
-        print(f"    OK  build_sigma(sigma=8.0, ABOVE) retornou None — bloqueio ativo")
-        print(f"    cap configurado: SIGMA_MAX_ABOVE_BELOW = {SIGMA_MAX_ABOVE_BELOW}")
+    if 0 < prob < 1:
+        print(f"    OK  calculate_probability(RANGE2) = {prob:.4f}")
     else:
-        print(f"    PROBLEMA  build_sigma(sigma=8.0, ABOVE) retornou {resultado_alto}")
-        print(f"    ACAO NECESSARIA: substituir model.py pela versão corrigida")
+        print(f"    PROBLEMA  prob={prob} fora de [0,1]")
 
-    # CORRIGIDO: também testa que sigma DENTRO do cap passa normalmente
-    resultado_normal = build_sigma(
-        city_slug="denver",
-        forecast_day=2,
-        raw_sigma=3.2,
-        condition="ABOVE",
+    prob2 = calculate_probability(
+        city="London", target_temp=20.0, forecast_temp=23.0,
+        day_offset=1, condition="ABOVE", unit="C", sigma=4.0,
     )
-
-    if resultado_normal is not None:
-        print(f"    OK  build_sigma(sigma=3.2, ABOVE) retornou {resultado_normal:.4f} — trade permitido")
-    else:
-        print(f"    PROBLEMA  build_sigma(sigma=3.2) retornou None — cap muito apertado?")
-        print(f"    Verificar SIGMA_MAX_ABOVE_BELOW = {SIGMA_MAX_ABOVE_BELOW}")
-
+    print(f"    OK  calculate_probability(ABOVE) = {prob2:.4f}")
 except Exception as e:
-    print(f"    ERRO ao importar model.py: {e}")
+    print(f"    ERRO: {e}")
 
-# ── 2. TRADING_ENABLED ───────────────────────────────────
-
-print("\n[2] Verificando TRADING_ENABLED ...")
+# ── 2. Testa gamma_parser parse_question ─────────────────
+print("\n[2] Testando gamma_parser.py v5 ...")
 try:
-    from config import TRADING_ENABLED
-    status = "LIGADO" if TRADING_ENABLED else "DESLIGADO (modo observação)"
+    from gamma_parser import parse_question
+    casos = [
+        ("50°F or higher",  "above",  50.0, "F"),
+        ("31°F or below",   "below",  31.0, "F"),
+        ("48-49°F",         "range2", 48.5, "F"),
+        ("13°C or higher",  "above",  13.0, "C"),
+        ("24°C",            "exact",  24.0, "C"),
+    ]
+    ok = 0
+    for question, exp_cond, exp_target, exp_unit in casos:
+        r = parse_question(question)
+        if r and r["condition"] == exp_cond and abs(r["target"] - exp_target) < 0.1:
+            ok += 1
+        else:
+            print(f"    FALHOU: '{question}' → {r}")
+    print(f"    OK  {ok}/{len(casos)} casos reconhecidos corretamente")
+except Exception as e:
+    print(f"    ERRO: {e}")
+
+# ── 3. TRADING_ENABLED ───────────────────────────────────
+print("\n[3] Verificando TRADING_ENABLED ...")
+try:
+    from config import TRADING_ENABLED, MIN_PRICE, MAX_POSITION, MAX_TOTAL_EXPOSURE
+    status = "LIGADO ⚠" if TRADING_ENABLED else "DESLIGADO (observação)"
     print(f"    TRADING_ENABLED = {TRADING_ENABLED} — {status}")
-    if TRADING_ENABLED:
-        print("    ACAO NECESSARIA: definir TRADING_ENABLED=0 nas variáveis do Railway")
+    print(f"    MIN_PRICE       = {MIN_PRICE}  (esperado: 0.10)")
+    print(f"    MAX_POSITION    = ${MAX_POSITION}  (esperado: $4.00)")
+    print(f"    MAX_EXPOSURE    = ${MAX_TOTAL_EXPOSURE}  (esperado: $20.00)")
+    if MIN_PRICE != 0.10:
+        print(f"    AVISO: MIN_PRICE={MIN_PRICE} — esperado 0.10")
 except Exception as e:
     print(f"    ERRO: {e}")
 
-# ── 3. Consistência config vs CHANGELOG ──────────────────
-
-print("\n[3] Verificando consistência de limites de risco ...")
-try:
-    from config import MAX_TOTAL_EXPOSURE, MAX_OPEN_TRADES
-
-    # CHANGELOG documenta: $8 e 4 abertos após emergency reset
-    if MAX_TOTAL_EXPOSURE == 8.0 and MAX_OPEN_TRADES == 4:
-        print(f"    OK  MAX_TOTAL_EXPOSURE=${MAX_TOTAL_EXPOSURE} MAX_OPEN_TRADES={MAX_OPEN_TRADES}")
-        print(f"    Alinhado com CHANGELOG (emergency reset)")
-    else:
-        print(f"    DIVERGENCIA  MAX_TOTAL_EXPOSURE=${MAX_TOTAL_EXPOSURE} MAX_OPEN_TRADES={MAX_OPEN_TRADES}")
-        print(f"    CHANGELOG documenta: $8 e 4 abertos")
-        print(f"    ACAO NECESSARIA: verificar qual é o valor real em produção")
-except Exception as e:
-    print(f"    ERRO: {e}")
-
-# ── 4. Exposição atual ───────────────────────────────────
-
+# ── 4. Bankroll ──────────────────────────────────────────
 print("\n[4] Lendo bankroll.json ...")
 bf = Path("bankroll.json")
 if not bf.exists():
-    print("    bankroll.json não encontrado")
+    print("    bankroll.json não encontrado (normal se só usa PostgreSQL)")
 else:
     try:
-        data = json.loads(bf.read_text(encoding="utf-8"))
-        history = data.get("history", [])
-        balance = float(data.get("balance", 0))
+        data     = json.loads(bf.read_text(encoding="utf-8"))
+        history  = data.get("history", [])
+        balance  = float(data.get("balance", 0))
+        abertos  = [t for t in history if t.get("result") == "OPEN"]
+        fechados = [t for t in history if t.get("result") in ("WIN","LOSS")]
+        exposure = sum(float(t.get("stake", 0)) for t in abertos)
+        print(f"    Saldo:    ${balance:.2f}")
+        print(f"    Abertos:  {len(abertos)}  (exposição ${exposure:.2f})")
+        print(f"    Fechados: {len(fechados)}")
 
-        open_trades = [t for t in history if t.get("result") == "OPEN"]
-        exposure = sum(float(t.get("stake", 0)) for t in open_trades)
-
-        from config import MAX_TOTAL_EXPOSURE, MAX_OPEN_TRADES, MAX_POSITION, SIGMA_MAX_ABOVE_BELOW
-
-        print(f"    Saldo:          ${balance:.2f}")
-        print(f"    Trades OPEN:    {len(open_trades)} / max {MAX_OPEN_TRADES}  {'OK' if len(open_trades) <= MAX_OPEN_TRADES else 'ACIMA DO LIMITE'}")
-        print(f"    Exposição:      ${exposure:.2f} / max ${MAX_TOTAL_EXPOSURE:.2f}  {'OK' if exposure <= MAX_TOTAL_EXPOSURE else 'ACIMA DO LIMITE'}")
-
-        sigma_bloqueados = [
-            t for t in open_trades
-            if t.get("sigma_total") and float(t.get("sigma_total", 0)) > SIGMA_MAX_ABOVE_BELOW
-        ]
-
-        if sigma_bloqueados:
-            print(f"\n    Trades OPEN com sigma > {SIGMA_MAX_ABOVE_BELOW} (legado, pré-fix):")
-            for t in sigma_bloqueados:
-                print(
-                    f"      {t.get('city'):15} {t.get('market_date')} "
-                    f"sigma={t.get('sigma_total')} stake=${t.get('stake', 0):.2f}"
-                )
-        else:
-            print(f"    Nenhum trade OPEN com sigma acima do cap — OK")
-
-        stakes_altos = [
-            t for t in open_trades
-            if float(t.get("stake", 0)) > MAX_POSITION
-        ]
-        if stakes_altos:
-            print(f"\n    Trades OPEN com stake > ${MAX_POSITION}:")
-            for t in stakes_altos:
-                print(
-                    f"      {t.get('city'):15} {t.get('market_date')} "
-                    f"stake=${t.get('stake', 0):.2f}"
-                )
-
+        # Verifica se há trades com tipo range2
+        range2 = [t for t in history if t.get("type","").upper() == "RANGE2"]
+        if range2:
+            print(f"    Trades RANGE2: {len(range2)}")
     except Exception as e:
-        print(f"    ERRO ao ler bankroll: {e}")
+        print(f"    ERRO: {e}")
 
-# ── 5. validacao.json ────────────────────────────────────
-
-print("\n[5] Verificando validacao.json ...")
-vf = Path("validacao.json")
-if not vf.exists():
-    print("    Arquivo não encontrado — será criado pelo bot")
-else:
-    try:
-        content = vf.read_text(encoding="utf-8").strip()
-        if content.startswith("{") or content.startswith("["):
-            json.loads(content)
-            print("    OK  validacao.json é JSON válido")
-        else:
-            print("    PROBLEMA  validacao.json contém código Python (não JSON)")
-    except json.JSONDecodeError:
-        print("    PROBLEMA  validacao.json inválido")
-
-# ── 6. Filtros ativos ────────────────────────────────────
-
-print("\n[6] Filtros de entrada ativos ...")
-try:
-    from config import MIN_PROB_ABOVE_BELOW, MIN_TARGET_ZSCORE, MIN_EV
-    print(f"    MIN_PROB_ABOVE_BELOW = {MIN_PROB_ABOVE_BELOW}  (recomendado: 0.70)")
-    print(f"    MIN_TARGET_ZSCORE    = {MIN_TARGET_ZSCORE}   (recomendado: 1.50)")
-    print(f"    MIN_EV               = {MIN_EV}  (mínimo razoável)")
-
-    avisos = []
-    if MIN_PROB_ABOVE_BELOW < 0.70:
-        avisos.append(f"MIN_PROB_ABOVE_BELOW={MIN_PROB_ABOVE_BELOW} < 0.70 — aumentar para reduzir trades de baixa convicção")
-    if MIN_TARGET_ZSCORE < 1.20:
-        avisos.append(f"MIN_TARGET_ZSCORE={MIN_TARGET_ZSCORE} < 1.20 — aumentar para evitar zona de ruído")
-
-    for aviso in avisos:
-        print(f"    AVISO: {aviso}")
-
-    if not avisos:
-        print("    OK  Filtros conservadores ativos")
-except Exception as e:
-    print(f"    ERRO: {e}")
+# ── 5. Variáveis de ambiente ─────────────────────────────
+print("\n[5] Variáveis de ambiente ...")
+import os
+vars_check = [
+    ("TELEGRAM_TOKEN", True),
+    ("CHAT_ID",        True),
+    ("DATABASE_URL",   True),
+    ("GROQ_API_KEY",   False),
+    ("GITHUB_TOKEN",   False),
+    ("WEATHERAPI_KEY", False),
+]
+for var, required in vars_check:
+    val = os.getenv(var, "")
+    if val:
+        print(f"    OK  {var} configurado")
+    elif required:
+        print(f"    AVISO  {var} não configurado (necessário)")
+    else:
+        print(f"    INFO   {var} não configurado (opcional)")
 
 print("\n" + "=" * 55)
-print("FIM DO DIAGNÓSTICO")
-print("=" * 55 + "\n")
+print("FIM DO DIAGNÓSTICO v5")
+print("=" * 55)

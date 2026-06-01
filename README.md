@@ -1,26 +1,30 @@
-# Weather Quant Bot
+# Weather Quant Bot v5
 
 Bot de paper trading em mercados de temperatura da Polymarket.
 
-## Arquivos
+## Arquivos principais
 
 | Arquivo | Função |
 |---|---|
 | `config.py` | Parâmetros de risco e configuração |
-| `bankroll.py` | Persistência do saldo e histórico |
-| `risk.py` | Kelly Criterion, EV, exposição |
+| `bankroll.py` | Persistência do saldo (PostgreSQL → local → GitHub) |
+| `risk.py` | Kelly Criterion, guardrails, EV |
 | `forecast.py` | Previsão via Open-Meteo + bias correction |
-| `model.py` | Probabilidades via distribuição Normal |
+| `model.py` | Probabilidades via distribuição Normal (ABOVE/BELOW/RANGE2) |
 | `gamma_parser.py` | Parser de mercados da Polymarket Gamma API |
 | `bot.py` | Loop principal de trading |
 | `settlement.py` | Liquidação dos trades pelo resultado real |
 | `notificador.py` | Notificações Telegram + IA Groq |
 | `dashboard.py` | Dashboard web com globo 3D |
 | `audit_model.py` | Relatório local de calibração/exposição |
-| `check_version.py` | Diagnóstico rápido de guardrails |
-| `emergency_flatten.py` | Zera exposição paper com VOID |
-| `cleanup_history.py` | Corrige targets errados no bankroll |
-| `migration.py` | Normaliza cidades + preenche EV retroativamente |
+| `check_version.py` | Diagnóstico rápido v5 |
+| `consensus.py` | Motor de consenso multi-fonte |
+| `sigma_calibrator.py` | Calibração de sigma por cidade |
+| `ml_adjuster.py` | Ajuste de probabilidade via SGD online |
+| `station_data.py` | Confirmação intra-dia via dados horários |
+| `simulate.py` | Backtest e análise de performance |
+| `validacao.py` | Relatório de validação do modelo |
+| `github_sync.py` | Backup do bankroll no GitHub |
 
 ## Instalação
 
@@ -37,7 +41,9 @@ GITHUB_TOKEN=ghp_xxxxxxxxxxxx
 GITHUB_REPO=seu_usuario/weather-quant-bot
 GITHUB_BRANCH=main
 GROQ_API_KEY=sua_chave_groq
-DATABASE_URL=postgres://...  # Railway injeta automaticamente
+WEATHERAPI_KEY=sua_chave_weatherapi   # opcional
+DATABASE_URL=postgres://...           # Railway injeta automaticamente
+TRADING_ENABLED=0                     # 0=observação, 1=trading
 ```
 
 ## Ordem de execução — primeiro uso
@@ -49,7 +55,7 @@ python check_version.py
 # 2. Rodar o bot em modo observação (TRADING_ENABLED=0)
 python bot.py
 
-# 3. Settlement automático (o scheduler interno roda a cada hora)
+# 3. Settlement automático (scheduler interno roda a cada hora)
 # Para forçar manualmente:
 python settlement.py
 ```
@@ -58,52 +64,49 @@ python settlement.py
 
 | Parâmetro | Valor | Motivo |
 |---|---|---|
-| `TRADING_ENABLED` | `0` por padrão | Modo observação |
-| `MIN_PROB_ABOVE_BELOW` | `0.70` | Dados: win rate ~0% abaixo de 0.70 |
-| `MIN_TARGET_ZSCORE` | `1.50` | Targets dentro de 1.5σ são ruído |
-| `MAX_POSITION` | `$2.00` | Cap por trade |
-| `MAX_TOTAL_EXPOSURE` | `$8.00` | Alinhado com CHANGELOG emergency reset |
-| `MAX_OPEN_TRADES` | `4` | Alinhado com CHANGELOG emergency reset |
+| `TRADING_ENABLED` | `0` | Modo observação por segurança |
+| `MIN_PROB_ABOVE_BELOW` | `0.80` | Calibrado com dados reais |
+| `MIN_TARGET_ZSCORE` | `1.00` | Alinhado com sigma=4.0 |
+| `MAX_POSITION` | `$4.00` | 2% do bankroll de $200 |
+| `MAX_TOTAL_EXPOSURE` | `$20.00` | 10% do bankroll |
+| `MAX_OPEN_TRADES` | `5` | Diversificação adequada |
+| `MIN_PRICE` | `0.10` | Aceita buckets de 2°F |
 | `KELLY_FRACTION` | `0.50` | Half-Kelly conservador |
 
-## Cidades cobertas (22)
+## Formato dos mercados (v5)
 
-New York, London, Paris, Hong Kong, Tokyo, Seoul, Beijing, São Paulo,
-Milan, Los Angeles, Houston, Austin, Denver, Seattle, Chicago, Phoenix,
+A Polymarket usa buckets de 2°F/°C. O bot reconhece três tipos:
+
+| Exemplo | Tipo | Condição |
+|---|---|---|
+| `50°F or higher` | ABOVE | temp >= 50°F |
+| `31°F or below` | BELOW | temp <= 31°F |
+| `48-49°F` | RANGE2 | 48°F <= temp <= 49°F |
+
+## Cidades cobertas (20 ativas)
+
+New York, London, Paris, Tokyo, Seoul, São Paulo, Milan,
+Los Angeles, Houston, Austin, Denver, Seattle, Chicago, Phoenix,
 Miami, Atlanta, Boston, Toronto, Madrid, Mexico City.
 
-## Decisões de modelo (auditoria dos 26 trades)
-
-**O problema central era sigma subestimado.** Com sigma de 2.0–2.6°C, o
-modelo calculava probabilidades ilusoriamente precisas e entrava em trades
-onde a temperatura alvo estava a menos de 1 sigma do forecast — zona de
-incerteza máxima. O erro real observado foi de até 5.3°C (Denver).
-
-**Correções aplicadas:**
-- Sigma base aumentado para {1:2.8, 2:3.2, 3:3.5}°C
-- MIN_PROB_ABOVE_BELOW: 0.55 → 0.70
-- MIN_TARGET_ZSCORE: 0.45 → 1.50
-- 3 cidades novas adicionadas (Toronto, Madrid, Mexico City)
-- Slugs alternativos para NYC e outras cidades
-- dashboard_server.py removido (duplicata obsoleta)
+Beijing e Hong Kong bloqueadas por erro sistemático de forecast > 5°C.
 
 ## Antes de usar capital real
 
-- Mínimo 200 trades fechados com as regras v3
+- Mínimo 200 trades fechados com as regras v5
 - Win rate IC 95% inferior > 52%
-- Pelo menos 5 trades por cidade (para bias correction ter dados)
-- Zero bugs de stake verificados
-- Período mínimo: 6–8 semanas com os filtros atuais
+- Pelo menos 10 trades RANGE2 para calibrar sigma
+- Período mínimo: 6–8 semanas
 
-## Auditoria e emergência
+## Comandos Telegram
 
-```bash
-# Relatório local
-python audit_model.py
-
-# Zera exposição paper (marca OPEN como VOID)
-python emergency_flatten.py
-
-# Diagnóstico rápido
-python check_version.py
 ```
+/status       — Saldo e trades abertos
+/validacao    — Relatório do modelo
+/settlement   — Liquidar agora
+/resetbankroll [valor] — Resetar saldo
+/help         — Ajuda
+```
+
+Qualquer outra mensagem é enviada para a IA (Groq llama-3.3-70b)
+que analisa o bot em tempo real e responde em português.
