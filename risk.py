@@ -1,25 +1,15 @@
 #!/usr/bin/env python3
 """
-risk.py — Kelly Criterion e guardrails v5.1
+risk.py — Kelly Criterion e guardrails v5.2
 
-AJUSTES baseados nos logs reais de 2026-06-01:
-
-1. MIN_PRICE por tipo:
-   - ABOVE/BELOW/EXACT: usa MIN_PRICE do config (agora 0.08)
-   - RANGE2: usa MIN_PRICE_RANGE2 do config (0.04)
-   Houston ABOVE 92°F a 0.095 e Atlanta RANGE2 a 0.034 eram trades
-   legítimos bloqueados pelo piso antigo de 0.10.
-
-2. MIN_PROB_ABOVE_BELOW: agora 0.72 no config.
-   Tokyo ABOVE 27°C com prob=0.766 e edge=+0.647 era o melhor
-   trade do ciclo e estava sendo bloqueado.
-
-3. Edge máximo para ABOVE/BELOW mantido em 0.40.
-   Milan ABOVE 24°C com edge=0.848 foi bloqueado corretamente —
-   forecast 30.7°C vs target 24°C é suspeito (mercado sabe algo).
-
-4. MIN_PROB_RANGE2 mantido em 0.15 — buckets de 2°F têm prob
-   naturalmente baixa (~5-15% por bucket).
+AJUSTE v5.2:
+- Edge máximo para ABOVE/BELOW: lógica diferenciada por nível de prob:
+    prob >= 0.90 → cap 0.25 (prob muito alta = suspeito, mercado sabe mais)
+    prob >= 0.72 → cap 0.55 (prob razoável = pode ser edge real)
+  
+  Antes havia cap fixo de 0.40 que bloqueava Tokyo (prob=0.766, edge=0.647).
+  Tokyo forecast 29.9°C vs target 27°C com sigma=4.0 → prob=76.6% é legítimo.
+  Milan forecast 30.7°C vs target 24°C → prob=95.3% é suspeito (edge=0.868 bloqueado).
 """
 
 import logging
@@ -44,8 +34,8 @@ from config import (
 
 logger = logging.getLogger(__name__)
 
-MIN_PROB_RANGE2 = 0.04   # prob mínima para range2 (buckets ~5% são normais)
-MIN_EDGE_RANGE2 = 0.02   # edge mínimo para range2
+MIN_PROB_RANGE2 = 0.04
+MIN_EDGE_RANGE2 = 0.02
 
 
 def consecutive_losses(history: list) -> int:
@@ -95,6 +85,25 @@ def kelly_criterion(
     return round(stake, 2)
 
 
+def _max_edge_for_prob(prob: float) -> float:
+    """
+    Cap de edge diferenciado por nível de prob.
+    
+    prob >= 0.90: cap 0.25
+      Ex: Milan ABOVE 24°C com prob=0.953 e edge=0.868 → bloqueado (correto)
+      Prob muito alta indica que o modelo está calculando algo óbvio
+      que o mercado já sabe — suspeito de erro de forecast.
+    
+    prob >= 0.72: cap 0.55  
+      Ex: Tokyo ABOVE 27°C com prob=0.766 e edge=0.647 → passa
+      Prob moderada com edge alto pode ser lag do mercado em
+      atualizar após nova rodada do modelo meteorológico.
+    """
+    if prob >= 0.90:
+        return 0.25
+    return 0.55
+
+
 def check_guardrails(
     market: dict,
     model_prob: float,
@@ -112,7 +121,7 @@ def check_guardrails(
     else:
         target_c = target_raw
 
-    # 1. Filtro de liquidez — piso diferente por tipo
+    # 1. Filtro de liquidez
     min_p = MIN_PRICE_RANGE2 if condition == "RANGE2" else MIN_PRICE
     if price < min_p or price > MAX_PRICE:
         logger.info(f"Bloqueado: preço fora da faixa ({price:.3f}, min={min_p})")
@@ -134,14 +143,16 @@ def check_guardrails(
         if edge < MIN_EDGE:
             logger.info(f"Bloqueado: edge insuficiente ({edge:.3f})")
             return False
-        # Edge máximo: não lutar contra o mercado
-        # Milan ABOVE 24°C edge=0.848 foi bloqueado corretamente
-        if edge > 0.40:
+
+        # Edge máximo diferenciado por nível de prob
+        max_edge = _max_edge_for_prob(model_prob)
+        if edge > max_edge:
             logger.info(
-                f"Bloqueado: edge {edge:.3f} > 0.40 — modelo discordando "
-                f"demais do mercado (prob={model_prob:.2f} mkt={price:.2f})"
+                f"Bloqueado: edge {edge:.3f} > {max_edge} "
+                f"(prob={model_prob:.2f} mkt={price:.2f})"
             )
             return False
+
         # Zscore mínimo
         if sigma is None or sigma <= 0:
             sigma = {1: 4.0, 2: 4.5, 3: 5.0}.get(day_offset, 5.0)
@@ -158,14 +169,11 @@ def check_guardrails(
 
     elif condition == "RANGE2":
         if model_prob < MIN_PROB_RANGE2:
-            logger.info(
-                f"Bloqueado: prob abaixo do mínimo para RANGE2 ({model_prob:.3f})"
-            )
+            logger.info(f"Bloqueado: prob abaixo do mínimo para RANGE2 ({model_prob:.3f})")
             return False
         if edge < MIN_EDGE_RANGE2:
             logger.info(f"Bloqueado: edge insuficiente para RANGE2 ({edge:.3f})")
             return False
-        # Não entra se mercado já precificou muito alto
         if price > 0.70:
             logger.info(f"Bloqueado: RANGE2 preço alto demais ({price:.3f})")
             return False
