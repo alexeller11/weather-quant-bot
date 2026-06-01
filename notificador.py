@@ -367,13 +367,34 @@ def processar_comando(texto):
         except Exception as e:
             enviar_mensagem(f"Erro na validacao: {e}")
 
+    elif cmd.startswith("/resetbankroll"):
+        # Reseta o bankroll no PostgreSQL para $200 limpos
+        parts = cmd.split()
+        try:
+            valor = float(parts[1]) if len(parts) > 1 else 200.0
+            valor = max(10.0, min(valor, 10000.0))
+        except Exception:
+            valor = 200.0
+        try:
+            from bankroll import reset_bankroll
+            reset_bankroll(valor)
+            enviar_mensagem(
+                f"<b>BANKROLL RESETADO</b>\n\n"
+                f"Novo saldo: <b>${valor:.2f}</b>\n"
+                f"Histórico zerado.\n\n"
+                f"Bot vai começar com dados limpos no próximo ciclo."
+            )
+        except Exception as e:
+            enviar_mensagem(f"Erro ao resetar: {e}")
+
     elif cmd == "/help":
         enviar_mensagem(
             "<b>⚡ WEATHER QUANT BOT — COMANDOS</b>\n\n"
-            "/status     — Saldo, abertos e win rate\n"
-            "/validacao  — Relatório completo do modelo\n"
-            "/settlement — Forçar liquidação agora\n"
-            "/help       — Esta mensagem\n\n"
+            "/status                  — Saldo e trades abertos\n"
+            "/validacao               — Relatório do modelo\n"
+            "/settlement              — Liquidar agora\n"
+            "/resetbankroll [valor]   — Resetar saldo (padrão $200)\n"
+            "/help                    — Esta mensagem\n\n"
             "<b>💬 Conversa livre com IA</b>\n"
             "<i>Manda qualquer pergunta — a IA (Groq llama-3.3-70b) "
             "analisa o bot em tempo real e responde.</i>\n\n"

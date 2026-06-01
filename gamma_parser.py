@@ -91,9 +91,9 @@ def _extract_temp_candidates(question, unit):
     if unit == "F":
         attached = re.findall(r"(\d+(?:\.\d+)?)\s*(?:°[Ff]|[Ff](?![a-z]))", question)
         if attached:
-            return [float(n) for n in attached if 50 <= float(n) <= 130]
+            return [float(n) for n in attached if 20 <= float(n) <= 130]
         return [float(n) for n in re.findall(r"\d+(?:\.\d+)?", question)
-                if 50 <= float(n) <= 130]
+                if 20 <= float(n) <= 130]
     else:
         attached = re.findall(r"(\d+(?:\.\d+)?)\s*°[Cc]", question)
         if attached:
