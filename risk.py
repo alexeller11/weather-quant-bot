@@ -169,6 +169,18 @@ def check_guardrails(
             logger.info(f"Bloqueado: edge insuficiente ({edge:.3f})")
             return False
 
+    # 4b. Sanidade: não entrar quando modelo discorda muito do mercado.
+    # Dados empíricos: quando model_prob >> price (edge > 40pp), o modelo
+    # estava sistematicamente errado — mercado detinha informação superior.
+    # Só aceitar edge grande quando o mercado TAMBÉM concorda na direção.
+    if edge > 0.40:
+        logger.info(
+            f"Bloqueado: edge {edge:.3f} > 0.40 — modelo discordando demais "
+            f"do mercado (modelo:{model_prob:.2f} mercado:{price:.2f}). "
+            f"Histórico mostra WR~0% nesses casos."
+        )
+        return False
+
     # 5. Zscore mínimo — apenas ABOVE/BELOW
     if condition in ("ABOVE", "BELOW"):
         if sigma is None or sigma <= 0:

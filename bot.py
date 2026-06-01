@@ -32,6 +32,7 @@ from bankroll import load_bankroll, save_bankroll, already_traded
 from settlement import settle_all
 from notificador import notificar_entrada_trade
 from consensus import ConsensusEngine
+from station_data import get_intraday_confirmation, city_is_reliable
 
 from config import (
     TRADING_ENABLED,
@@ -63,6 +64,12 @@ def process_city(city: Dict):
     logger.info(f"Processando: {name}")
 
     city_slug = name.lower().replace(" ", "-")
+
+    # Ignora cidades com histórico de erro de forecast muito alto
+    if not city_is_reliable(city_slug):
+        logger.info(f"{name}: cidade não confiável (erro histórico > 5°C) — pulando")
+        return
+
     try:
         markets = fetch_markets(city_slug)
     except Exception as e:
@@ -128,6 +135,22 @@ def process_city(city: Dict):
                 day_offset = max(1, (mdate - datetime.utcnow().date()).days)
             except Exception:
                 pass
+
+            # Para mercados do dia atual (D+0/D+1): verifica tendência intra-dia.
+            # Se max do dia já passou target (ABOVE) → certeza alta.
+            # Se tarde e bem abaixo do target → rejeita.
+            if day_offset <= 1:
+                target_c_check = (target - 32) * 5 / 9 if unit == "F" else target
+                intra = get_intraday_confirmation(city_slug, condition, target_c_check)
+                if intra["confirmed"] is False:
+                    logger.info(
+                        f"{name}: confirmação intra-dia negativa — {intra['reason']}"
+                    )
+                    continue
+                if intra["confirmed"] is True:
+                    logger.info(
+                        f"{name}: confirmação intra-dia POSITIVA — {intra['reason']}"
+                    )
 
             # Passa sigma do forecast (com ajustes climáticos por cidade)
             # para evitar recálculo inconsistente em model.py e risk.py

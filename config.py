@@ -23,9 +23,11 @@ import json
 TRADING_ENABLED = int(os.getenv("TRADING_ENABLED", "0"))
 
 # Recalibrado após simulação (jun/2026): win rate real 23% vs 70%+ previsto.
-# Eleva thresholds para só entrar em trades onde o modelo é genuinamente confiante.
+# MIN_PROB elevado; MIN_TARGET_ZSCORE ajustado para ser consistente com sigma=4.0.
+# Com sigma=4.0 e zscore=1.0 → model_prob ≥ 84%, forecast 4°C do target.
+# zscore=2.0 com sigma=4.0 exigiria 8°C — geraria zero trades.
 MIN_PROB_ABOVE_BELOW = float(os.getenv("MIN_PROB_ABOVE_BELOW", "0.80"))
-MIN_TARGET_ZSCORE = float(os.getenv("MIN_TARGET_ZSCORE", "2.00"))
+MIN_TARGET_ZSCORE = float(os.getenv("MIN_TARGET_ZSCORE", "1.00"))
 MAX_POSITION = float(os.getenv("MAX_POSITION", "2.00"))
 MAX_TOTAL_EXPOSURE = float(os.getenv("MAX_TOTAL_EXPOSURE", "8.00"))
 MAX_OPEN_TRADES = int(os.getenv("MAX_OPEN_TRADES", "4"))
@@ -62,8 +64,10 @@ PROB_DEADZONE_MAX = float(os.getenv("PROB_DEADZONE_MAX", "0.55"))
 PROBABILITY_DEAD_ZONE_LOW = PROB_DEADZONE_MIN
 PROBABILITY_DEAD_ZONE_HIGH = PROB_DEADZONE_MAX
 
-# Liquidez
-MIN_PRICE = float(os.getenv("MIN_PRICE", "0.12"))
+# Liquidez — elevado com base em dados reais:
+# trades com market_price < 0.30 tiveram 0% de win rate (15 trades).
+# O mercado nessas faixas está correto; o modelo é o que está errado.
+MIN_PRICE = float(os.getenv("MIN_PRICE", "0.30"))
 MAX_PRICE = float(os.getenv("MAX_PRICE", "0.88"))
 
 # ============================================================
