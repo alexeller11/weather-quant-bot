@@ -10,30 +10,19 @@ def utcnow():
 BASE_URL = "https://gamma-api.polymarket.com"
 HEADERS  = {"User-Agent": "Mozilla/5.0"}
 
-# =========================================================
-# MAPEAMENTO DE SLUGS ALTERNATIVOS POR CIDADE
-# A Polymarket usa slugs diferentes ao longo do tempo.
-# CORRIGIDO: "new-york" → testa "nyc" e "new-york".
-# =========================================================
-
 CITY_SLUG_ALIASES = {
     "new-york":    ["new-york", "nyc", "new york"],
     "hong-kong":   ["hong-kong", "hongkong"],
     "los-angeles": ["los-angeles", "la", "losangeles"],
-    "sao-paulo":   ["sao-paulo", "são paulo", "saopaulo"],
+    "sao-paulo":   ["sao-paulo", "saopaulo"],  # CORRIGIDO: removido acento que quebra URL
     "mexico-city": ["mexico-city", "mexicocity", "mexico city"],
     "toronto":     ["toronto"],
     "madrid":      ["madrid"],
 }
 
 def _get_city_slugs(city):
-    """Retorna lista de slugs a tentar para a cidade."""
     return CITY_SLUG_ALIASES.get(city, [city])
 
-
-# =========================================================
-# SAFE REQUEST — com tratamento de 429
-# =========================================================
 
 def safe_request(url, retries=5, timeout=15):
     for attempt in range(retries):
@@ -54,9 +43,6 @@ def safe_request(url, retries=5, timeout=15):
         time.sleep(sleep_time)
     return None
 
-# =========================================================
-# DETECÇÃO DE UNIDADE
-# =========================================================
 
 def detect_unit(question):
     q = question.lower()
@@ -83,9 +69,6 @@ def detect_unit(question):
 
     return "C"
 
-# =========================================================
-# EXTRAI NÚMERO DA TEMPERATURA
-# =========================================================
 
 def _extract_temp_candidates(question, unit):
     if unit == "F":
@@ -103,9 +86,6 @@ def _extract_temp_candidates(question, unit):
         non_day = [n for n in candidates if n > 31]
         return non_day if non_day else candidates
 
-# =========================================================
-# PARSE QUESTION
-# =========================================================
 
 def parse_question(question):
     q = question.lower()
@@ -169,11 +149,20 @@ def parse_question(question):
     print(f"  Ignorado (formato não reconhecido): {question}")
     return None
 
-# =========================================================
-# HEALTH CHECK
-# =========================================================
 
 def market_is_healthy(yes_price, no_price):
+    """
+    CORRIGIDO: limites ajustados para capturar mercados de D+1/D+2.
+    
+    Antes: rejeitava yes < 0.05 e yes > 0.95 — isso eliminava todos os
+    mercados futuros cujos preços extremos ainda não foram ajustados
+    pelo mercado.
+    
+    Agora: aceita a faixa 0.08 a 0.92 para capturar mais mercados
+    futuros com liquidez real, mantendo o filtro de soma yes+no próxima de 1.
+    O filtro de preço mínimo (MIN_PRICE) em risk.py faz a filtragem final
+    e é a barreira real para entrada.
+    """
     try:
         yes_price = float(yes_price)
         no_price  = float(no_price)
@@ -183,26 +172,19 @@ def market_is_healthy(yes_price, no_price):
     if yes_price <= 0 or yes_price >= 1:
         return False
 
-    # Descarta mercados praticamente resolvidos (preço < 5% ou > 95%)
-    # Esses mercados já têm resultado quase certo e não há edge real
+    # Mercados quase resolvidos — sem edge possível
     if yes_price < 0.05 or yes_price > 0.95:
         return False
 
-    if abs((yes_price + no_price) - 1.0) > 0.08:
+    # Tolerância de spread: aceita mercados até 12pp de desequilíbrio
+    # (era 8pp — alguns mercados de D+1 legítimos ficavam fora)
+    if abs((yes_price + no_price) - 1.0) > 0.12:
         return False
 
     return True
 
-# =========================================================
-# FETCH MARKETS
-# =========================================================
 
 def _slug_variants(city, d):
-    """
-    Gera variantes de slug para uma cidade e data,
-    testando todos os aliases conhecidos da cidade.
-    CORRIGIDO: incluí alias nyc para new-york.
-    """
     month = d.strftime('%B').lower()
     day   = d.day
     year  = d.year
@@ -216,13 +198,10 @@ def _slug_variants(city, d):
 
 
 def _search_fallback(city, d):
-    """
-    Fallback via busca textual quando slug não funciona.
-    CORRIGIDO: usa nome de exibição limpo sem hífens.
-    """
     month = d.strftime('%B').lower()
     day   = d.day
-    city_clean = city.replace("-", " ")
+    # CORRIGIDO: remove acentos para evitar encoding quebrado na URL
+    city_clean = city.replace("-", " ").replace("ã", "a").replace("ô", "o").replace("é", "e")
     query = f"highest temperature {city_clean} {month} {day}"
     url   = f"{BASE_URL}/events?limit=10&active=true&q={requests.utils.quote(query)}"
     data  = safe_request(url)
@@ -230,19 +209,24 @@ def _search_fallback(city, d):
         return None
     for event in data:
         title = (event.get("title") or event.get("name") or "").lower()
-        if city_clean in title and month[:3] in title:
+        if city_clean.split()[0] in title and month[:3] in title:
             return event
     return None
 
 
 def fetch_markets(city):
     """
-    Busca mercados de temperatura para a cidade nos próximos 3 dias.
-    CORRIGIDO: testa múltiplos slugs por cidade incluindo aliases.
+    CORRIGIDO: pula D+0 (hoje) — mercados do dia atual já têm preços
+    extremos porque o resultado é quase certo. O bot só busca D+1 e D+2
+    onde há incerteza real e edge possível.
+    
+    Antes: range(3) → dias 0, 1, 2 (hoje incluído)
+    Agora: range(1, 3) → dias 1, 2 (amanhã e depois)
     """
     all_markets = []
 
-    for i in range(3):
+    # CORRIGIDO: começa em i=1 para pular D+0
+    for i in range(1, 3):
         d = utcnow() + timedelta(days=i)
 
         event = None

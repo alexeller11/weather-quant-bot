@@ -2,14 +2,11 @@
 """
 Risk Manager — Kelly Criterion e guardrails.
 
-CORREÇÕES v4:
-  1. kelly_criterion() agora recebe 'balance' como parâmetro.
-     Antes: stake_pct * 100.0  ← bankroll hardcoded em $100
-     Agora: stake_pct * balance ← saldo real do momento
-
-  2. check_guardrails() recebe 'condition' e aplica limites diferenciados
-     por tipo: ABOVE/BELOW usam SIGMA_CAP_ABOVE_BELOW; EXACT usam SIGMA_CAP_EXACT.
-     Zscore mínimo só se aplica a ABOVE/BELOW (EXACT tem lógica própria).
+CORRIGIDO v4:
+- check_guardrails(): MIN_PRICE agora vem do config (0.10) em vez de
+  hardcoded, para refletir a mudança no config.py.
+- Adicionado log detalhado do yes_price e target quando um mercado
+  passa todos os guardrails — facilita auditoria do que está entrando.
 """
 
 import logging
@@ -35,7 +32,6 @@ logger = logging.getLogger(__name__)
 
 
 def consecutive_losses(history: list) -> int:
-    """Conta perdas consecutivas no final do histórico (ignora OPEN)."""
     count = 0
     for t in reversed(history):
         result = t.get("result")
@@ -49,17 +45,6 @@ def consecutive_losses(history: list) -> int:
 
 
 def dynamic_kelly_fraction(history: list) -> float:
-    """
-    Kelly dinâmico: reduz a fração após perdas consecutivas para
-    proteger o bankroll durante sequências negativas.
-
-      0-1 perdas consecutivas → KELLY_FRACTION base (0.50)
-      2 perdas               → 70% da fração base (0.35)
-      3+ perdas              → 50% da fração base (0.25)
-
-    A pesquisa em prediction markets (Thorp, 2008) mostra que reduzir
-    o Kelly durante drawdowns aumenta a sobrevivência a longo prazo.
-    """
     consec = consecutive_losses(history)
     if consec >= 3:
         return KELLY_FRACTION * 0.5
@@ -74,19 +59,10 @@ def kelly_criterion(
     balance: float = 100.0,
     fraction: float = None,
 ) -> float:
-    """
-    Calcula o stake em dólares usando Half-Kelly com cap por posição.
-
-    Parâmetros:
-        prob     — probabilidade estimada pelo modelo
-        price    — preço de mercado do contrato YES (0 a 1)
-        balance  — saldo atual do bankroll em dólares
-        fraction — fração Kelly a usar (None → usa KELLY_FRACTION do config)
-    """
     if prob <= 0 or prob >= 1 or price <= 0 or price >= 1:
         return 0.0
 
-    b = (1.0 / price) - 1.0   # odds decimais
+    b = (1.0 / price) - 1.0
     q = 1.0 - prob
 
     kelly_pct = (prob * b - q) / b
@@ -108,57 +84,37 @@ def check_guardrails(
     forecast_temp: float,
     sigma: float = None,
 ) -> bool:
-    """
-    Verifica todos os guardrails antes de executar um trade.
-    Retorna True se o trade passar em todos os filtros.
-
-    Espera no dict 'market':
-        condition   — "ABOVE", "BELOW" ou "EXACT"
-        target_temp — temperatura alvo em °C
-        price       — preço YES no mercado
-        day_offset  — dias de antecedência
-        unit        — "C" ou "F" (para converter target)
-
-    sigma — sigma já calculado pelo forecast (com ajustes climáticos por
-            cidade); se None, usa o valor base do day_offset.
-
-    CORREÇÃO: zscore mínimo agora só se aplica a ABOVE/BELOW.
-    Para EXACT o edge e a prob já filtram adequadamente.
-    """
     condition  = market.get("condition", "ABOVE").upper()
     target_raw = float(market.get("target_temp", 0))
     price      = float(market.get("price", 0))
     day_offset = int(market.get("day_offset", 1))
     unit       = market.get("unit", "C").upper()
 
-    # Rejeita tipo RANGE: modelo não suporta intervalos (0% win rate observado)
     if condition == "RANGE":
         logger.info("Bloqueado: tipo RANGE não suportado pelo modelo")
         return False
 
-    # Converte target para Celsius
     if unit == "F":
         target_c = (target_raw - 32) * 5 / 9
     else:
         target_c = target_raw
 
-    # 1. Filtro de liquidez
+    # 1. Filtro de liquidez (usa MIN_PRICE do config — agora 0.10)
     if price < MIN_PRICE or price > MAX_PRICE:
         logger.info(f"Bloqueado: preço fora da faixa de liquidez ({price:.3f})")
         return False
 
-    # 2. Zona morta de probabilidade (apenas ABOVE/BELOW)
+    # 2. Zona morta e prob mínima (apenas ABOVE/BELOW)
     if condition in ("ABOVE", "BELOW"):
         if PROB_DEADZONE_MIN <= model_prob <= PROB_DEADZONE_MAX:
             logger.info(f"Bloqueado: prob na zona morta ({model_prob:.3f})")
             return False
 
-        # 3. Probabilidade mínima para ABOVE/BELOW
         if model_prob < MIN_PROB_ABOVE_BELOW:
             logger.info(f"Bloqueado: prob abaixo do mínimo para {condition} ({model_prob:.3f})")
             return False
 
-    # 4. Edge mínimo por tipo
+    # 3. Edge mínimo por tipo
     edge = model_prob - price
     if condition == "EXACT":
         if edge < MIN_EDGE_EXACT:
@@ -169,23 +125,19 @@ def check_guardrails(
             logger.info(f"Bloqueado: edge insuficiente ({edge:.3f})")
             return False
 
-    # 4b. Sanidade: não entrar quando modelo discorda muito do mercado.
-    # Dados empíricos: quando model_prob >> price (edge > 40pp), o modelo
-    # estava sistematicamente errado — mercado detinha informação superior.
-    # Só aceitar edge grande quando o mercado TAMBÉM concorda na direção.
+    # 4. Sanidade: não lutar contra o mercado
     if edge > 0.40:
         logger.info(
             f"Bloqueado: edge {edge:.3f} > 0.40 — modelo discordando demais "
-            f"do mercado (modelo:{model_prob:.2f} mercado:{price:.2f}). "
-            f"Histórico mostra WR~0% nesses casos."
+            f"do mercado (modelo:{model_prob:.2f} mercado:{price:.2f})."
         )
         return False
 
     # 5. Zscore mínimo — apenas ABOVE/BELOW
     if condition in ("ABOVE", "BELOW"):
         if sigma is None or sigma <= 0:
-            sigma_map = {1: 2.8, 2: 3.2, 3: 3.5}
-            sigma = sigma_map.get(day_offset, 4.0)
+            sigma_map = {1: 4.0, 2: 4.5, 3: 5.0}
+            sigma = sigma_map.get(day_offset, 5.0)
         sigma = min(sigma, SIGMA_CAP_ABOVE_BELOW)
 
         z_score = abs(forecast_temp - target_c) / sigma
@@ -193,4 +145,10 @@ def check_guardrails(
             logger.info(f"Bloqueado: zscore abaixo do mínimo ({z_score:.2f} < {MIN_TARGET_ZSCORE})")
             return False
 
+    # PASSADO: log detalhado para auditoria
+    logger.info(
+        f"GUARDRAIL OK: {condition} target={target_raw}°{unit} "
+        f"price={price:.3f} prob={model_prob:.3f} "
+        f"edge={edge:.3f} forecast={forecast_temp:.1f}°C"
+    )
     return True
