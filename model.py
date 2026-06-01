@@ -48,6 +48,7 @@ def calculate_probability(
     day_offset: int,
     condition: str = "ABOVE",
     unit: str = "C",
+    sigma: float = None,
 ) -> float:
     """
     Retorna a probabilidade do mercado resolver YES.
@@ -59,6 +60,8 @@ def calculate_probability(
         day_offset    — horizonte de previsão (1, 2, 3...)
         condition     — "ABOVE", "BELOW" ou "EXACT"
         unit          — "C" ou "F" (unidade do target_temp)
+        sigma         — sigma já calculado (com ajustes climáticos); se None,
+                        calcula internamente
 
     Retorna float em [0, 1].
     """
@@ -67,12 +70,11 @@ def calculate_probability(
     # Converte target para Celsius para comparar com forecast (sempre em °C)
     target_c = to_celsius(target_temp, unit)
 
-    base_sigma = get_base_sigma(day_offset)
-    sigma = _calibrator.get_adjusted_sigma(city, base_sigma)
-
-    # Evita divisão por zero
-    if sigma <= 0:
-        sigma = base_sigma
+    if sigma is None or sigma <= 0:
+        base_sigma = get_base_sigma(day_offset)
+        sigma = _calibrator.get_adjusted_sigma(city, base_sigma)
+        if sigma <= 0:
+            sigma = base_sigma
 
     # ── Fórmula por condição ──────────────────────────────────────────────
     if condition == "ABOVE":

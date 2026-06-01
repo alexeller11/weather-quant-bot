@@ -70,6 +70,7 @@ def check_guardrails(
     market: dict,
     model_prob: float,
     forecast_temp: float,
+    sigma: float = None,
 ) -> bool:
     """
     Verifica todos os guardrails antes de executar um trade.
@@ -81,6 +82,9 @@ def check_guardrails(
         price       — preço YES no mercado
         day_offset  — dias de antecedência
         unit        — "C" ou "F" (para converter target)
+
+    sigma — sigma já calculado pelo forecast (com ajustes climáticos por
+            cidade); se None, usa o valor base do day_offset.
 
     CORREÇÃO: zscore mínimo agora só se aplica a ABOVE/BELOW.
     Para EXACT o edge e a prob já filtram adequadamente.
@@ -126,8 +130,9 @@ def check_guardrails(
 
     # 5. Zscore mínimo — apenas ABOVE/BELOW
     if condition in ("ABOVE", "BELOW"):
-        sigma_map = {1: 2.8, 2: 3.2, 3: 3.5}
-        sigma = sigma_map.get(day_offset, 4.0)
+        if sigma is None or sigma <= 0:
+            sigma_map = {1: 2.8, 2: 3.2, 3: 3.5}
+            sigma = sigma_map.get(day_offset, 4.0)
         sigma = min(sigma, SIGMA_CAP_ABOVE_BELOW)
 
         z_score = abs(forecast_temp - target_c) / sigma

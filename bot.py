@@ -24,7 +24,7 @@ logging.basicConfig(
 logger = logging.getLogger("bot")
 
 from gamma_parser import fetch_markets
-from forecast import get_forecast, get_corrected_forecast
+from forecast import get_corrected_forecast
 from model import calculate_probability
 from risk import kelly_criterion, check_guardrails
 
@@ -75,12 +75,14 @@ def process_city(city: Dict):
 
     logger.info(f"{name}: {len(markets)} mercados")
 
-    data    = load_bankroll()
-    history = data.get("history", [])
-    balance = float(data.get("balance", 0))
-
     for m in markets:
         try:
+            # Recarrega bankroll a cada mercado para evitar race condition
+            # (saldo e exposição podem mudar entre iterações)
+            data    = load_bankroll()
+            history = data.get("history", [])
+            balance = float(data.get("balance", 0))
+
             market_date = m.get("market_date", "")
             market_id   = str(m.get("market_id", ""))
 
@@ -127,7 +129,8 @@ def process_city(city: Dict):
             except Exception:
                 pass
 
-            # CORREÇÃO: passa condition e unit para calcular prob correta por tipo
+            # Passa sigma do forecast (com ajustes climáticos por cidade)
+            # para evitar recálculo inconsistente em model.py e risk.py
             prob = calculate_probability(
                 city=name,
                 target_temp=target,
@@ -135,6 +138,7 @@ def process_city(city: Dict):
                 day_offset=day_offset,
                 condition=condition,
                 unit=unit,
+                sigma=sigma,
             )
 
             edge = prob - yes_price
@@ -148,7 +152,7 @@ def process_city(city: Dict):
                 "day_offset":  day_offset,
                 "unit":        unit,
             }
-            if not check_guardrails(market_dict, prob, forecast_c):
+            if not check_guardrails(market_dict, prob, forecast_c, sigma=sigma):
                 continue
 
             # CORREÇÃO: passa saldo real para Kelly

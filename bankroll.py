@@ -174,21 +174,6 @@ def get_open_trades():
     return [t for t in data.get("history", []) if t.get("result") == "OPEN"]
 
 
-def update_trade(trade_id, updated_trade):
-    """
-    Atualiza um trade existente pelo campo 'id'.
-    ADICIONADO: settlement.py importava esta função, mas ela não existia.
-    """
-    data = load_bankroll()
-    history = data.get("history", [])
-    for i, trade in enumerate(history):
-        if trade.get("id") == trade_id:
-            history[i] = updated_trade
-            save_bankroll(data)
-            return True
-    print(f"  [bankroll] update_trade: id '{trade_id}' não encontrado")
-    return False
-
 
 def record_trade(trade):
     """

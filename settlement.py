@@ -21,7 +21,7 @@ from typing import Dict, Optional
 from sigma_calibrator import SigmaCalibrator
 from ml_adjuster import MLProbabilityAdjuster
 from model import get_calibrator, get_ml_adjuster
-from bankroll import load_bankroll, save_bankroll, get_open_trades, update_trade
+from bankroll import load_bankroll, save_bankroll, get_open_trades
 
 logger = logging.getLogger("settlement")
 
