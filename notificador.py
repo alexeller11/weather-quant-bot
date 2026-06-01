@@ -236,12 +236,17 @@ TRADES ABERTOS:{abertos_str if abertos_str else ' Nenhum'}
 
 ÚLTIMOS TRADES FECHADOS:{trades_str if trades_str else ' Nenhum'}
 
-SOBRE O BOT:
-- Usa Open-Meteo para forecast de temperatura máxima diária
-- Aposta quando edge (modelo - mercado) > threshold por horizonte
-- Filtros ativos: prob >= 70%, zscore >= 1.5, Kelly half-fraction
+SOBRE O BOT (Weather Quant v4):
+- Usa Open-Meteo para forecast de temperatura máxima diária (22 cidades)
+- Modelo Normal com sigma calibrado: D+1=4.0°C, D+2=4.5°C, D+3=5.0°C
+- Filtros ativos: prob >= 80%, zscore >= 1.0, market_price >= 0.30
+- Edge máximo permitido: 40pp (não luta contra o mercado)
+- Kelly dinâmico: 50% base → 35% após 2 perdas → 25% após 3+ perdas
 - Cap $2 por trade, exposição máxima $8, máximo 4 abertos
+- Beijing e Hong Kong bloqueados (erro histórico > 5°C)
+- Confirmação intra-dia para mercados D+0/D+1
 - Settlement automático via scheduler horário
+- Saldo atual resetado: $200 (início limpo após recalibração jun/2026)
 
 Responda de forma concisa em português. Máximo 3 parágrafos."""
 
@@ -364,18 +369,19 @@ def processar_comando(texto):
 
     elif cmd == "/help":
         enviar_mensagem(
-            "<b>COMANDOS</b>\n\n"
-            "/status     — Saldo e trades abertos\n"
-            "/validacao  — Relatorio de validacao do modelo\n"
-            "/settlement — Rodar settlement agora\n"
+            "<b>⚡ WEATHER QUANT BOT — COMANDOS</b>\n\n"
+            "/status     — Saldo, abertos e win rate\n"
+            "/validacao  — Relatório completo do modelo\n"
+            "/settlement — Forçar liquidação agora\n"
             "/help       — Esta mensagem\n\n"
-            "<b>Interação livre</b>\n"
-            "<i>Mande qualquer pergunta em texto — "
-            "a IA (Groq/llama) vai analisar o bot e responder.</i>\n\n"
+            "<b>💬 Conversa livre com IA</b>\n"
+            "<i>Manda qualquer pergunta — a IA (Groq llama-3.3-70b) "
+            "analisa o bot em tempo real e responde.</i>\n\n"
             "Exemplos:\n"
-            "• Como está o bot?\n"
-            "• Qual o win rate?\n"
-            "• Vale abrir novo trade agora?"
+            "• Como está o desempenho?\n"
+            "• Quais trades estão abertos?\n"
+            "• O modelo está calibrado?\n"
+            "• Vale a pena continuar apostando?"
         )
 
     else:

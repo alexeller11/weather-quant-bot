@@ -30,7 +30,7 @@ from risk import kelly_criterion, check_guardrails, dynamic_kelly_fraction
 
 from bankroll import load_bankroll, save_bankroll, already_traded
 from settlement import settle_all
-from notificador import notificar_entrada_trade
+from notificador import notificar_entrada_trade, iniciar_listener
 from consensus import ConsensusEngine
 from station_data import get_intraday_confirmation, city_is_reliable
 
@@ -266,6 +266,13 @@ def scheduled_trading():
 
 
 def run():
+    # Inicia listener Telegram em thread daemon — recebe comandos e perguntas
+    try:
+        iniciar_listener()
+        logger.info("Listener Telegram iniciado — /status /help /validacao /settlement")
+    except Exception as e:
+        logger.warning(f"Listener Telegram não iniciado: {e}")
+
     schedule.every(1).hours.do(scheduled_trading)
     schedule.every(1).hours.do(settlement_cycle)
     scheduled_trading()
