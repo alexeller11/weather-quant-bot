@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """
-Weather Quant Bot v4 — Paper trading real na Polymarket.
+bot.py — Weather Quant Bot v5
 
-CORREÇÕES v4:
-  1. calculate_probability() agora recebe condition= e unit= para usar
-     a fórmula correta por tipo de mercado (ABOVE/BELOW/EXACT).
+CORRIGIDO v5:
+1. Suporte ao novo tipo range2 (bucket de 2°F/°C da Polymarket).
+   calculate_probability() recebe target_lo e target_hi para o cálculo correto.
 
-  2. kelly_criterion() agora recebe balance= (saldo real) em vez de
-     usar bankroll hardcoded de $100.
+2. settlement.py precisa saber o tipo de mercado para resolver range2 corretamente.
+   Trade registra condition, target_lo, target_hi.
 
-  3. check_guardrails() recebe unit= para converter target para °C
-     internamente antes de calcular zscore.
+3. Log melhorado: exibe todos os mercados encontrados antes de filtrar,
+   facilitando auditoria de por que o bot não entra.
 """
 
 import logging, time, json, os, sys, schedule
@@ -50,7 +50,7 @@ if not cities:
     sys.exit(1)
 
 logger.info(
-    f"Weather Quant Bot v4 | {len(cities)} cidades | "
+    f"Weather Quant Bot v5 | {len(cities)} cidades | "
     f"Trading: {'ON' if TRADING_ENABLED else 'OFF (observação)'}"
 )
 
@@ -65,9 +65,8 @@ def process_city(city: Dict):
 
     city_slug = name.lower().replace(" ", "-")
 
-    # Ignora cidades com histórico de erro de forecast muito alto
     if not city_is_reliable(city_slug):
-        logger.info(f"{name}: cidade não confiável (erro histórico > 5°C) — pulando")
+        logger.info(f"{name}: cidade não confiável — pulando")
         return
 
     try:
@@ -80,9 +79,8 @@ def process_city(city: Dict):
         logger.debug(f"{name}: sem mercados")
         return
 
-    logger.info(f"{name}: {len(markets)} mercados")
+    logger.info(f"{name}: {len(markets)} mercados válidos encontrados")
 
-    # Carrega bankroll uma vez por cidade; atualiza em memória após cada trade
     data    = load_bankroll()
     history = data.get("history", [])
     balance = float(data.get("balance", 0))
@@ -106,7 +104,7 @@ def process_city(city: Dict):
                 logger.info(f"Exposição máxima ${MAX_TOTAL_EXPOSURE:.2f} atingida")
                 break
 
-            forecast_result = get_corrected_forecast(name.lower().replace(" ", "-"), 1)
+            forecast_result = get_corrected_forecast(city_slug, 1)
             if forecast_result is None or forecast_result[0] is None:
                 logger.debug(f"Forecast indisponível para {name}")
                 continue
@@ -126,34 +124,30 @@ def process_city(city: Dict):
             target     = float(m.get("target", 0))
             unit       = m.get("unit", "C")
             yes_price  = float(m.get("yes_price", 0))
+            target_lo  = m.get("target_lo")
+            target_hi  = m.get("target_hi")
 
             day_offset = 1
             try:
                 from datetime import timezone as _tz
                 mdate      = datetime.strptime(date_str, "%Y-%m-%d").date()
                 today_utc  = datetime.now(_tz.utc).date()
-                day_offset = max(1, (mdate - today_utc).days)
+                day_offset = max(0, (mdate - today_utc).days)
+                day_offset = max(1, day_offset)  # mínimo 1 para o modelo
             except Exception:
                 pass
 
-            # Para mercados do dia atual (D+0/D+1): verifica tendência intra-dia.
-            # Se max do dia já passou target (ABOVE) → certeza alta.
-            # Se tarde e bem abaixo do target → rejeita.
-            if day_offset <= 1:
+            # Confirmação intra-dia para D+0
+            if day_offset <= 1 and condition in ("ABOVE", "BELOW"):
                 target_c_check = (target - 32) * 5 / 9 if unit == "F" else target
                 intra = get_intraday_confirmation(city_slug, condition, target_c_check)
                 if intra["confirmed"] is False:
-                    logger.info(
-                        f"{name}: confirmação intra-dia negativa — {intra['reason']}"
-                    )
+                    logger.info(f"{name}: intra-dia negativo — {intra['reason']}")
                     continue
                 if intra["confirmed"] is True:
-                    logger.info(
-                        f"{name}: confirmação intra-dia POSITIVA — {intra['reason']}"
-                    )
+                    logger.info(f"{name}: intra-dia POSITIVO — {intra['reason']}")
 
-            # Passa sigma do forecast (com ajustes climáticos por cidade)
-            # para evitar recálculo inconsistente em model.py e risk.py
+            # Calcula probabilidade — passa target_lo/hi para range2
             prob = calculate_probability(
                 city=name,
                 target_temp=target,
@@ -162,9 +156,19 @@ def process_city(city: Dict):
                 condition=condition,
                 unit=unit,
                 sigma=sigma,
+                target_lo=target_lo,
+                target_hi=target_hi,
             )
 
             edge = prob - yes_price
+
+            # Log de diagnóstico para todos os mercados (facilita auditoria)
+            logger.info(
+                f"  {condition} {target}°{unit} | "
+                f"forecast={forecast_c:.1f}°C | "
+                f"prob={prob:.3f} mkt={yes_price:.3f} edge={edge:+.3f}"
+            )
+
             if edge <= 0:
                 continue
 
@@ -178,7 +182,6 @@ def process_city(city: Dict):
             if not check_guardrails(market_dict, prob, forecast_c, sigma=sigma):
                 continue
 
-            # Kelly dinâmico: reduz fração após perdas consecutivas
             kf    = dynamic_kelly_fraction(history)
             stake = kelly_criterion(prob, yes_price, balance, fraction=kf)
             if stake <= 0:
@@ -201,6 +204,8 @@ def process_city(city: Dict):
                 type         = condition,
                 unit         = unit,
                 target       = target,
+                target_lo    = target_lo,
+                target_hi    = target_hi,
                 forecast_c   = forecast_c,
                 sigma_total  = round(sigma, 4),
                 shares       = shares,
@@ -242,9 +247,7 @@ def process_city(city: Dict):
                 )
 
         except Exception as e:
-            logger.error(
-                f"{name} mercado {m.get('market_id','?')}: {e}", exc_info=True
-            )
+            logger.error(f"{name} mercado {m.get('market_id','?')}: {e}", exc_info=True)
 
 
 def settlement_cycle():
@@ -266,10 +269,9 @@ def scheduled_trading():
 
 
 def run():
-    # Inicia listener Telegram em thread daemon — recebe comandos e perguntas
     try:
         iniciar_listener()
-        logger.info("Listener Telegram iniciado — /status /help /validacao /settlement")
+        logger.info("Listener Telegram iniciado")
     except Exception as e:
         logger.warning(f"Listener Telegram não iniciado: {e}")
 
@@ -282,5 +284,5 @@ def run():
 
 
 if __name__ == "__main__":
-    logger.info("Weather Quant Bot v4")
+    logger.info("Weather Quant Bot v5")
     run()

@@ -1,20 +1,15 @@
 #!/usr/bin/env python3
 """
-Weather Model — Probabilidade baseada em distribuição Normal.
+model.py — Probabilidade baseada em distribuição Normal
 
-CORREÇÕES v4:
-  1. calculate_probability() agora aceita 'condition' e usa fórmula correta
-     por tipo de mercado:
-       ABOVE → P(X > target)         = Φ((forecast - target) / sigma)
-       BELOW → P(X < target)         = 1 - Φ((forecast - target) / sigma)
-       EXACT → P(|X - target| ≤ 0.5) = Φ((forecast - target + 0.5) / sigma)
-                                      - Φ((forecast - target - 0.5) / sigma)
+CORRIGIDO: suporte ao novo tipo "range2" (bucket de 2°F/°C da Polymarket).
 
-  2. Bug anterior: EXACT usava a mesma fórmula de ABOVE, produzindo
-     probabilidades > 0.90 quando forecast estava 5°C acima do target.
-     Exemplo real: Toronto target=18, forecast=25.5, sigma=2.8
-       Antes: P(25.5 > 18) = 0.9963  ← completamente errado
-       Agora: P(|T-18| ≤ 0.5) = 0.0041  ← correto, não entrar nesse trade
+Para range2: P(target_lo <= X <= target_hi)
+  = Φ((forecast - target_lo) / sigma) - Φ((forecast - target_hi) / sigma)
+
+Exemplo real: forecast=74.1°F, sigma=4°F, bucket="74-75°F"
+  P(74 <= X <= 75) = Φ(0.025) - Φ(-0.225) ≈ 0.51 - 0.41 = 10%
+  Se o mercado paga 0.06, edge = +4pp — trade válido.
 """
 
 import logging
@@ -30,16 +25,11 @@ _ml_adjuster = MLProbabilityAdjuster()
 
 
 def get_base_sigma(day_offset: int) -> float:
-    """
-    Sigma base recalibrado após 39 trades reais (jun/2026).
-    Simulação mostrou ECE=0.38, Brier=0.34 — modelo era 2.4× overconfident.
-    Sigma duplicado para que probabilidades reflitam incerteza real.
-    """
+    """Sigma base recalibrado após 39 trades reais."""
     return {1: 4.0, 2: 4.5, 3: 5.0}.get(day_offset, 6.0)
 
 
 def to_celsius(value: float, unit: str) -> float:
-    """Converte valor para Celsius se necessário."""
     if str(unit).upper() == "F":
         return (value - 32) * 5 / 9
     return value
@@ -53,25 +43,18 @@ def calculate_probability(
     condition: str = "ABOVE",
     unit: str = "C",
     sigma: float = None,
+    target_lo: float = None,
+    target_hi: float = None,
 ) -> float:
     """
-    Retorna a probabilidade do mercado resolver YES.
+    Retorna probabilidade do mercado resolver YES.
 
-    Parâmetros:
-        city          — nome da cidade (para ajuste ML)
-        target_temp   — temperatura alvo na unidade original do mercado
-        forecast_temp — previsão Open-Meteo em °C
-        day_offset    — horizonte de previsão (1, 2, 3...)
-        condition     — "ABOVE", "BELOW" ou "EXACT"
-        unit          — "C" ou "F" (unidade do target_temp)
-        sigma         — sigma já calculado (com ajustes climáticos); se None,
-                        calcula internamente
-
-    Retorna float em [0, 1].
+    Parâmetros extras para range2:
+        target_lo — limite inferior do bucket (na unidade original)
+        target_hi — limite superior do bucket (na unidade original)
     """
     condition = condition.upper()
 
-    # Converte target para Celsius para comparar com forecast (sempre em °C)
     target_c = to_celsius(target_temp, unit)
 
     if sigma is None or sigma <= 0:
@@ -80,32 +63,35 @@ def calculate_probability(
         if sigma <= 0:
             sigma = base_sigma
 
-    # ── Fórmula por condição ──────────────────────────────────────────────
     if condition == "ABOVE":
-        # P(X > target) com X ~ N(forecast, sigma)
         z = (forecast_temp - target_c) / sigma
         model_prob = stats.norm.cdf(z)
 
     elif condition == "BELOW":
-        # P(X < target)
         z = (forecast_temp - target_c) / sigma
         model_prob = 1.0 - stats.norm.cdf(z)
 
     elif condition == "EXACT":
-        # P(|X - target| ≤ 0.5)
-        # = Φ((forecast - target + 0.5) / sigma) - Φ((forecast - target - 0.5) / sigma)
         z_high = (forecast_temp - (target_c - 0.5)) / sigma
         z_low  = (forecast_temp - (target_c + 0.5)) / sigma
         model_prob = stats.norm.cdf(z_high) - stats.norm.cdf(z_low)
 
+    elif condition == "RANGE2":
+        # NOVO: bucket de 2°F ou 2°C
+        # Converte limites para Celsius
+        lo_c = to_celsius(target_lo, unit) if target_lo is not None else target_c - 1
+        hi_c = to_celsius(target_hi, unit) if target_hi is not None else target_c + 1
+        # P(lo <= X <= hi) com X ~ N(forecast, sigma)
+        z_hi = (forecast_temp - lo_c) / sigma
+        z_lo = (forecast_temp - hi_c) / sigma
+        model_prob = stats.norm.cdf(z_hi) - stats.norm.cdf(z_lo)
+
     else:
-        # RANGE e outros tipos desconhecidos: retorna 0 para não entrar no trade
-        # (check_guardrails bloqueia RANGE explicitamente)
         return 0.0
 
     model_prob = max(0.0, min(1.0, model_prob))
 
-    # Ajuste ML (apenas quando há dados suficientes)
+    # Ajuste ML apenas quando há dados suficientes
     adjusted_prob = _ml_adjuster.adjust_probability(
         model_prob=model_prob,
         day_offset=day_offset,
@@ -116,8 +102,8 @@ def calculate_probability(
 
     logger.debug(
         f"{city} D+{day_offset} {condition} {target_temp}°{unit}: "
-        f"forecast={forecast_temp:.1f}°C target_c={target_c:.1f}°C "
-        f"sigma={sigma:.2f} prob_raw={model_prob:.4f} prob_adj={adjusted_prob:.4f}"
+        f"forecast={forecast_temp:.1f}°C sigma={sigma:.2f} "
+        f"prob_raw={model_prob:.4f} prob_adj={adjusted_prob:.4f}"
     )
 
     return adjusted_prob
