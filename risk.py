@@ -101,7 +101,7 @@ def _max_edge_for_prob(prob: float) -> float:
     """
     if prob >= 0.90:
         return 0.25
-    return 0.55
+    return 0.70
 
 
 def check_guardrails(
