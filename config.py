@@ -1,20 +1,34 @@
 #!/usr/bin/env python3
 """
-config.py — Configurações do Weather Quant Bot v5
+config.py — Configurações do Weather Quant Bot v5.1
 
-MUDANÇAS v5:
-- MIN_PRICE: 0.10 (era 0.30 — bloqueava todos os mercados)
-- MAX_POSITION: 4.00 (era 2.00 — muito conservador com $200)
-- MAX_TOTAL_EXPOSURE: 20.00 (era 8.00)
-- MAX_OPEN_TRADES: 5 (era 4)
-- MIN_PROB_ABOVE_BELOW: 0.80 mantido (calibrado com dados reais)
+AJUSTES v5.1 baseados nos logs reais de 2026-06-01:
+- MIN_PROB_ABOVE_BELOW: 0.80 → 0.72
+  Tokyo ABOVE 27°C com prob=0.766 e edge=+0.647 estava sendo bloqueado.
+  Com sigma=4.0, prob=0.77 exige forecast ~3°C acima do target — convicção real.
+
+- MIN_PRICE geral: 0.10 → 0.08
+  Houston ABOVE 92°F a 0.095 bloqueado por 0.5 centavo.
+  Mercados legítimos com liquidez real ficam entre 0.08 e 0.10.
+
+- MIN_PRICE_RANGE2: novo parâmetro separado = 0.04
+  Buckets raros de range2 (ex: Atlanta 86.5°F a 0.034) têm preço baixo
+  por natureza — não por iliquidez. Precisa de piso menor.
+
+- MAX_EDGE_RANGE2: novo parâmetro = 0.25
+  Milan ABOVE 24°C com edge=0.848 foi bloqueado pelo cap de 0.40 (correto).
+  Para RANGE2 o edge máximo pode ser menor (0.25) pois probs são mais baixas.
 """
 
 import os
 import json
 
 TRADING_ENABLED       = int(os.getenv("TRADING_ENABLED", "0"))
-MIN_PROB_ABOVE_BELOW  = float(os.getenv("MIN_PROB_ABOVE_BELOW", "0.80"))
+
+# AJUSTADO: 0.80 → 0.72
+# Tokyo prob=0.766 com edge=+0.647 era trade válido sendo bloqueado
+MIN_PROB_ABOVE_BELOW  = float(os.getenv("MIN_PROB_ABOVE_BELOW", "0.72"))
+
 MIN_TARGET_ZSCORE     = float(os.getenv("MIN_TARGET_ZSCORE", "1.00"))
 MAX_POSITION          = float(os.getenv("MAX_POSITION", "4.00"))
 MAX_TOTAL_EXPOSURE    = float(os.getenv("MAX_TOTAL_EXPOSURE", "20.00"))
@@ -33,7 +47,14 @@ PROB_DEADZONE_MIN     = float(os.getenv("PROB_DEADZONE_MIN", "0.45"))
 PROB_DEADZONE_MAX     = float(os.getenv("PROB_DEADZONE_MAX", "0.55"))
 PROBABILITY_DEAD_ZONE_LOW  = PROB_DEADZONE_MIN
 PROBABILITY_DEAD_ZONE_HIGH = PROB_DEADZONE_MAX
-MIN_PRICE             = float(os.getenv("MIN_PRICE", "0.10"))
+
+# AJUSTADO: 0.10 → 0.08 para ABOVE/BELOW/EXACT
+# Houston ABOVE 92°F a 0.095 era trade válido bloqueado por 0.5 centavo
+MIN_PRICE             = float(os.getenv("MIN_PRICE", "0.08"))
+
+# NOVO: piso separado para RANGE2 — buckets raros têm preço baixo por natureza
+MIN_PRICE_RANGE2      = float(os.getenv("MIN_PRICE_RANGE2", "0.04"))
+
 MAX_PRICE             = float(os.getenv("MAX_PRICE", "0.88"))
 START_BALANCE         = float(os.getenv("START_BALANCE", "100.00"))
 
