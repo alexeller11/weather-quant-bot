@@ -34,17 +34,54 @@ from config import (
 logger = logging.getLogger(__name__)
 
 
-def kelly_criterion(prob: float, price: float, balance: float = 100.0) -> float:
+def consecutive_losses(history: list) -> int:
+    """Conta perdas consecutivas no final do histórico (ignora OPEN)."""
+    count = 0
+    for t in reversed(history):
+        result = t.get("result")
+        if result == "OPEN":
+            continue
+        if result == "LOSS":
+            count += 1
+        else:
+            break
+    return count
+
+
+def dynamic_kelly_fraction(history: list) -> float:
+    """
+    Kelly dinâmico: reduz a fração após perdas consecutivas para
+    proteger o bankroll durante sequências negativas.
+
+      0-1 perdas consecutivas → KELLY_FRACTION base (0.50)
+      2 perdas               → 70% da fração base (0.35)
+      3+ perdas              → 50% da fração base (0.25)
+
+    A pesquisa em prediction markets (Thorp, 2008) mostra que reduzir
+    o Kelly durante drawdowns aumenta a sobrevivência a longo prazo.
+    """
+    consec = consecutive_losses(history)
+    if consec >= 3:
+        return KELLY_FRACTION * 0.5
+    if consec >= 2:
+        return KELLY_FRACTION * 0.7
+    return KELLY_FRACTION
+
+
+def kelly_criterion(
+    prob: float,
+    price: float,
+    balance: float = 100.0,
+    fraction: float = None,
+) -> float:
     """
     Calcula o stake em dólares usando Half-Kelly com cap por posição.
 
     Parâmetros:
-        prob    — probabilidade estimada pelo modelo
-        price   — preço de mercado do contrato YES (0 a 1)
-        balance — saldo atual do bankroll em dólares
-
-    CORREÇÃO: antes usava bankroll fixo de $100 independente do saldo real.
-    Agora o stake é proporcional ao saldo atual, respeitando MAX_POSITION.
+        prob     — probabilidade estimada pelo modelo
+        price    — preço de mercado do contrato YES (0 a 1)
+        balance  — saldo atual do bankroll em dólares
+        fraction — fração Kelly a usar (None → usa KELLY_FRACTION do config)
     """
     if prob <= 0 or prob >= 1 or price <= 0 or price >= 1:
         return 0.0
@@ -55,11 +92,10 @@ def kelly_criterion(prob: float, price: float, balance: float = 100.0) -> float:
     kelly_pct = (prob * b - q) / b
     kelly_pct = max(0.0, kelly_pct)
 
-    # Aplica fração Kelly e cap percentual
-    stake_pct = kelly_pct * KELLY_FRACTION
+    frac = fraction if fraction is not None else KELLY_FRACTION
+    stake_pct = kelly_pct * frac
     stake_pct = min(stake_pct, MAX_KELLY_FRACTION_CAP)
 
-    # Converte para valor absoluto com cap por posição
     stake = stake_pct * balance
     stake = min(stake, MAX_POSITION)
 
@@ -94,6 +130,11 @@ def check_guardrails(
     price      = float(market.get("price", 0))
     day_offset = int(market.get("day_offset", 1))
     unit       = market.get("unit", "C").upper()
+
+    # Rejeita tipo RANGE: modelo não suporta intervalos (0% win rate observado)
+    if condition == "RANGE":
+        logger.info("Bloqueado: tipo RANGE não suportado pelo modelo")
+        return False
 
     # Converte target para Celsius
     if unit == "F":

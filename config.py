@@ -22,8 +22,10 @@ import json
 # CORRIGIDO: padrão era "1" — deve ser "0" (modo observação por segurança)
 TRADING_ENABLED = int(os.getenv("TRADING_ENABLED", "0"))
 
-MIN_PROB_ABOVE_BELOW = float(os.getenv("MIN_PROB_ABOVE_BELOW", "0.70"))
-MIN_TARGET_ZSCORE = float(os.getenv("MIN_TARGET_ZSCORE", "1.50"))
+# Recalibrado após simulação (jun/2026): win rate real 23% vs 70%+ previsto.
+# Eleva thresholds para só entrar em trades onde o modelo é genuinamente confiante.
+MIN_PROB_ABOVE_BELOW = float(os.getenv("MIN_PROB_ABOVE_BELOW", "0.80"))
+MIN_TARGET_ZSCORE = float(os.getenv("MIN_TARGET_ZSCORE", "2.00"))
 MAX_POSITION = float(os.getenv("MAX_POSITION", "2.00"))
 MAX_TOTAL_EXPOSURE = float(os.getenv("MAX_TOTAL_EXPOSURE", "8.00"))
 MAX_OPEN_TRADES = int(os.getenv("MAX_OPEN_TRADES", "4"))
@@ -32,7 +34,8 @@ MAX_KELLY_FRACTION_CAP = float(os.getenv("MAX_KELLY_FRACTION_CAP", "0.50"))
 
 # Edge mínimo
 MIN_EDGE = float(os.getenv("MIN_EDGE", "0.02"))
-MIN_EDGE_EXACT = float(os.getenv("MIN_EDGE_EXACT", "0.07"))
+# EXACT win rate observado: 16.7% — eleva edge mínimo para compensar.
+MIN_EDGE_EXACT = float(os.getenv("MIN_EDGE_EXACT", "0.15"))
 
 # ADICIONADO: MIN_EV ausente (usado em check_version.py e risk.py)
 MIN_EV = float(os.getenv("MIN_EV", "0.05"))
@@ -44,8 +47,8 @@ EDGE_THRESHOLD = MIN_EDGE
 MAX_FORECAST_DAY = int(os.getenv("MAX_FORECAST_DAY", "3"))
 
 # Sigma caps
-SIGMA_CAP_ABOVE_BELOW = float(os.getenv("SIGMA_CAP_ABOVE_BELOW", "3.6"))
-SIGMA_CAP_EXACT = float(os.getenv("SIGMA_CAP_EXACT", "4.0"))
+SIGMA_CAP_ABOVE_BELOW = float(os.getenv("SIGMA_CAP_ABOVE_BELOW", "6.0"))
+SIGMA_CAP_EXACT = float(os.getenv("SIGMA_CAP_EXACT", "6.0"))
 
 # ADICIONADO: SIGMA_MAX_ABOVE_BELOW como alias de SIGMA_CAP_ABOVE_BELOW
 # (usado em check_version.py e audit_model.py)

@@ -30,8 +30,12 @@ _ml_adjuster = MLProbabilityAdjuster()
 
 
 def get_base_sigma(day_offset: int) -> float:
-    """Sigma base calibrado pelo erro real observado nos 26 trades iniciais."""
-    return {1: 2.8, 2: 3.2, 3: 3.5}.get(day_offset, 4.0)
+    """
+    Sigma base recalibrado após 39 trades reais (jun/2026).
+    Simulação mostrou ECE=0.38, Brier=0.34 — modelo era 2.4× overconfident.
+    Sigma duplicado para que probabilidades reflitam incerteza real.
+    """
+    return {1: 4.0, 2: 4.5, 3: 5.0}.get(day_offset, 6.0)
 
 
 def to_celsius(value: float, unit: str) -> float:

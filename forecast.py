@@ -224,19 +224,20 @@ def get_forecast(city_slug, forecast_day=1):
         idx   = max(0, min(forecast_day - 1, len(temps) - 1))
         forecast_c = float(temps[idx])
 
-        # CORRIGIDO: sigma base calibrado pelo erro real observado.
-        # Antes: {1:2.0, 2:2.3, 3:2.6} — subestimava incerteza real.
-        # Agora: {1:2.8, 2:3.2, 3:3.5} — alinhado com dados reais.
-        base_sigma_by_day = {1: 2.8, 2: 3.2, 3: 3.5, 4: 4.0, 5: 4.5}
-        sigma = base_sigma_by_day.get(forecast_day, 4.5)
+        # Sigma recalibrado com base em 39 trades reais (simulação 2026-06-01):
+        # ECE=0.38, Brier=0.34 — modelo era ~2.4× overconfident.
+        # Bin 80-100%: previa 90% de chance, observou 37.5% de wins.
+        # Solução: aumentar sigma substancialmente para reduzir falsas certezas.
+        base_sigma_by_day = {1: 4.0, 2: 4.5, 3: 5.0, 4: 5.5, 5: 6.0}
+        sigma = base_sigma_by_day.get(forecast_day, 6.0)
 
         # Ajustes climáticos por cidade (variabilidade extra conhecida)
         if city_slug in ["hong-kong", "houston", "austin", "miami"]:
-            sigma += 0.30
-        if city_slug in ["denver", "seattle", "london", "boston"]:
-            sigma += 0.20
-        if city_slug == "chicago":
             sigma += 0.40
+        if city_slug in ["denver", "seattle", "london", "boston"]:
+            sigma += 0.30
+        if city_slug == "chicago":
+            sigma += 0.50
 
         sigma = round(sigma, 2)
 

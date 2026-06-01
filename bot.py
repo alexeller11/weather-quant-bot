@@ -26,7 +26,7 @@ logger = logging.getLogger("bot")
 from gamma_parser import fetch_markets
 from forecast import get_corrected_forecast
 from model import calculate_probability
-from risk import kelly_criterion, check_guardrails
+from risk import kelly_criterion, check_guardrails, dynamic_kelly_fraction
 
 from bankroll import load_bankroll, save_bankroll, already_traded
 from settlement import settle_all
@@ -155,8 +155,9 @@ def process_city(city: Dict):
             if not check_guardrails(market_dict, prob, forecast_c, sigma=sigma):
                 continue
 
-            # CORREÇÃO: passa saldo real para Kelly
-            stake = kelly_criterion(prob, yes_price, balance)
+            # Kelly dinâmico: reduz fração após perdas consecutivas
+            kf    = dynamic_kelly_fraction(history)
+            stake = kelly_criterion(prob, yes_price, balance, fraction=kf)
             if stake <= 0:
                 continue
 

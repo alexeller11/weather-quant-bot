@@ -53,16 +53,91 @@ def load_data():
     return None, " | ".join(errors)
 
 
+def _max_drawdown(equity_series):
+    if not equity_series:
+        return 0.0
+    peak = equity_series[0]
+    mdd  = 0.0
+    for v in equity_series:
+        if v > peak:
+            peak = v
+        dd = (peak - v) / peak if peak > 0 else 0
+        mdd = max(mdd, dd)
+    return round(mdd * 100, 2)
+
+
+def _drawdown_series(equity_series):
+    if not equity_series:
+        return []
+    peak = equity_series[0]
+    out  = []
+    for v in equity_series:
+        if v > peak:
+            peak = v
+        dd = round((peak - v) / peak * 100, 2) if peak > 0 else 0
+        out.append(dd)
+    return out
+
+
+def _sharpe(closed):
+    if len(closed) < 2:
+        return None
+    import math
+    returns = [float(t.get("pnl") or 0) / float(t.get("stake") or 1) for t in closed]
+    mu  = sum(returns) / len(returns)
+    var = sum((r - mu) ** 2 for r in returns) / (len(returns) - 1)
+    std = math.sqrt(var) if var > 0 else 0
+    return round(mu / std, 3) if std > 0 else None
+
+
+def _profit_factor(wins, losses_list):
+    gross_win  = sum(float(t.get("pnl") or 0) for t in wins)
+    gross_loss = sum(abs(float(t.get("pnl") or 0)) for t in losses_list)
+    if gross_loss == 0:
+        return None
+    return round(gross_win / gross_loss, 3)
+
+
+def _calibration_bins(closed, n_bins=5):
+    from collections import defaultdict
+    bins = defaultdict(list)
+    for t in closed:
+        prob = t.get("model_prob")
+        if prob is None:
+            continue
+        b = min(int(float(prob) * n_bins), n_bins - 1)
+        bins[b].append(1.0 if t.get("result") == "WIN" else 0.0)
+    result = []
+    for b in range(n_bins):
+        lo = b / n_bins * 100
+        hi = (b + 1) / n_bins * 100
+        mid = (lo + hi) / 2
+        outcomes = bins.get(b, [])
+        wr = round(sum(outcomes) / len(outcomes) * 100, 1) if outcomes else None
+        result.append({"label": f"{lo:.0f}–{hi:.0f}%", "predicted": mid, "actual": wr, "n": len(outcomes)})
+    return result
+
+
+def _rolling_winrate(closed, window=10):
+    if len(closed) < window:
+        return None
+    recent = closed[-window:]
+    return round(sum(1 for t in recent if t.get("result") == "WIN") / window * 100, 1)
+
+
 def build_stats(data):
     history  = data.get("history", [])
     balance  = data.get("balance", 0)
     start    = data.get("start_balance", 50)
-    closed   = [t for t in history if t.get("result") in ("WIN","LOSS")]
+    closed   = sorted(
+        [t for t in history if t.get("result") in ("WIN","LOSS")],
+        key=lambda x: x.get("exit_time","") or ""
+    )
     open_t   = [t for t in history if t.get("result") == "OPEN"]
     wins     = [t for t in closed  if t.get("result") == "WIN"]
     losses   = [t for t in closed  if t.get("result") == "LOSS"]
-    pnl      = sum(t.get("pnl",0) for t in closed)
-    exposure = sum(t.get("stake",0) for t in open_t)
+    pnl      = sum(float(t.get("pnl") or 0) for t in closed)
+    exposure = sum(float(t.get("stake") or 0) for t in open_t)
     win_rate = round(len(wins)/len(closed)*100,1) if closed else 0
 
     city_stats = {}
@@ -72,52 +147,83 @@ def build_stats(data):
             city_stats[c] = {"wins":0,"losses":0,"pnl":0,"stake":0,"open":0,"open_stake":0}
         if t.get("result") == "WIN":
             city_stats[c]["wins"] += 1
-            city_stats[c]["pnl"]  += t.get("pnl",0)
+            city_stats[c]["pnl"]  += float(t.get("pnl") or 0)
         elif t.get("result") == "LOSS":
             city_stats[c]["losses"] += 1
-            city_stats[c]["pnl"]    += t.get("pnl",0)
+            city_stats[c]["pnl"]    += float(t.get("pnl") or 0)
         elif t.get("result") == "OPEN":
             city_stats[c]["open"]       += 1
-            city_stats[c]["open_stake"] += t.get("stake",0)
-        city_stats[c]["stake"] += t.get("stake",0)
+            city_stats[c]["open_stake"] += float(t.get("stake") or 0)
+        city_stats[c]["stake"] += float(t.get("stake") or 0)
 
+    # Por tipo (ABOVE / BELOW / EXACT)
+    type_stats = {}
+    for t in closed:
+        tp = (t.get("type") or "?").upper()
+        if tp not in type_stats:
+            type_stats[tp] = {"wins":0,"losses":0,"pnl":0.0}
+        if t.get("result") == "WIN":
+            type_stats[tp]["wins"] += 1
+        else:
+            type_stats[tp]["losses"] += 1
+        type_stats[tp]["pnl"] += float(t.get("pnl") or 0)
+
+    # Equity curve + drawdown
     equity_curve = []
     running = float(start)
-    for t in sorted(closed, key=lambda x: x.get("exit_time","") or ""):
-        running += t.get("pnl",0)
+    eq_vals = [running]
+    for t in closed:
+        running += float(t.get("pnl") or 0)
+        eq_vals.append(round(running, 2))
         equity_curve.append({
-            "date": (t.get("exit_time","") or "")[:10],
-            "balance": round(running,2),
-            "result": t.get("result",""),
-            "city": t.get("city",""),
+            "date":    (t.get("exit_time","") or "")[:10],
+            "balance": round(running, 2),
+            "result":  t.get("result",""),
+            "city":    t.get("city",""),
         })
 
+    dd_series = _drawdown_series(eq_vals)
+    mdd       = _max_drawdown(eq_vals)
+
     brier_scores = [
-        (t.get("model_prob",0)-(1.0 if t.get("result")=="WIN" else 0))**2
-        for t in closed if t.get("model_prob")
+        (float(t.get("model_prob") or 0) - (1.0 if t.get("result")=="WIN" else 0))**2
+        for t in closed if t.get("model_prob") is not None
     ]
     brier = round(sum(brier_scores)/len(brier_scores),4) if brier_scores else None
 
-    avg_edge = round(sum(t.get("edge",0) for t in history)/len(history)*100,2) if history else 0
+    avg_edge = round(sum(float(t.get("edge") or 0) for t in history)/len(history)*100,2) if history else 0
+
+    # Rolling win rate (last 10)
+    wr10 = _rolling_winrate(closed, 10)
 
     return {
-        "balance":      round(balance,2),
-        "start_balance":round(start,2),
-        "pnl":          round(pnl,2),
-        "win_rate":     win_rate,
-        "total_closed": len(closed),
-        "wins":         len(wins),
-        "losses":       len(losses),
-        "open_count":   len(open_t),
-        "exposure":     round(exposure,2),
-        "brier":        brier,
-        "avg_edge":     avg_edge,
-        "city_stats":   city_stats,
-        "equity_curve": equity_curve,
-        "open_trades":  open_t,
-        "closed_trades":list(reversed(closed))[:50],
-        "all_trades":   history,
-        "updated":      datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+        "balance":        round(float(balance),2),
+        "start_balance":  round(float(start),2),
+        "pnl":            round(pnl,2),
+        "win_rate":       win_rate,
+        "win_rate_10":    wr10,
+        "total_closed":   len(closed),
+        "wins":           len(wins),
+        "losses":         len(losses),
+        "open_count":     len(open_t),
+        "exposure":       round(exposure,2),
+        "brier":          brier,
+        "avg_edge":       avg_edge,
+        "max_drawdown":   mdd,
+        "profit_factor":  _profit_factor(wins, losses),
+        "sharpe":         _sharpe(closed),
+        "city_stats":     city_stats,
+        "type_stats":     type_stats,
+        "equity_curve":   equity_curve,
+        "drawdown_curve": [
+            {"date": equity_curve[i]["date"], "dd": dd_series[i+1]}
+            for i in range(len(equity_curve))
+        ],
+        "calibration":    _calibration_bins(closed),
+        "open_trades":    open_t,
+        "closed_trades":  list(reversed(closed))[:50],
+        "all_trades":     history,
+        "updated":        datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
     }
 
 # ── HTML ──────────────────────────────────────────────────────────────────────
@@ -132,6 +238,7 @@ HTML = r"""<!DOCTYPE html>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
 <style>
 :root{
   --bg:#030b18;--bg1:#060f22;--bg2:#091529;--bg3:#0d1d36;
@@ -160,7 +267,9 @@ header{display:flex;align-items:center;justify-content:space-between;padding:0 0
 .ts{color:var(--muted);font-size:11px}
 .refresh-btn{background:transparent;border:1px solid var(--border);color:var(--muted);padding:6px 14px;border-radius:4px;cursor:pointer;font-family:var(--font-mono);font-size:11px;transition:.2s}
 .refresh-btn:hover{border-color:var(--cyan);color:var(--cyan)}
-.kpi-row{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin:20px 0}
+.info-bar{display:flex;gap:20px;align-items:center;padding:8px 16px;background:rgba(0,200,255,.04);border:1px solid var(--border);border-radius:6px;margin-bottom:12px;flex-wrap:wrap}
+.info-item{font-size:11px;color:var(--muted)}.info-item strong{color:var(--text)}
+.kpi-row{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin:12px 0}
 .kpi{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px 16px;position:relative;overflow:hidden;transition:.3s}
 .kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--accent,var(--cyan));border-radius:8px 8px 0 0}
 .kpi:hover{border-color:var(--accent,var(--cyan));transform:translateY(-2px)}
@@ -191,6 +300,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:0 0
 .rbtn.on-win{background:rgba(0,255,136,.1);border-color:var(--green);color:var(--green)}
 .rbtn.on-loss{background:rgba(255,51,102,.1);border-color:var(--red);color:var(--red)}
 .charts-row{display:grid;grid-template-columns:2fr 1fr 1fr;gap:16px;margin-bottom:16px}
+.charts-row2{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px}
 .table-card{background:var(--card);border:1px solid var(--border);border-radius:8px;margin-bottom:16px;overflow:hidden}
 .table-header{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
 .tbl-wrap{max-height:380px;overflow-y:auto}
@@ -234,6 +344,13 @@ tr:hover td{background:rgba(0,200,255,.03)}
       <button class="refresh-btn" onclick="fetchData()">↻ Atualizar</button>
     </div>
   </header>
+  <div class="info-bar" id="infoBar">
+    <div class="info-item">Abertos: <strong id="iOpen">—</strong></div>
+    <div class="info-item">Exposição: <strong id="iExp">—</strong></div>
+    <div class="info-item">Edge médio: <strong id="iEdge">—</strong></div>
+    <div class="info-item">Brier score: <strong id="iBrier">—</strong></div>
+    <div class="info-item">WR últimos 10: <strong id="iWR10">—</strong></div>
+  </div>
   <div class="kpi-row" id="kpiRow">
     <div class="kpi" style="--accent:var(--cyan)">
       <div class="kpi-label">Saldo</div>
@@ -252,19 +369,19 @@ tr:hover td{background:rgba(0,200,255,.03)}
       <div class="kpi-sub" id="kWRSub">—</div>
     </div>
     <div class="kpi" style="--accent:var(--amber)">
-      <div class="kpi-label">Abertos</div>
-      <div class="kpi-value" id="kOpen">—</div>
-      <div class="kpi-sub" id="kOpenSub">—</div>
+      <div class="kpi-label">Profit Factor</div>
+      <div class="kpi-value" id="kPF">—</div>
+      <div class="kpi-sub" id="kPFSub">>1 = rentável</div>
     </div>
-    <div class="kpi" style="--accent:#ff6b35">
-      <div class="kpi-label">Exposição</div>
-      <div class="kpi-value" id="kExp">—</div>
-      <div class="kpi-sub" id="kExpSub">—</div>
+    <div class="kpi" style="--accent:var(--red)">
+      <div class="kpi-label">Max Drawdown</div>
+      <div class="kpi-value" id="kMDD">—</div>
+      <div class="kpi-sub" id="kMDDSub">queda máx do pico</div>
     </div>
-    <div class="kpi" style="--accent:var(--cyan)">
-      <div class="kpi-label">Edge Médio</div>
-      <div class="kpi-value" id="kEdge">—</div>
-      <div class="kpi-sub" id="kBrier">—</div>
+    <div class="kpi" style="--accent:#4fc3f7">
+      <div class="kpi-label">Sharpe Ratio</div>
+      <div class="kpi-value" id="kSharpe">—</div>
+      <div class="kpi-sub" id="kSharpeSub">>1 = bom</div>
     </div>
   </div>
   <div class="main-grid">
@@ -307,6 +424,20 @@ tr:hover td{background:rgba(0,200,255,.03)}
         <div class="gauge-val" id="gaugeVal">—</div>
         <div class="gauge-sub" id="gaugeSub">—</div>
       </div>
+    </div>
+  </div>
+  <div class="charts-row2">
+    <div class="card">
+      <div class="card-title">📉 Drawdown (%)</div>
+      <div class="chart-wrap" style="height:180px"><canvas id="ddChart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">🔬 Calibração do Modelo</div>
+      <div class="chart-wrap" style="height:180px"><canvas id="calChart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">⚡ PnL por Tipo de Mercado</div>
+      <div class="chart-wrap" style="height:180px"><canvas id="typeChart"></canvas></div>
     </div>
   </div>
   <div class="table-card">
@@ -352,7 +483,7 @@ tr:hover td{background:rgba(0,200,255,.03)}
 })();
 
 let DATA=null,activeCity='all',activeResult='all';
-let chartEquity=null,chartCity=null,chartEdge=null;
+let chartEquity=null,chartCity=null,chartEdge=null,chartDD=null,chartCal=null,chartType=null;
 
 async function fetchData(){
   try{
@@ -373,6 +504,9 @@ function render(){
   updateCityChart();
   updateEdgeChart();
   updateGauge();
+  updateDrawdown();
+  updateCalibration();
+  updateTypeChart();
   updateTables();
   updateGlobe();
   document.getElementById('tsLabel').textContent=DATA.updated||'';
@@ -385,23 +519,52 @@ function sign(v){return v>=0?'+':''}
 function updateKPIs(){
   const d=DATA;
   const pnlPct=d.start_balance>0?((d.balance-d.start_balance)/d.start_balance*100).toFixed(1):0;
+
+  // Saldo
   document.getElementById('kBalance').textContent='$'+d.balance.toFixed(2);
   document.getElementById('kBalanceSub').textContent=sign(d.balance-d.start_balance)+'$'+(d.balance-d.start_balance).toFixed(2)+' vs início';
   const barW=Math.min(100,Math.max(0,(d.balance/d.start_balance)*100));
   document.getElementById('kBalanceBar').style.width=barW+'%';
+
+  // PnL
   const pnlEl=document.getElementById('kPnl');
   pnlEl.textContent=sign(d.pnl)+'$'+Math.abs(d.pnl).toFixed(2);
   pnlEl.style.color=d.pnl>=0?'var(--green)':'var(--red)';
   document.getElementById('kPnlSub').textContent=sign(parseFloat(pnlPct))+pnlPct+'% retorno';
+
+  // Win Rate
   document.getElementById('kWR').textContent=d.win_rate+'%';
   document.getElementById('kWRSub').textContent=d.wins+'W / '+d.losses+'L ('+d.total_closed+' trades)';
-  document.getElementById('kOpen').textContent=d.open_count;
-  document.getElementById('kOpenSub').textContent='Exposição $'+d.exposure.toFixed(2);
-  const expPct=d.start_balance>0?(d.exposure/d.start_balance*100).toFixed(0):0;
-  document.getElementById('kExp').textContent='$'+d.exposure.toFixed(2);
-  document.getElementById('kExpSub').textContent=expPct+'% do bankroll inicial';
-  document.getElementById('kEdge').textContent=sign(d.avg_edge)+d.avg_edge.toFixed(1)+'%';
-  document.getElementById('kBrier').textContent=d.brier!==null?'Brier: '+d.brier:'Aguardando trades';
+
+  // Profit Factor
+  const pfEl=document.getElementById('kPF');
+  if(d.profit_factor!==null&&d.profit_factor!==undefined){
+    pfEl.textContent=d.profit_factor.toFixed(2)+'×';
+    pfEl.style.color=d.profit_factor>=1.5?'var(--green)':d.profit_factor>=1.0?'var(--amber)':'var(--red)';
+  }else{pfEl.textContent='N/A';pfEl.style.color='var(--muted)'}
+
+  // Max Drawdown
+  const mddEl=document.getElementById('kMDD');
+  mddEl.textContent=(d.max_drawdown||0).toFixed(1)+'%';
+  mddEl.style.color=d.max_drawdown>50?'var(--red)':d.max_drawdown>25?'var(--amber)':'var(--green)';
+
+  // Sharpe
+  const shrEl=document.getElementById('kSharpe');
+  if(d.sharpe!==null&&d.sharpe!==undefined){
+    shrEl.textContent=d.sharpe.toFixed(2);
+    shrEl.style.color=d.sharpe>=1?'var(--green)':d.sharpe>=0?'var(--amber)':'var(--red)';
+  }else{shrEl.textContent='N/A';shrEl.style.color='var(--muted)'}
+
+  // Info bar
+  document.getElementById('iOpen').textContent=d.open_count+' ($'+d.exposure.toFixed(2)+')';
+  document.getElementById('iEdge').textContent=sign(d.avg_edge)+d.avg_edge.toFixed(1)+'%';
+  document.getElementById('iBrier').textContent=d.brier!==null&&d.brier!==undefined?d.brier:'N/A';
+  document.getElementById('iWR10').textContent=d.win_rate_10!==null&&d.win_rate_10!==undefined?d.win_rate_10+'%':'N/A';
+  const wr10El=document.getElementById('iWR10');
+  if(d.win_rate_10!==null&&d.win_rate_10!==undefined){
+    wr10El.textContent=d.win_rate_10+'%';
+    wr10El.style.color=d.win_rate_10>=55?'var(--green)':d.win_rate_10>=45?'var(--amber)':'var(--red)';
+  }
 }
 
 function buildCityChips(){
@@ -559,6 +722,77 @@ function updateTables(){
       <td>${Math.round((t.market_price||0)*100)}%</td>
       <td style="color:var(--cyan)">${temp}</td>
     </tr>`}).join('');
+}
+
+function updateDrawdown(){
+  const dc=DATA.drawdown_curve||[];
+  const labels=dc.map(p=>p.date);
+  const vals=dc.map(p=>p.dd);
+  const ctx=document.getElementById('ddChart').getContext('2d');
+  if(chartDD)chartDD.destroy();
+  const grad=ctx.createLinearGradient(0,0,0,180);
+  grad.addColorStop(0,'rgba(255,51,102,.35)');
+  grad.addColorStop(1,'rgba(255,51,102,0)');
+  chartDD=new Chart(ctx,{
+    type:'line',
+    data:{labels,datasets:[{data:vals,borderColor:'#ff3366',backgroundColor:grad,fill:true,tension:.3,
+      pointRadius:0,borderWidth:1.5}]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${c.parsed.y.toFixed(1)}%`}}},
+      scales:{
+        x:{grid:{color:'rgba(0,200,255,.04)'},ticks:{color:'#4a7090',font:{size:9},maxTicksLimit:6,maxRotation:0}},
+        y:{grid:{color:'rgba(0,200,255,.04)'},ticks:{color:'#4a7090',font:{size:9},callback:v=>v+'%'},reverse:true}
+      }}
+  });
+}
+
+function updateCalibration(){
+  const cal=DATA.calibration||[];
+  const labels=cal.map(b=>b.label);
+  const predicted=cal.map(b=>b.predicted);
+  const actual=cal.map(b=>b.actual);
+  const ctx=document.getElementById('calChart').getContext('2d');
+  if(chartCal)chartCal.destroy();
+  chartCal=new Chart(ctx,{
+    type:'bar',
+    data:{labels,datasets:[
+      {label:'Modelo previu',data:predicted,backgroundColor:'rgba(0,229,255,.25)',borderColor:'#00e5ff',borderWidth:1,borderRadius:3},
+      {label:'Win rate real',data:actual,backgroundColor:'rgba(0,255,136,.5)',borderColor:'#00ff88',borderWidth:1,borderRadius:3},
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{
+        legend:{display:true,labels:{color:'#4a7090',font:{size:9},boxWidth:10}},
+        tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${c.parsed.y!==null?c.parsed.y.toFixed(1)+'%':'N/A'}`}},
+      },
+      scales:{
+        x:{grid:{color:'rgba(0,200,255,.04)'},ticks:{color:'#4a7090',font:{size:9}}},
+        y:{grid:{color:'rgba(0,200,255,.04)'},ticks:{color:'#4a7090',font:{size:9},callback:v=>v+'%'},min:0,max:100}
+      }}
+  });
+}
+
+function updateTypeChart(){
+  const ts=DATA.type_stats||{};
+  const types=Object.keys(ts);
+  if(!types.length){document.getElementById('typeChart').style.display='none';return}
+  const pnls=types.map(t=>ts[t].pnl||0);
+  const wrs=types.map(t=>{const n=ts[t].wins+ts[t].losses;return n?Math.round(ts[t].wins/n*100):0});
+  const colors=pnls.map(v=>v>=0?'rgba(0,255,136,.7)':'rgba(255,51,102,.7)');
+  const ctx=document.getElementById('typeChart').getContext('2d');
+  if(chartType)chartType.destroy();
+  chartType=new Chart(ctx,{
+    type:'bar',
+    data:{
+      labels:types.map(t=>{const n=ts[t].wins+ts[t].losses;return `${t} (${wrs[types.indexOf(t)]}% WR)`}),
+      datasets:[{label:'PnL',data:pnls,backgroundColor:colors,borderColor:colors.map(c=>c.replace('.7','.9')),borderWidth:1,borderRadius:4}]
+    },
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` PnL: $${c.parsed.y.toFixed(2)}`}}},
+      scales:{
+        x:{grid:{display:false},ticks:{color:'#cce8ff',font:{size:10}}},
+        y:{grid:{color:'rgba(0,200,255,.04)'},ticks:{color:'#4a7090',font:{size:9},callback:v=>'$'+v.toFixed(0)}}
+      }}
+  });
 }
 
 const CITY_COORDS={
