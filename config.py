@@ -28,9 +28,9 @@ TRADING_ENABLED = int(os.getenv("TRADING_ENABLED", "0"))
 # zscore=2.0 com sigma=4.0 exigiria 8°C — geraria zero trades.
 MIN_PROB_ABOVE_BELOW = float(os.getenv("MIN_PROB_ABOVE_BELOW", "0.80"))
 MIN_TARGET_ZSCORE = float(os.getenv("MIN_TARGET_ZSCORE", "1.00"))
-MAX_POSITION = float(os.getenv("MAX_POSITION", "2.00"))
-MAX_TOTAL_EXPOSURE = float(os.getenv("MAX_TOTAL_EXPOSURE", "8.00"))
-MAX_OPEN_TRADES = int(os.getenv("MAX_OPEN_TRADES", "4"))
+MAX_POSITION = float(os.getenv("MAX_POSITION", "4.00"))
+MAX_TOTAL_EXPOSURE = float(os.getenv("MAX_TOTAL_EXPOSURE", "40.00"))
+MAX_OPEN_TRADES = int(os.getenv("MAX_OPEN_TRADES", "10"))
 KELLY_FRACTION = float(os.getenv("KELLY_FRACTION", "0.50"))
 MAX_KELLY_FRACTION_CAP = float(os.getenv("MAX_KELLY_FRACTION_CAP", "0.50"))
 
