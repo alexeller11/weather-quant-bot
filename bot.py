@@ -1,16 +1,12 @@
 #!/usr/bin/env python3
 """
-bot.py — Weather Quant Bot v5
+bot.py — Weather Quant Bot v5.4
 
-CORRIGIDO v5:
-1. Suporte ao novo tipo range2 (bucket de 2°F/°C da Polymarket).
-   calculate_probability() recebe target_lo e target_hi para o cálculo correto.
-
-2. settlement.py precisa saber o tipo de mercado para resolver range2 corretamente.
-   Trade registra condition, target_lo, target_hi.
-
-3. Log melhorado: exibe todos os mercados encontrados antes de filtrar,
-   facilitando auditoria de por que o bot não entra.
+v5.4: Suporte a apostas NO
+- Após avaliar YES, avalia também NO para cada mercado
+- NO: apostamos quando mercado paga muito para YES mas modelo discorda
+- Exemplos: Toronto ABOVE 28°C mkt=0.725 prob=0.21 → NO edge=0.51
+            Miami BELOW 85°F mkt=0.914 prob=0.23 → NO edge=0.68
 """
 
 import logging, time, json, os, sys, schedule
@@ -26,7 +22,10 @@ logger = logging.getLogger("bot")
 from gamma_parser import fetch_markets
 from forecast import get_corrected_forecast
 from model import calculate_probability
-from risk import kelly_criterion, check_guardrails, dynamic_kelly_fraction
+from risk import (
+    kelly_criterion, kelly_criterion_no,
+    check_guardrails, dynamic_kelly_fraction,
+)
 
 from bankroll import load_bankroll, save_bankroll, already_traded
 from settlement import settle_all
@@ -90,8 +89,10 @@ def process_city(city: Dict):
             market_date = m.get("market_date", "")
             market_id   = str(m.get("market_id", ""))
 
-            if already_traded(history, market_id):
-                logger.debug(f"Já negociado: {market_id}")
+            # Checagem de duplicata — tanto YES quanto NO usam mesmo market_id
+            # mas side diferente, então incluímos side no ID único
+            if already_traded(history, market_id + "_YES") and already_traded(history, market_id + "_NO"):
+                logger.debug(f"Já negociado (ambos lados): {market_id}")
                 continue
 
             open_count = len(_get_open_trades(history))
@@ -133,7 +134,7 @@ def process_city(city: Dict):
                 mdate      = datetime.strptime(date_str, "%Y-%m-%d").date()
                 today_utc  = datetime.now(_tz.utc).date()
                 day_offset = max(0, (mdate - today_utc).days)
-                day_offset = max(1, day_offset)  # mínimo 1 para o modelo
+                day_offset = max(1, day_offset)
             except Exception:
                 pass
 
@@ -147,7 +148,7 @@ def process_city(city: Dict):
                 if intra["confirmed"] is True:
                     logger.info(f"{name}: intra-dia POSITIVO — {intra['reason']}")
 
-            # Calcula probabilidade — passa target_lo/hi para range2
+            # Calcula probabilidade
             prob = calculate_probability(
                 city=name,
                 target_temp=target,
@@ -160,17 +161,15 @@ def process_city(city: Dict):
                 target_hi=target_hi,
             )
 
-            edge = prob - yes_price
+            edge_yes = prob - yes_price
+            edge_no  = yes_price - prob  # NO edge: quanto mkt paga a mais
 
-            # Log de diagnóstico para todos os mercados (facilita auditoria)
             logger.info(
                 f"  {condition} {target}°{unit} | "
                 f"forecast={forecast_c:.1f}°C | "
-                f"prob={prob:.3f} mkt={yes_price:.3f} edge={edge:+.3f}"
+                f"prob={prob:.3f} mkt={yes_price:.3f} "
+                f"edge_YES={edge_yes:+.3f} edge_NO={edge_no:+.3f}"
             )
-
-            if edge <= 0:
-                continue
 
             market_dict = {
                 "condition":   condition,
@@ -179,75 +178,121 @@ def process_city(city: Dict):
                 "day_offset":  day_offset,
                 "unit":        unit,
             }
-            if not check_guardrails(market_dict, prob, forecast_c, sigma=sigma):
-                continue
 
-            kf    = dynamic_kelly_fraction(history)
-            stake = kelly_criterion(prob, yes_price, balance, fraction=kf)
-            if stake <= 0:
-                continue
-
-            shares    = int(stake / yes_price) if yes_price > 0 else 0
-            real_cost = round(shares * yes_price, 2)
-            stake     = real_cost
-
-            if stake <= 0:
-                continue
-
-            trade = dict(
-                market_id    = market_id,
-                city         = name,
-                question     = m.get("question", ""),
-                market_date  = date_str,
-                entry_time   = datetime.utcnow().isoformat(),
-                exit_time    = None,
-                type         = condition,
-                unit         = unit,
-                target       = target,
-                target_lo    = target_lo,
-                target_hi    = target_hi,
-                forecast_c   = forecast_c,
-                sigma_total  = round(sigma, 4),
-                shares       = shares,
-                model_prob   = round(prob, 4),
-                market_price = yes_price,
-                edge         = round(edge, 4),
-                ev           = round(prob / yes_price - 1, 4) if yes_price > 0 else 0,
-                stake        = stake,
-                result       = "OPEN",
-                pnl          = 0,
-                fee          = 0.0,
-                forecast_day = day_offset,
-                real_temp_c  = None,
-            )
-
-            if TRADING_ENABLED:
-                history.append(trade)
-                balance -= stake
-                data["history"] = history
-                data["balance"] = round(balance, 4)
-                save_bankroll(data)
-                logger.info(
-                    f"TRADE: {name} {condition} {target}°{unit} | "
-                    f"prob={prob:.3f} edge={edge:.3f} stake=${stake:.2f}"
-                )
-                try:
-                    notificar_entrada_trade(
-                        city=name, market_date=date_str, target=target,
-                        unit=unit, stake=stake, model_prob=prob,
-                        market_price=yes_price, edge=edge,
-                        balance=balance, shares=shares,
+            # --- AVALIAR YES ---
+            if edge_yes > 0 and not already_traded(history, market_id + "_YES"):
+                if check_guardrails(market_dict, prob, forecast_c, sigma=sigma, side="YES"):
+                    kf    = dynamic_kelly_fraction(history)
+                    stake = kelly_criterion(prob, yes_price, balance, fraction=kf)
+                    _execute_trade(
+                        data, history, balance, name, m, date_str, condition,
+                        target, unit, yes_price, prob, edge_yes, stake,
+                        day_offset, sigma, forecast_c, target_lo, target_hi,
+                        market_id + "_YES", side="YES",
                     )
-                except Exception:
-                    pass
-            else:
-                logger.info(
-                    f"SINAL: {name} {condition} {target}°{unit} | "
-                    f"prob={prob:.3f} edge={edge:.3f} stake=${stake:.2f}"
-                )
+                    # Recarrega após trade
+                    data    = load_bankroll()
+                    history = data.get("history", [])
+                    balance = float(data.get("balance", 0))
+
+            # --- AVALIAR NO ---
+            if edge_no > 0 and not already_traded(history, market_id + "_NO"):
+                if check_guardrails(market_dict, prob, forecast_c, sigma=sigma, side="NO"):
+                    kf    = dynamic_kelly_fraction(history)
+                    stake = kelly_criterion_no(prob, yes_price, balance, fraction=kf)
+                    _execute_trade(
+                        data, history, balance, name, m, date_str, condition,
+                        target, unit, yes_price, prob, edge_no, stake,
+                        day_offset, sigma, forecast_c, target_lo, target_hi,
+                        market_id + "_NO", side="NO",
+                    )
+                    data    = load_bankroll()
+                    history = data.get("history", [])
+                    balance = float(data.get("balance", 0))
 
         except Exception as e:
             logger.error(f"{name} mercado {m.get('market_id','?')}: {e}", exc_info=True)
+
+
+def _execute_trade(
+    data, history, balance, name, m, date_str, condition,
+    target, unit, yes_price, prob, edge, stake,
+    day_offset, sigma, forecast_c, target_lo, target_hi,
+    trade_id, side="YES",
+):
+    """Registra e notifica um trade YES ou NO."""
+    if stake <= 0:
+        return
+
+    if side == "YES":
+        entry_price = yes_price
+        shares = int(stake / entry_price) if entry_price > 0 else 0
+    else:
+        # NO: compra NO a price_no = 1 - yes_price
+        entry_price = round(1.0 - yes_price, 4)
+        shares = int(stake / entry_price) if entry_price > 0 else 0
+
+    real_cost = round(shares * entry_price, 2)
+    stake = real_cost
+
+    if stake <= 0:
+        return
+
+    trade = dict(
+        market_id    = trade_id,
+        city         = name,
+        question     = m.get("question", ""),
+        market_date  = date_str,
+        entry_time   = datetime.utcnow().isoformat(),
+        exit_time    = None,
+        type         = condition,
+        side         = side,
+        unit         = unit,
+        target       = target,
+        target_lo    = target_lo,
+        target_hi    = target_hi,
+        forecast_c   = forecast_c,
+        sigma_total  = round(sigma, 4),
+        shares       = shares,
+        model_prob   = round(prob, 4),
+        market_price = yes_price,
+        entry_price  = entry_price,
+        edge         = round(edge, 4),
+        ev           = round((1 - prob) / entry_price - 1, 4) if side == "NO" and entry_price > 0 else
+                       round(prob / yes_price - 1, 4) if yes_price > 0 else 0,
+        stake        = stake,
+        result       = "OPEN",
+        pnl          = 0,
+        fee          = 0.0,
+        forecast_day = day_offset,
+        real_temp_c  = None,
+    )
+
+    if TRADING_ENABLED:
+        history.append(trade)
+        balance -= stake
+        data["history"] = history
+        data["balance"] = round(balance, 4)
+        save_bankroll(data)
+        logger.info(
+            f"TRADE [{side}]: {name} {condition} {target}°{unit} | "
+            f"prob={prob:.3f} edge={edge:.3f} stake=${stake:.2f} "
+            f"price_{side}={entry_price:.3f}"
+        )
+        try:
+            notificar_entrada_trade(
+                city=name, market_date=date_str, target=target,
+                unit=unit, stake=stake, model_prob=prob,
+                market_price=yes_price, edge=edge,
+                balance=balance, shares=shares,
+            )
+        except Exception:
+            pass
+    else:
+        logger.info(
+            f"SINAL [{side}]: {name} {condition} {target}°{unit} | "
+            f"prob={prob:.3f} edge={edge:.3f} stake=${stake:.2f}"
+        )
 
 
 def settlement_cycle():

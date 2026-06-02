@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
 """
-risk.py — Kelly Criterion e guardrails v5.2
+risk.py — Kelly Criterion e guardrails v5.4
 
-AJUSTE v5.2:
-- Edge máximo para ABOVE/BELOW: lógica diferenciada por nível de prob:
-    prob >= 0.90 → cap 0.25 (prob muito alta = suspeito, mercado sabe mais)
-    prob >= 0.72 → cap 0.55 (prob razoável = pode ser edge real)
-  
-  Antes havia cap fixo de 0.40 que bloqueava Tokyo (prob=0.766, edge=0.647).
-  Tokyo forecast 29.9°C vs target 27°C com sigma=4.0 → prob=76.6% é legítimo.
-  Milan forecast 30.7°C vs target 24°C → prob=95.3% é suspeito (edge=0.868 bloqueado).
+v5.4: Suporte a apostas NO (vender YES)
+- check_guardrails() agora aceita side="YES" (padrão) ou side="NO"
+- Para NO: lógica invertida — apostamos quando mercado paga muito por algo improvável
+- NO edge = price_yes - prob_yes  (mercado superestima a prob)
+- Requer: NO edge >= MIN_EDGE_NO, prob_yes <= MAX_PROB_FOR_NO
+- Kelly para NO: b = (1/price_no) - 1 = (1/(1-price_yes)) - 1
 """
 
 import logging
@@ -36,6 +34,11 @@ logger = logging.getLogger(__name__)
 
 MIN_PROB_RANGE2 = 0.04
 MIN_EDGE_RANGE2 = 0.02
+
+# Parâmetros para apostas NO
+MIN_EDGE_NO       = 0.15   # edge mínimo para NO (price_yes - prob_yes)
+MAX_PROB_FOR_NO   = 0.35   # só apostar NO se modelo diz prob_yes <= 35%
+MIN_PRICE_YES_FOR_NO = 0.55  # só apostar NO se mercado paga >= 55% para YES
 
 
 def consecutive_losses(history: list) -> int:
@@ -86,19 +89,6 @@ def kelly_criterion(
 
 
 def _max_edge_for_prob(prob: float) -> float:
-    """
-    Cap de edge diferenciado por nível de prob.
-    
-    prob >= 0.90: cap 0.25
-      Ex: Milan ABOVE 24°C com prob=0.953 e edge=0.868 → bloqueado (correto)
-      Prob muito alta indica que o modelo está calculando algo óbvio
-      que o mercado já sabe — suspeito de erro de forecast.
-    
-    prob >= 0.72: cap 0.55  
-      Ex: Tokyo ABOVE 27°C com prob=0.766 e edge=0.647 → passa
-      Prob moderada com edge alto pode ser lag do mercado em
-      atualizar após nova rodada do modelo meteorológico.
-    """
     if prob >= 0.90:
         return 0.25
     return 0.70
@@ -109,10 +99,15 @@ def check_guardrails(
     model_prob: float,
     forecast_temp: float,
     sigma: float = None,
+    side: str = "YES",
 ) -> bool:
+    """
+    side="YES": aposta normal (comprar YES)
+    side="NO":  aposta invertida (comprar NO, equivale a vender YES)
+    """
     condition  = market.get("condition", "ABOVE").upper()
     target_raw = float(market.get("target_temp", 0))
-    price      = float(market.get("price", 0))
+    price_yes  = float(market.get("price", 0))
     day_offset = int(market.get("day_offset", 1))
     unit       = market.get("unit", "C").upper()
 
@@ -121,15 +116,18 @@ def check_guardrails(
     else:
         target_c = target_raw
 
-    # 1. Filtro de liquidez
+    # === LÓGICA NO ===
+    if side == "NO":
+        return _check_no_guardrails(condition, price_yes, model_prob)
+
+    # === LÓGICA YES (original) ===
     min_p = MIN_PRICE_RANGE2 if condition == "RANGE2" else MIN_PRICE
-    if price < min_p or price > MAX_PRICE:
-        logger.info(f"Bloqueado: preço fora da faixa ({price:.3f}, min={min_p})")
+    if price_yes < min_p or price_yes > MAX_PRICE:
+        logger.info(f"Bloqueado: preço fora da faixa ({price_yes:.3f}, min={min_p})")
         return False
 
-    edge = model_prob - price
+    edge = model_prob - price_yes
 
-    # 2. Lógica por tipo
     if condition in ("ABOVE", "BELOW"):
         if PROB_DEADZONE_MIN <= model_prob <= PROB_DEADZONE_MAX:
             logger.info(f"Bloqueado: prob na zona morta ({model_prob:.3f})")
@@ -144,16 +142,14 @@ def check_guardrails(
             logger.info(f"Bloqueado: edge insuficiente ({edge:.3f})")
             return False
 
-        # Edge máximo diferenciado por nível de prob
         max_edge = _max_edge_for_prob(model_prob)
         if edge > max_edge:
             logger.info(
                 f"Bloqueado: edge {edge:.3f} > {max_edge} "
-                f"(prob={model_prob:.2f} mkt={price:.2f})"
+                f"(prob={model_prob:.2f} mkt={price_yes:.2f})"
             )
             return False
 
-        # Zscore mínimo
         if sigma is None or sigma <= 0:
             sigma = {1: 4.0, 2: 4.5, 3: 5.0}.get(day_offset, 5.0)
         sigma = min(sigma, SIGMA_CAP_ABOVE_BELOW)
@@ -174,8 +170,8 @@ def check_guardrails(
         if edge < MIN_EDGE_RANGE2:
             logger.info(f"Bloqueado: edge insuficiente para RANGE2 ({edge:.3f})")
             return False
-        if price > 0.70:
-            logger.info(f"Bloqueado: RANGE2 preço alto demais ({price:.3f})")
+        if price_yes > 0.70:
+            logger.info(f"Bloqueado: RANGE2 preço alto demais ({price_yes:.3f})")
             return False
 
     elif condition == "RANGE":
@@ -187,7 +183,86 @@ def check_guardrails(
         return False
 
     logger.info(
-        f"GUARDRAIL OK: {condition} target={target_raw}°{unit} "
-        f"price={price:.3f} prob={model_prob:.3f} edge={edge:+.3f}"
+        f"GUARDRAIL OK [{side}]: {condition} target={target_raw}°{unit} "
+        f"price_yes={price_yes:.3f} prob={model_prob:.3f} edge={edge:+.3f}"
     )
     return True
+
+
+def _check_no_guardrails(condition: str, price_yes: float, model_prob: float) -> bool:
+    """
+    Guardrails para apostas NO.
+    
+    Lógica: apostamos NO quando o mercado paga muito para YES (price_yes alto)
+    mas o modelo estima que a prob de YES é baixa.
+    
+    NO edge = price_yes - model_prob
+    Exemplos do log:
+      Toronto ABOVE 28°C: mkt=0.725, model=0.212 → NO edge = 0.513
+      Miami BELOW 85°F:   mkt=0.914, model=0.230 → NO edge = 0.684
+    """
+    # Só ABOVE, BELOW e EXACT — RANGE2 tem lógica diferente
+    if condition not in ("ABOVE", "BELOW", "EXACT"):
+        logger.info(f"NO não suportado para {condition}")
+        return False
+
+    # Mercado precisa estar apostando alto em YES
+    if price_yes < MIN_PRICE_YES_FOR_NO:
+        logger.info(f"NO bloqueado: price_yes muito baixo ({price_yes:.3f} < {MIN_PRICE_YES_FOR_NO})")
+        return False
+
+    # Modelo precisa discordar — prob baixa
+    if model_prob > MAX_PROB_FOR_NO:
+        logger.info(f"NO bloqueado: model_prob alta demais ({model_prob:.3f} > {MAX_PROB_FOR_NO})")
+        return False
+
+    # Edge NO = quanto o mercado está pagando a mais
+    no_edge = price_yes - model_prob
+    if no_edge < MIN_EDGE_NO:
+        logger.info(f"NO bloqueado: edge insuficiente ({no_edge:.3f} < {MIN_EDGE_NO})")
+        return False
+
+    # Preço NO = 1 - price_yes; precisa ter liquidez mínima
+    price_no = 1.0 - price_yes
+    if price_no < MIN_PRICE:
+        logger.info(f"NO bloqueado: price_no muito baixo ({price_no:.3f})")
+        return False
+
+    logger.info(
+        f"GUARDRAIL OK [NO]: {condition} price_yes={price_yes:.3f} "
+        f"price_no={price_no:.3f} prob={model_prob:.3f} NO_edge={no_edge:+.3f}"
+    )
+    return True
+
+
+def kelly_criterion_no(
+    model_prob_yes: float,
+    price_yes: float,
+    balance: float = 100.0,
+    fraction: float = None,
+) -> float:
+    """
+    Kelly para apostar NO (comprar NO a price_no = 1 - price_yes).
+    prob_no = 1 - model_prob_yes
+    price_no = 1 - price_yes
+    """
+    prob_no  = 1.0 - model_prob_yes
+    price_no = 1.0 - price_yes
+
+    if prob_no <= 0 or prob_no >= 1 or price_no <= 0 or price_no >= 1:
+        return 0.0
+
+    b = (1.0 / price_no) - 1.0
+    q = 1.0 - prob_no  # = model_prob_yes
+
+    kelly_pct = (prob_no * b - q) / b
+    kelly_pct = max(0.0, kelly_pct)
+
+    frac = fraction if fraction is not None else KELLY_FRACTION
+    stake_pct = kelly_pct * frac
+    stake_pct = min(stake_pct, MAX_KELLY_FRACTION_CAP)
+
+    stake = stake_pct * balance
+    stake = min(stake, MAX_POSITION)
+
+    return round(stake, 2)
