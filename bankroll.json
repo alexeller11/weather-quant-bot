@@ -1,4 +1,5 @@
 {
+<<<<<<< HEAD
     "balance": 185.14,
     "history": [
         {
@@ -7,6 +8,19 @@
             "pnl": 0,
             "city": "Seattle",
             "edge": 0.1024,
+=======
+    "balance": 188.64,
+    "created_at": "2026-06-01T01:33:05.701728+00:00",
+    "start_balance": 200.0,
+    "history": [
+        {
+            "ev": 0.1124,
+            "fee": 0.0,
+            "pnl": 0,
+            "city": "Seattle",
+            "edge": 0.0984,
+            "side": "YES",
+>>>>>>> 937a23f (fix: remove trade duplicado Seattle, saldo corrigido .64)
             "type": "ABOVE",
             "unit": "F",
             "stake": 3.5,
@@ -15,6 +29,7 @@
             "target": 66.0,
             "question": "Will the highest temperature in Seattle be 66°F or higher on June 3?",
             "exit_time": null,
+<<<<<<< HEAD
             "market_id": "2406992",
             "target_hi": null,
             "target_lo": null,
@@ -42,6 +57,8 @@
             "target": 66.0,
             "question": "Will the highest temperature in Seattle be 66°F or higher on June 3?",
             "exit_time": null,
+=======
+>>>>>>> 937a23f (fix: remove trade duplicado Seattle, saldo corrigido .64)
             "market_id": "2406992_YES",
             "target_hi": null,
             "target_lo": null,
@@ -111,7 +128,5 @@
             "forecast_day": 1,
             "real_temp_c": null
         }
-    ],
-    "created_at": "2026-06-01T01:33:05.701728+00:00",
-    "start_balance": 200.0
+    ]
 }
