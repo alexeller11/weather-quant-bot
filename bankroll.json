@@ -1,6 +1,5 @@
 {
-<<<<<<< HEAD
-    "balance": 185.14,
+    "balance": 181.15,
     "history": [
         {
             "ev": 0.117,
@@ -8,19 +7,6 @@
             "pnl": 0,
             "city": "Seattle",
             "edge": 0.1024,
-=======
-    "balance": 188.64,
-    "created_at": "2026-06-01T01:33:05.701728+00:00",
-    "start_balance": 200.0,
-    "history": [
-        {
-            "ev": 0.1124,
-            "fee": 0.0,
-            "pnl": 0,
-            "city": "Seattle",
-            "edge": 0.0984,
-            "side": "YES",
->>>>>>> 937a23f (fix: remove trade duplicado Seattle, saldo corrigido .64)
             "type": "ABOVE",
             "unit": "F",
             "stake": 3.5,
@@ -29,7 +15,6 @@
             "target": 66.0,
             "question": "Will the highest temperature in Seattle be 66°F or higher on June 3?",
             "exit_time": null,
-<<<<<<< HEAD
             "market_id": "2406992",
             "target_hi": null,
             "target_lo": null,
@@ -57,8 +42,6 @@
             "target": 66.0,
             "question": "Will the highest temperature in Seattle be 66°F or higher on June 3?",
             "exit_time": null,
-=======
->>>>>>> 937a23f (fix: remove trade duplicado Seattle, saldo corrigido .64)
             "market_id": "2406992_YES",
             "target_hi": null,
             "target_lo": null,
@@ -101,32 +84,62 @@
             "market_price": 0.9195
         },
         {
-            "market_id": "2399701_NO",
+            "ev": 1.0995,
+            "fee": 0.0,
+            "pnl": 0,
             "city": "Toronto",
-            "question": "Will the highest temperature in Toronto be 25°C on June 2?",
-            "market_date": "2026-06-02",
-            "entry_time": "2026-06-02T21:01:47.598752",
-            "exit_time": null,
+            "edge": 0.4783,
+            "side": "NO",
             "type": "EXACT",
+            "unit": "C",
+            "stake": 3.92,
+            "result": "OPEN",
+            "shares": 9,
+            "target": 25.0,
+            "question": "Will the highest temperature in Toronto be 25°C on June 2?",
+            "exit_time": null,
+            "market_id": "2399701_NO",
+            "target_hi": null,
+            "target_lo": null,
+            "entry_time": "2026-06-02T21:01:47.598752",
+            "forecast_c": 27.1,
+            "model_prob": 0.0867,
+            "entry_price": 0.435,
+            "market_date": "2026-06-02",
+            "real_temp_c": null,
+            "sigma_total": 4.0,
+            "forecast_day": 1,
+            "market_price": 0.565
+        },
+        {
+            "market_id": "2406981_NO",
+            "city": "Toronto",
+            "question": "Will the highest temperature in Toronto be 28°C or higher on June 3?",
+            "market_date": "2026-06-03",
+            "entry_time": "2026-06-03T00:00:26.918710",
+            "exit_time": null,
+            "type": "ABOVE",
             "side": "NO",
             "unit": "C",
-            "target": 25.0,
+            "target": 28.0,
             "target_lo": null,
             "target_hi": null,
-            "forecast_c": 27.1,
+            "forecast_c": 26.0,
             "sigma_total": 4.0,
-            "shares": 9,
-            "model_prob": 0.0867,
-            "market_price": 0.565,
-            "entry_price": 0.435,
-            "edge": 0.4783,
-            "ev": 1.0995,
-            "stake": 3.92,
+            "shares": 19,
+            "model_prob": 0.3085,
+            "market_price": 0.79,
+            "entry_price": 0.21,
+            "edge": 0.4815,
+            "ev": 2.2927,
+            "stake": 3.99,
             "result": "OPEN",
             "pnl": 0,
             "fee": 0.0,
             "forecast_day": 1,
             "real_temp_c": null
         }
-    ]
+    ],
+    "created_at": "2026-06-01T01:33:05.701728+00:00",
+    "start_balance": 200.0
 }
