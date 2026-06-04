@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-bot.py — Weather Quant Bot v5.4
+bot.py — Weather Quant Bot v5.5
 
+v5.5: Correções de bugs
 v5.4: Suporte a apostas NO
 - Após avaliar YES, avalia também NO para cada mercado
 - NO: apostamos quando mercado paga muito para YES mas modelo discorda
@@ -49,7 +50,7 @@ if not cities:
     sys.exit(1)
 
 logger.info(
-    f"Weather Quant Bot v5 | {len(cities)} cidades | "
+    f"Weather Quant Bot v5.5 | {len(cities)} cidades | "
     f"Trading: {'ON' if TRADING_ENABLED else 'OFF (observação)'}"
 )
 
@@ -89,9 +90,10 @@ def process_city(city: Dict):
             market_date = m.get("market_date", "")
             market_id   = str(m.get("market_id", ""))
 
-            # Checagem de duplicata — tanto YES quanto NO usam mesmo market_id
-            # mas side diferente, então incluímos side no ID único
-            if already_traded(history, market_id + "_YES") and already_traded(history, market_id + "_NO"):
+            # Checagem de duplicata — cobre IDs com sufixo _YES/_NO e sem sufixo (trades antigos)
+            yes_traded = already_traded(history, market_id + "_YES") or already_traded(history, market_id)
+            no_traded  = already_traded(history, market_id + "_NO")
+            if yes_traded and no_traded:
                 logger.debug(f"Já negociado (ambos lados): {market_id}")
                 continue
 
@@ -105,14 +107,25 @@ def process_city(city: Dict):
                 logger.info(f"Exposição máxima ${MAX_TOTAL_EXPOSURE:.2f} atingida")
                 break
 
-            forecast_result = get_corrected_forecast(city_slug, 1)
+            date_str = market_date if isinstance(market_date, str) else str(market_date)
+
+            # Fix: calcula day_offset ANTES de buscar forecast para usar sigma correto
+            day_offset = 1
+            try:
+                from datetime import timezone as _tz
+                mdate      = datetime.strptime(date_str, "%Y-%m-%d").date()
+                today_utc  = datetime.now(_tz.utc).date()
+                day_offset = max(0, (mdate - today_utc).days)
+                day_offset = max(1, day_offset)
+            except Exception:
+                pass
+
+            forecast_result = get_corrected_forecast(city_slug, day_offset)
             if forecast_result is None or forecast_result[0] is None:
                 logger.debug(f"Forecast indisponível para {name}")
                 continue
 
             forecast_c, sigma, bias = forecast_result
-
-            date_str = market_date if isinstance(market_date, str) else str(market_date)
 
             cons = consensus_engine.consensus_temperature(
                 city["lat"], city["lon"], date_str, forecast_c
@@ -127,16 +140,6 @@ def process_city(city: Dict):
             yes_price  = float(m.get("yes_price", 0))
             target_lo  = m.get("target_lo")
             target_hi  = m.get("target_hi")
-
-            day_offset = 1
-            try:
-                from datetime import timezone as _tz
-                mdate      = datetime.strptime(date_str, "%Y-%m-%d").date()
-                today_utc  = datetime.now(_tz.utc).date()
-                day_offset = max(0, (mdate - today_utc).days)
-                day_offset = max(1, day_offset)
-            except Exception:
-                pass
 
             # Confirmação intra-dia para D+0
             if day_offset <= 1 and condition in ("ABOVE", "BELOW"):
@@ -180,7 +183,7 @@ def process_city(city: Dict):
             }
 
             # --- AVALIAR YES ---
-            if edge_yes > 0 and not already_traded(history, market_id + "_YES"):
+            if edge_yes > 0 and not yes_traded:
                 if check_guardrails(market_dict, prob, forecast_c, sigma=sigma, side="YES"):
                     kf    = dynamic_kelly_fraction(history)
                     stake = kelly_criterion(prob, yes_price, balance, fraction=kf)
@@ -258,8 +261,8 @@ def _execute_trade(
         market_price = yes_price,
         entry_price  = entry_price,
         edge         = round(edge, 4),
-        ev           = round((1 - prob) / entry_price - 1, 4) if side == "NO" and entry_price > 0 else
-                       round(prob / yes_price - 1, 4) if yes_price > 0 else 0,
+        ev           = round((1.0 - prob) * (1.0 / entry_price - 1.0) - prob, 4) if side == "NO" and entry_price > 0 else
+                       round(prob * (1.0 / yes_price - 1.0) - (1.0 - prob), 4) if yes_price > 0 else 0,
         stake        = stake,
         result       = "OPEN",
         pnl          = 0,
@@ -329,5 +332,5 @@ def run():
 
 
 if __name__ == "__main__":
-    logger.info("Weather Quant Bot v5")
+    logger.info("Weather Quant Bot v5.5")
     run()

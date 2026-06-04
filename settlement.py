@@ -96,6 +96,8 @@ def settle_trade(trade: Dict, bankroll_data: Dict) -> Dict:
     unit        = (trade.get("unit") or "C").upper()
     stake       = float(trade.get("stake", 0))
     market_price = float(trade.get("market_price", 0))
+    entry_price  = float(trade.get("entry_price") or market_price)
+    side         = trade.get("side", "YES").upper()
     model_prob  = float(trade.get("model_prob") or 0.5)
     forecast_c  = trade.get("forecast_c")
     day_offset  = trade.get("forecast_day", 1)
@@ -138,10 +140,14 @@ def settle_trade(trade: Dict, bankroll_data: Dict) -> Dict:
     else:  # EXACT
         won = abs(actual_temp_c - target_c) <= 0.5
 
-    # PnL
+    # PnL — usa entry_price correto (price_yes para YES, price_no para NO)
+    # Para NO: won = YES resolveu FALSO = NO ganhou
+    if side == "NO":
+        won = not won  # inverte: NO ganha quando YES perde
+
     if won:
-        if market_price > 0:
-            gross = stake / market_price
+        if entry_price > 0:
+            gross = stake / entry_price
             fee   = round(gross * 0.02, 4)
             pnl   = round(gross - stake - fee, 4)
         else:
