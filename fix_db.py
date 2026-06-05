@@ -1,15 +1,21 @@
 #!/usr/bin/env python3
 """
-fix_db.py — Injeta bankroll.json corrigido no PostgreSQL.
-Rode no Railway: python fix_db.py
+fix_db.py — Força atualização do bankroll no PostgreSQL.
+Funciona porque o próprio bankroll.py já tem psycopg2 instalado
+como dependência do projeto (requirements.txt).
 """
-import os, json, psycopg2
+import os, sys
 
-conn = psycopg2.connect(os.environ["DATABASE_URL"], sslmode="require")
+# Adiciona o diretório do app ao path
+sys.path.insert(0, "/app")
+
+# Importa as funções do próprio projeto
+from bankroll import save_bankroll
+import json
+
 with open("bankroll.json") as f:
     data = json.load(f)
-with conn.cursor() as cur:
-    cur.execute("INSERT INTO bankroll (data) VALUES (%s)", (json.dumps(data),))
-conn.commit()
-conn.close()
-print(f"OK! Saldo: ${data['balance']:.2f} | Trades: {len(data['history'])}")
+
+print(f"Carregado: saldo=${data['balance']:.2f}, trades={len(data['history'])}")
+save_bankroll(data)
+print("Salvo no PostgreSQL via bankroll.py!")
