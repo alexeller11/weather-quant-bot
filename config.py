@@ -48,9 +48,10 @@ PROB_DEADZONE_MAX     = float(os.getenv("PROB_DEADZONE_MAX", "0.55"))
 PROBABILITY_DEAD_ZONE_LOW  = PROB_DEADZONE_MIN
 PROBABILITY_DEAD_ZONE_HIGH = PROB_DEADZONE_MAX
 
-# AJUSTADO: 0.10 → 0.08 para ABOVE/BELOW/EXACT
-# Houston ABOVE 92°F a 0.095 era trade válido bloqueado por 0.5 centavo
-MIN_PRICE             = float(os.getenv("MIN_PRICE", "0.08"))
+# AJUSTADO v5.5: 0.08 → 0.15 para YES
+# Seoul a 0.09 gerou retorno de 39x distorcendo paper trading.
+# Preços abaixo de 0.15 indicam mercado ilíquido ou já "decidido".
+MIN_PRICE             = float(os.getenv("MIN_PRICE", "0.15"))
 
 # NOVO: piso separado para RANGE2 — buckets raros têm preço baixo por natureza
 MIN_PRICE_RANGE2      = float(os.getenv("MIN_PRICE_RANGE2", "0.04"))
