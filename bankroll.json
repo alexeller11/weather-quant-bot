@@ -1,5 +1,7 @@
 {
-    "balance": 199.5485,
+    "balance": 248.9,
+    "start_balance": 200.0,
+    "created_at": "2026-06-01T01:33:05.701728+00:00",
     "history": [
         {
             "ev": 0.117,
@@ -57,15 +59,15 @@
         },
         {
             "ev": 8.3058,
-            "fee": 0.0857,
-            "pnl": 0.2592,
+            "fee": 0.0,
+            "pnl": -3.94,
             "city": "Miami",
             "edge": 0.6686,
             "side": "NO",
             "type": "BELOW",
             "unit": "F",
             "stake": 3.94,
-            "result": "WIN",
+            "result": "LOSS",
             "shares": 49,
             "target": 85.0,
             "question": "Will the highest temperature in Miami be 85°F or below on June 3?",
@@ -81,19 +83,20 @@
             "real_temp_c": 26.6,
             "sigma_total": 4.4,
             "forecast_day": 1,
-            "market_price": 0.9195
+            "market_price": 0.9195,
+            "correcao_v55": "real=26.6C=79.9F < 85F → YES ganhou → NO perdeu"
         },
         {
             "ev": 1.0995,
-            "fee": 0.1388,
-            "pnl": 2.8793,
+            "fee": 0.0,
+            "pnl": -3.92,
             "city": "Toronto",
             "edge": 0.4783,
             "side": "NO",
             "type": "EXACT",
             "unit": "C",
             "stake": 3.92,
-            "result": "WIN",
+            "result": "LOSS",
             "shares": 9,
             "target": 25.0,
             "question": "Will the highest temperature in Toronto be 25°C on June 2?",
@@ -109,19 +112,20 @@
             "real_temp_c": 24.9,
             "sigma_total": 4.0,
             "forecast_day": 1,
-            "market_price": 0.565
+            "market_price": 0.565,
+            "correcao_v55": "real=24.9C, |24.9-25.0|=0.1 <= 0.5 → YES ganhou → NO perdeu"
         },
         {
             "ev": 2.2927,
-            "fee": 0.0,
-            "pnl": -3.99,
+            "fee": 0.38,
+            "pnl": 14.63,
             "city": "Toronto",
             "edge": 0.4815,
             "side": "NO",
             "type": "ABOVE",
             "unit": "C",
             "stake": 3.99,
-            "result": "LOSS",
+            "result": "WIN",
             "shares": 19,
             "target": 28.0,
             "question": "Will the highest temperature in Toronto be 28°C or higher on June 3?",
@@ -137,7 +141,8 @@
             "real_temp_c": 27.5,
             "sigma_total": 4.0,
             "forecast_day": 1,
-            "market_price": 0.79
+            "market_price": 0.79,
+            "correcao_v55": "real=27.5C < 28.0C → YES perdeu → NO ganhou"
         },
         {
             "ev": 1.3818,
@@ -531,7 +536,5 @@
             "forecast_day": 1,
             "real_temp_c": null
         }
-    ],
-    "created_at": "2026-06-01T01:33:05.701728+00:00",
-    "start_balance": 200.0
+    ]
 }
