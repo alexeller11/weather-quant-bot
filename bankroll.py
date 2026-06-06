@@ -3,15 +3,10 @@ BANKROLL — WEATHER QUANT
 ========================
 Persistência com 3 camadas de segurança:
 
-1. PostgreSQL (Railway) — fonte principal
-2. bankroll.json local  — cache local
-3. GitHub commit        — backup externo
-
-CORRIGIDO:
-- Adicionadas funções get_open_trades() e update_trade() que estavam
-  ausentes mas eram importadas por bot.py e settlement.py
-- _save_to_db era função interna do módulo PostgreSQL; bot.py não deve
-  importá-la diretamente — criada função pública record_trade() no lugar
+1. bankroll_override.json — correção manual (se existir, aplica e remove)
+2. PostgreSQL (Railway) — fonte principal
+3. bankroll.json local  — cache local
+4. GitHub commit        — backup externo
 """
 
 import json
@@ -21,13 +16,13 @@ from datetime import datetime, timezone
 from config import START_BALANCE, CITY_DISPLAY, CITY_SLUG_NORMALIZE
 
 BANKROLL_FILE = "bankroll.json"
+OVERRIDE_FILE = "bankroll_override.json"
 
 # ──────────────────────────────────────────────────────────────
 # POSTGRESQL
 # ──────────────────────────────────────────────────────────────
 
 def _get_db():
-    """Retorna conexão psycopg2 ou None se não configurado."""
     url = os.environ.get("DATABASE_URL", "")
     if not url:
         return None
@@ -41,7 +36,6 @@ def _get_db():
 
 
 def _ensure_table(conn):
-    """Cria tabela se não existir."""
     with conn.cursor() as cur:
         cur.execute("""
             CREATE TABLE IF NOT EXISTS bankroll (
@@ -54,7 +48,6 @@ def _ensure_table(conn):
 
 
 def _load_from_db(conn):
-    """Carrega último bankroll salvo no banco."""
     _ensure_table(conn)
     with conn.cursor() as cur:
         cur.execute("SELECT data FROM bankroll ORDER BY id DESC LIMIT 1")
@@ -63,10 +56,6 @@ def _load_from_db(conn):
 
 
 def _save_to_db(conn, data):
-    """
-    Salva bankroll no banco com RETURNING id para confirmar persistência.
-    Lança exceção se o INSERT não for confirmado.
-    """
     _ensure_table(conn)
     with conn.cursor() as cur:
         cur.execute(
@@ -75,7 +64,7 @@ def _save_to_db(conn, data):
         )
         row = cur.fetchone()
         if not row:
-            raise Exception("INSERT não retornou id — save não confirmado pelo banco")
+            raise Exception("INSERT não retornou id")
     conn.commit()
 
 
@@ -84,7 +73,6 @@ def _save_to_db(conn, data):
 # ──────────────────────────────────────────────────────────────
 
 def initialize():
-    """Garante que bankroll.json existe se não houver banco."""
     if not os.path.exists(BANKROLL_FILE):
         data = {
             "balance": START_BALANCE,
@@ -98,11 +86,27 @@ def initialize():
 
 def load_bankroll():
     """
-    Carrega bankroll com fallback em cascata:
-    1. PostgreSQL (mais atualizado)
-    2. bankroll.json local
-    3. valor inicial
+    Cascata:
+    1. bankroll_override.json — se existir, salva no DB e remove o arquivo
+    2. PostgreSQL
+    3. bankroll.json local
+    4. valor inicial
     """
+    # ── OVERRIDE MANUAL ──────────────────────────────────────
+    if os.path.exists(OVERRIDE_FILE):
+        try:
+            with open(OVERRIDE_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            print(f"  [override] aplicando bankroll_override.json — saldo ${data.get('balance',0):.2f}")
+            # Salva no PostgreSQL e local
+            _apply_override(data)
+            os.remove(OVERRIDE_FILE)
+            print("  [override] concluído e arquivo removido")
+            return data
+        except Exception as e:
+            print(f"  [override] erro: {e}")
+
+    # ── POSTGRESQL ───────────────────────────────────────────
     conn = _get_db()
     if conn:
         try:
@@ -120,25 +124,45 @@ def load_bankroll():
             except Exception:
                 pass
 
+    # ── LOCAL ────────────────────────────────────────────────
     initialize()
     with open(BANKROLL_FILE, "r", encoding="utf-8") as f:
         return json.load(f)
 
 
-def save_bankroll(data):
-    """
-    Salva bankroll em todas as camadas disponíveis.
-    """
+def _apply_override(data):
+    """Salva override no PostgreSQL e local."""
     if "start_balance" not in data:
         data["start_balance"] = START_BALANCE
     if "created_at" not in data:
         data["created_at"] = datetime.now(timezone.utc).isoformat()
 
-    # 1. Local (sempre, rápido)
     with open(BANKROLL_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4, ensure_ascii=False)
 
-    # 2. PostgreSQL com confirmação
+    conn = _get_db()
+    if conn:
+        try:
+            _save_to_db(conn, data)
+            conn.close()
+            print(f"  [override] salvo no PostgreSQL — saldo ${data.get('balance',0):.2f}")
+        except Exception as e:
+            print(f"  [override] PostgreSQL falhou: {e}")
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
+def save_bankroll(data):
+    if "start_balance" not in data:
+        data["start_balance"] = START_BALANCE
+    if "created_at" not in data:
+        data["created_at"] = datetime.now(timezone.utc).isoformat()
+
+    with open(BANKROLL_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=4, ensure_ascii=False)
+
     conn = _get_db()
     if conn:
         try:
@@ -152,7 +176,6 @@ def save_bankroll(data):
             except Exception:
                 pass
 
-    # 3. GitHub como backup externo (silencioso)
     try:
         from github_sync import commit_bankroll
         commit_bankroll(data)
@@ -161,26 +184,15 @@ def save_bankroll(data):
 
 
 # ──────────────────────────────────────────────────────────────
-# FUNÇÕES DE TRADE — ADICIONADAS (eram importadas mas não existiam)
+# FUNÇÕES DE TRADE
 # ──────────────────────────────────────────────────────────────
 
 def get_open_trades():
-    """
-    Retorna lista de trades com result == 'OPEN'.
-    ADICIONADO: bot.py e settlement.py importavam esta função,
-    mas ela não existia em bankroll.py.
-    """
     data = load_bankroll()
     return [t for t in data.get("history", []) if t.get("result") == "OPEN"]
 
 
-
 def record_trade(trade):
-    """
-    Registra um novo trade no bankroll e desconta o stake do saldo.
-    ADICIONADO: bot.py não deve importar _save_to_db diretamente —
-    esta função pública substitui o uso indevido de _save_to_db em bot.py.
-    """
     data = load_bankroll()
     stake = float(trade.get("stake", 0))
     data["balance"] = round(float(data.get("balance", 0)) - stake, 4)
@@ -197,7 +209,6 @@ def already_traded(history, market_id):
 
 
 def normalize_city(city_slug):
-    """Converte slug em display name."""
     if not city_slug:
         return "Unknown"
     normalized = CITY_DISPLAY.get(city_slug)
@@ -207,10 +218,6 @@ def normalize_city(city_slug):
 
 
 def force_close_open_trades(market_date_str):
-    """
-    UTILITÁRIO DE EMERGÊNCIA.
-    Fecha todos os trades OPEN com data <= market_date_str como LOSS.
-    """
     data = load_bankroll()
     fechados = 0
     for trade in data["history"]:
