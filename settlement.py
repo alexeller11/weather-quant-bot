@@ -186,10 +186,13 @@ def settle_trade(trade: Dict, bankroll_data: Dict) -> Dict:
                 city=city, day_offset=day_offset,
                 predicted_temp=float(forecast_c),
                 actual_temp=actual_temp_c,
+                condition=condition,
             )
+            hour_utc = datetime.now(timezone.utc).hour
             _ml_adjuster.update(
                 model_prob=model_prob, day_offset=day_offset,
                 city=city, calibrator=_calibrator, trade_success=won,
+                hour_utc=hour_utc,
             )
         except Exception as e:
             logger.warning(f"Calibração: {e}")

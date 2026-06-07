@@ -128,7 +128,8 @@ def process_city(city: Dict):
             forecast_c, sigma, bias = forecast_result
 
             cons = consensus_engine.consensus_temperature(
-                city["lat"], city["lon"], date_str, forecast_c
+                city["lat"], city["lon"], date_str, forecast_c,
+                condition=condition,
             )
             if not cons["consensus"]:
                 logger.info(f"{name}: {cons['reason']}")
@@ -298,6 +299,18 @@ def _execute_trade(
         )
 
 
+def weekly_report_cycle():
+    """Envia relatório semanal todo domingo às 08:00 UTC."""
+    if datetime.utcnow().weekday() != 6:  # 6 = domingo
+        return
+    logger.info("Enviando relatório semanal...")
+    try:
+        from weekly_report import gerar_relatorio_semanal
+        gerar_relatorio_semanal(enviar_telegram=True)
+    except Exception as e:
+        logger.error(f"Relatório semanal: {e}", exc_info=True)
+
+
 def settlement_cycle():
     logger.info("Iniciando liquidação...")
     try:
@@ -325,6 +338,7 @@ def run():
 
     schedule.every(1).hours.do(scheduled_trading)
     schedule.every(1).hours.do(settlement_cycle)
+    schedule.every().sunday.at("08:00").do(weekly_report_cycle)
     scheduled_trading()
     while True:
         schedule.run_pending()
