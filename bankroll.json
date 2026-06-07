@@ -1,6 +1,19 @@
 {
-    "balance": 406.0326,
+    "balance": 421.7927,
     "history": [
+        {
+            "pnl": -3.92,
+            "city": "Toronto",
+            "side": "NO",
+            "type": "EXACT",
+            "unit": "C",
+            "stake": 3.92,
+            "result": "LOSS",
+            "target": 25.0,
+            "market_id": "2399701_NO",
+            "entry_price": 0.435,
+            "market_date": "2026-06-02"
+        },
         {
             "pnl": 0.42,
             "city": "Seattle",
@@ -39,19 +52,6 @@
             "market_id": "2407026_NO",
             "entry_price": 0.0805,
             "market_date": "2026-06-03"
-        },
-        {
-            "pnl": -3.92,
-            "city": "Toronto",
-            "side": "NO",
-            "type": "EXACT",
-            "unit": "C",
-            "stake": 3.92,
-            "result": "LOSS",
-            "target": 25.0,
-            "market_id": "2399701_NO",
-            "entry_price": 0.435,
-            "market_date": "2026-06-02"
         },
         {
             "pnl": 14.63,
@@ -244,12 +244,11 @@
             "stake": 3.82,
             "result": "WIN",
             "target": 31.0,
+            "exit_time": "2026-06-07T21:28:09.527049+00:00",
             "market_id": "2440972_NO",
             "entry_price": 0.425,
             "market_date": "2026-06-06",
-            "fee": 0.1798,
-            "real_temp_c": 30.0,
-            "exit_time": "2026-06-07T21:28:09.527049+00:00"
+            "real_temp_c": 30.0
         },
         {
             "pnl": -3.96,
@@ -260,12 +259,11 @@
             "stake": 3.96,
             "result": "LOSS",
             "target": 28.0,
+            "exit_time": "2026-06-07T21:28:11.324959+00:00",
             "market_id": "2440781_YES",
             "entry_price": 0.055,
             "market_date": "2026-06-06",
-            "fee": 0.0,
-            "real_temp_c": 26.8,
-            "exit_time": "2026-06-07T21:28:11.324959+00:00"
+            "real_temp_c": 26.8
         },
         {
             "pnl": 5.95,
@@ -276,12 +274,11 @@
             "stake": 3.85,
             "result": "WIN",
             "target": 22.0,
+            "exit_time": "2026-06-07T21:28:12.574718+00:00",
             "market_id": "2440915_NO",
             "entry_price": 0.385,
             "market_date": "2026-06-06",
-            "fee": 0.2,
-            "real_temp_c": 23.0,
-            "exit_time": "2026-06-07T21:28:12.574718+00:00"
+            "real_temp_c": 23.0
         },
         {
             "pnl": 5.13,
@@ -292,12 +289,11 @@
             "stake": 3.69,
             "result": "WIN",
             "target": 24.0,
+            "exit_time": "2026-06-07T21:28:14.110920+00:00",
             "market_id": "2440776_NO",
             "entry_price": 0.41,
             "market_date": "2026-06-06",
-            "fee": 0.18,
-            "real_temp_c": 28.2,
-            "exit_time": "2026-06-07T21:28:14.110920+00:00"
+            "real_temp_c": 28.2
         },
         {
             "pnl": 45.0,
@@ -308,12 +304,11 @@
             "stake": 4.0,
             "result": "WIN",
             "target": 25.0,
+            "exit_time": "2026-06-07T21:28:15.358946+00:00",
             "market_id": "2440777_YES",
             "entry_price": 0.08,
             "market_date": "2026-06-06",
-            "fee": 1.0,
-            "real_temp_c": 28.2,
-            "exit_time": "2026-06-07T21:28:15.358946+00:00"
+            "real_temp_c": 28.2
         },
         {
             "pnl": 0,
@@ -353,10 +348,38 @@
             "market_id": "2450067_YES",
             "entry_price": 0.055,
             "market_date": "2026-06-07"
+        },
+        {
+            "market_id": "2456279_NO",
+            "city": "Madrid",
+            "question": "Will the highest temperature in Madrid be 34°C on June 8?",
+            "market_date": "2026-06-08",
+            "entry_time": "2026-06-07T21:54:49.812797",
+            "exit_time": null,
+            "type": "EXACT",
+            "side": "NO",
+            "unit": "C",
+            "target": 34.0,
+            "target_lo": null,
+            "target_hi": null,
+            "forecast_c": 31.4,
+            "sigma_total": 4.0,
+            "shares": 8,
+            "model_prob": 0.0806,
+            "market_price": 0.555,
+            "entry_price": 0.445,
+            "edge": 0.4744,
+            "ev": 1.066,
+            "stake": 3.56,
+            "result": "OPEN",
+            "pnl": 0,
+            "fee": 0.0,
+            "forecast_day": 1,
+            "real_temp_c": null
         }
     ],
     "created_at": "2026-06-01T00:00:00+00:00",
-    "override_note": "Correcao manual 06/06/2026 - 3 settlements errados + Jun-5 resolvidos",
+    "override_note": "Correcao final 07/06/2026 — saldo base correto $200, todos settlements verificados",
     "start_balance": 200.0,
-    "override_applied_at": "2026-06-06T20:37:44.858475+00:00"
+    "override_applied_at": "2026-06-07T21:49:50.588678+00:00"
 }
