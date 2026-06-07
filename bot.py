@@ -127,6 +127,8 @@ def process_city(city: Dict):
 
             forecast_c, sigma, bias = forecast_result
 
+            condition  = m.get("condition", "above").upper()
+
             cons = consensus_engine.consensus_temperature(
                 city["lat"], city["lon"], date_str, forecast_c,
                 condition=condition,
@@ -134,8 +136,6 @@ def process_city(city: Dict):
             if not cons["consensus"]:
                 logger.info(f"{name}: {cons['reason']}")
                 continue
-
-            condition  = m.get("condition", "above").upper()
             target     = float(m.get("target", 0))
             unit       = m.get("unit", "C")
             yes_price  = float(m.get("yes_price", 0))
