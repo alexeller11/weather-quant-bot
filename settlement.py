@@ -140,10 +140,19 @@ def settle_trade(trade: Dict, bankroll_data: Dict) -> Dict:
     else:  # EXACT
         won = abs(actual_temp_c - target_c) <= 0.5
 
-    # PnL — usa entry_price correto (price_yes para YES, price_no para NO)
+    # PnL — entry_price já gravado corretamente pelo bot:
+    #   YES: entry_price = yes_price
+    #   NO:  entry_price = 1 - yes_price  (price_no)
     # Para NO: won = YES resolveu FALSO = NO ganhou
     if side == "NO":
         won = not won  # inverte: NO ganha quando YES perde
+
+    # Garante entry_price correto por side como fallback
+    if entry_price <= 0 or entry_price >= 1:
+        if side == "NO":
+            entry_price = round(1.0 - market_price, 4)
+        else:
+            entry_price = market_price
 
     if won:
         if entry_price > 0:

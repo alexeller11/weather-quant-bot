@@ -1,7 +1,20 @@
 {
-    "balance": 348.9242,
+    "balance": 425.3527,
     "start_balance": 200.0,
     "history": [
+        {
+            "market_id": "2399701_NO",
+            "city": "Toronto",
+            "type": "EXACT",
+            "target": 25.0,
+            "unit": "C",
+            "side": "NO",
+            "stake": 3.92,
+            "entry_price": 0.435,
+            "result": "LOSS",
+            "pnl": -3.92,
+            "market_date": "2026-06-02"
+        },
         {
             "market_id": "2406992",
             "city": "Seattle",
@@ -40,19 +53,6 @@
             "result": "LOSS",
             "pnl": -3.94,
             "market_date": "2026-06-03"
-        },
-        {
-            "market_id": "2399701_NO",
-            "city": "Toronto",
-            "type": "EXACT",
-            "target": 25.0,
-            "unit": "C",
-            "side": "NO",
-            "stake": 3.92,
-            "entry_price": 0.435,
-            "result": "LOSS",
-            "pnl": -3.92,
-            "market_date": "2026-06-02"
         },
         {
             "market_id": "2406981_NO",
@@ -245,9 +245,11 @@
             "side": "NO",
             "stake": 3.82,
             "entry_price": 0.425,
-            "result": "OPEN",
-            "pnl": 0,
-            "market_date": "2026-06-06"
+            "result": "WIN",
+            "pnl": 4.9884,
+            "real_temp_c": 30.0,
+            "market_date": "2026-06-06",
+            "exit_time": "2026-06-07T21:28:09.527049+00:00"
         },
         {
             "market_id": "2440781_YES",
@@ -258,9 +260,11 @@
             "side": "YES",
             "stake": 3.96,
             "entry_price": 0.055,
-            "result": "OPEN",
-            "pnl": 0,
-            "market_date": "2026-06-06"
+            "result": "LOSS",
+            "pnl": -3.96,
+            "real_temp_c": 26.8,
+            "market_date": "2026-06-06",
+            "exit_time": "2026-06-07T21:28:11.324959+00:00"
         },
         {
             "market_id": "2440915_NO",
@@ -271,9 +275,11 @@
             "side": "NO",
             "stake": 3.85,
             "entry_price": 0.385,
-            "result": "OPEN",
-            "pnl": 0,
-            "market_date": "2026-06-06"
+            "result": "WIN",
+            "pnl": 5.95,
+            "real_temp_c": 23.0,
+            "market_date": "2026-06-06",
+            "exit_time": "2026-06-07T21:28:12.574718+00:00"
         },
         {
             "market_id": "2440776_NO",
@@ -284,9 +290,11 @@
             "side": "NO",
             "stake": 3.69,
             "entry_price": 0.41,
-            "result": "OPEN",
-            "pnl": 0,
-            "market_date": "2026-06-06"
+            "result": "WIN",
+            "pnl": 5.13,
+            "real_temp_c": 28.2,
+            "market_date": "2026-06-06",
+            "exit_time": "2026-06-07T21:28:14.110920+00:00"
         },
         {
             "market_id": "2440777_YES",
@@ -297,9 +305,11 @@
             "side": "YES",
             "stake": 4.0,
             "entry_price": 0.08,
-            "result": "OPEN",
-            "pnl": 0,
-            "market_date": "2026-06-06"
+            "result": "WIN",
+            "pnl": 45.0,
+            "real_temp_c": 28.2,
+            "market_date": "2026-06-06",
+            "exit_time": "2026-06-07T21:28:15.358946+00:00"
         },
         {
             "market_id": "2450061_YES",
@@ -342,6 +352,6 @@
         }
     ],
     "created_at": "2026-06-01T00:00:00+00:00",
-    "override_applied_at": "2026-06-06T20:37:44.858475+00:00",
-    "override_note": "Correcao manual 06/06/2026 - 3 settlements errados + Jun-5 resolvidos"
+    "override_applied_at": "2026-06-07T21:49:50.588678+00:00",
+    "override_note": "Correcao final 07/06/2026 — saldo base correto $200, todos settlements verificados"
 }
