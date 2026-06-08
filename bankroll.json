@@ -1,5 +1,5 @@
 {
-    "balance": 421.7027,
+    "balance": 421.5727,
     "start_balance": 200.0,
     "history": [
         {
@@ -355,7 +355,7 @@
             "city": "Paris",
             "question": "Will the highest temperature in Paris be 22°C on June 8?",
             "market_date": "2026-06-08",
-            "entry_time": "2026-06-08T12:41:42.381760",
+            "entry_time": "2026-06-08T12:42:19.444182",
             "exit_time": null,
             "type": "EXACT",
             "side": "NO",
@@ -367,11 +367,11 @@
             "sigma_total": 4.0,
             "shares": 9,
             "model_prob": 0.099,
-            "market_price": 0.595,
-            "entry_price": 0.405,
-            "edge": 0.496,
-            "ev": 1.2247,
-            "stake": 3.65,
+            "market_price": 0.58,
+            "entry_price": 0.42,
+            "edge": 0.481,
+            "ev": 1.1453,
+            "stake": 3.78,
             "result": "OPEN",
             "pnl": 0,
             "fee": 0.0,
