@@ -1,5 +1,5 @@
 {
-    "balance": 421.6027,
+    "balance": 421.6527,
     "history": [
         {
             "pnl": -3.92,
@@ -354,7 +354,7 @@
             "city": "Milan",
             "question": "Will the highest temperature in Milan be 28°C on June 8?",
             "market_date": "2026-06-08",
-            "entry_time": "2026-06-08T14:22:42.462562",
+            "entry_time": "2026-06-08T14:23:07.219275",
             "exit_time": null,
             "type": "EXACT",
             "side": "NO",
@@ -366,11 +366,11 @@
             "sigma_total": 4.0,
             "shares": 10,
             "model_prob": 0.0936,
-            "market_price": 0.625,
-            "entry_price": 0.375,
-            "edge": 0.5314,
-            "ev": 1.4171,
-            "stake": 3.75,
+            "market_price": 0.63,
+            "entry_price": 0.37,
+            "edge": 0.5364,
+            "ev": 1.4497,
+            "stake": 3.7,
             "result": "OPEN",
             "pnl": 0,
             "fee": 0.0,
