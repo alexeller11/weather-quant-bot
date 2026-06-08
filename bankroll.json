@@ -1,5 +1,5 @@
 {
-    "balance": 405.5527,
+    "balance": 413.7027,
     "history": [
         {
             "pnl": -3.92,
@@ -311,52 +311,43 @@
             "real_temp_c": 28.2
         },
         {
-            "pnl": -3.96,
+            "pnl": 0,
             "city": "Toronto",
             "side": "YES",
             "type": "EXACT",
             "unit": "C",
             "stake": 3.96,
-            "result": "LOSS",
+            "result": "OPEN",
             "target": 23.0,
             "market_id": "2450061_YES",
             "entry_price": 0.09,
-            "market_date": "2026-06-07",
-            "fee": 0.0,
-            "real_temp_c": 23.6,
-            "exit_time": "2026-06-08T23:07:56.105105+00:00"
+            "market_date": "2026-06-07"
         },
         {
-            "pnl": -4.0,
+            "pnl": 0,
             "city": "Toronto",
             "side": "YES",
             "type": "EXACT",
             "unit": "C",
             "stake": 4.0,
-            "result": "LOSS",
+            "result": "OPEN",
             "target": 28.0,
             "market_id": "2450066_YES",
             "entry_price": 0.085,
-            "market_date": "2026-06-07",
-            "fee": 0.0,
-            "real_temp_c": 23.6,
-            "exit_time": "2026-06-08T23:07:57.562624+00:00"
+            "market_date": "2026-06-07"
         },
         {
-            "pnl": -3.96,
+            "pnl": 0,
             "city": "Toronto",
             "side": "YES",
             "type": "EXACT",
             "unit": "C",
             "stake": 3.96,
-            "result": "LOSS",
+            "result": "OPEN",
             "target": 29.0,
             "market_id": "2450067_YES",
             "entry_price": 0.055,
-            "market_date": "2026-06-07",
-            "fee": 0.0,
-            "real_temp_c": 23.6,
-            "exit_time": "2026-06-08T23:07:59.548824+00:00"
+            "market_date": "2026-06-07"
         },
         {
             "ev": 1.1135,
@@ -413,6 +404,34 @@
             "sigma_total": 4.0,
             "forecast_day": 1,
             "market_price": 0.64
+        },
+        {
+            "market_id": "2466847_YES",
+            "city": "Toronto",
+            "question": "Will the highest temperature in Toronto be 24°C or below on June 9?",
+            "market_date": "2026-06-09",
+            "entry_time": "2026-06-08T23:09:36.971767",
+            "exit_time": null,
+            "type": "BELOW",
+            "side": "YES",
+            "unit": "C",
+            "target": 24.0,
+            "target_lo": null,
+            "target_hi": null,
+            "forecast_c": 20.6,
+            "sigma_total": 4.0,
+            "shares": 13,
+            "model_prob": 0.8023,
+            "market_price": 0.29,
+            "entry_price": 0.29,
+            "edge": 0.5123,
+            "ev": 1.7667,
+            "stake": 3.77,
+            "result": "OPEN",
+            "pnl": 0,
+            "fee": 0.0,
+            "forecast_day": 1,
+            "real_temp_c": null
         }
     ],
     "created_at": "2026-06-01T00:00:00+00:00",
