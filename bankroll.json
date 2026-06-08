@@ -354,7 +354,7 @@
             "city": "Madrid",
             "question": "Will the highest temperature in Madrid be 34°C on June 8?",
             "market_date": "2026-06-08",
-            "entry_time": "2026-06-08T06:38:20.191393",
+            "entry_time": "2026-06-08T06:40:27.127843",
             "exit_time": null,
             "type": "EXACT",
             "side": "NO",
