@@ -355,7 +355,7 @@
             "city": "Paris",
             "question": "Will the highest temperature in Paris be 22°C on June 8?",
             "market_date": "2026-06-08",
-            "entry_time": "2026-06-08T15:05:31.511339",
+            "entry_time": "2026-06-08T15:06:04.236424",
             "exit_time": null,
             "type": "EXACT",
             "side": "NO",
