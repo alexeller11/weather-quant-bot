@@ -410,7 +410,7 @@
             "city": "Toronto",
             "question": "Will the highest temperature in Toronto be 24°C or below on June 9?",
             "market_date": "2026-06-09",
-            "entry_time": "2026-06-08T23:48:41.813387",
+            "entry_time": "2026-06-08T23:49:42.046223",
             "exit_time": null,
             "type": "BELOW",
             "side": "YES",
