@@ -1,5 +1,5 @@
 {
-    "balance": 409.8127,
+    "balance": 413.7327,
     "history": [
         {
             "pnl": -3.92,
@@ -406,39 +406,11 @@
             "market_price": 0.64
         },
         {
-            "ev": 1.9622,
-            "fee": 0.0,
-            "pnl": 0,
-            "city": "Toronto",
-            "edge": 0.4807,
-            "side": "YES",
-            "type": "BELOW",
-            "unit": "C",
-            "stake": 3.92,
-            "result": "OPEN",
-            "shares": 16,
-            "target": 24.0,
-            "question": "Will the highest temperature in Toronto be 24°C or below on June 9?",
-            "exit_time": null,
-            "market_id": "2466847_YES",
-            "target_hi": null,
-            "target_lo": null,
-            "entry_time": "2026-06-08T19:26:50.814475",
-            "forecast_c": 21.6,
-            "model_prob": 0.7257,
-            "entry_price": 0.245,
-            "market_date": "2026-06-09",
-            "real_temp_c": null,
-            "sigma_total": 4.0,
-            "forecast_day": 1,
-            "market_price": 0.245
-        },
-        {
             "market_id": "2459888_NO",
             "city": "Madrid",
             "question": "Will the highest temperature in Madrid be 33°C on June 9?",
             "market_date": "2026-06-09",
-            "entry_time": "2026-06-08T19:26:57.227500",
+            "entry_time": "2026-06-08T19:27:48.575596",
             "exit_time": null,
             "type": "EXACT",
             "side": "NO",
