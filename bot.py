@@ -81,6 +81,27 @@ def process_city(city: Dict):
 
     logger.info(f"{name}: {len(markets)} mercados válidos encontrados")
 
+    # Pré-busca forecasts por day_offset — UMA chamada por dia, não uma por mercado
+    # Evita rate limit 429 na Open-Meteo quando há muitos mercados por cidade
+    from datetime import timezone as _tz
+    today_utc = datetime.now(_tz.utc).date()
+
+    forecast_cache = {}  # day_offset -> (forecast_c, sigma, bias)
+    for m in markets:
+        date_str = m.get("market_date", "")
+        try:
+            mdate      = datetime.strptime(date_str, "%Y-%m-%d").date()
+            day_offset = max(1, (mdate - today_utc).days)
+        except Exception:
+            day_offset = 1
+        if day_offset not in forecast_cache:
+            result = get_corrected_forecast(city_slug, day_offset)
+            forecast_cache[day_offset] = result
+            if result is None or result[0] is None:
+                logger.debug(f"Forecast indisponível para {name} D+{day_offset}")
+            else:
+                logger.debug(f"Forecast {name} D+{day_offset}: {result[0]:.1f}°C sigma={result[1]:.2f}")
+
     data    = load_bankroll()
     history = data.get("history", [])
     balance = float(data.get("balance", 0))
@@ -109,20 +130,18 @@ def process_city(city: Dict):
 
             date_str = market_date if isinstance(market_date, str) else str(market_date)
 
-            # Fix: calcula day_offset ANTES de buscar forecast para usar sigma correto
+            # Calcula day_offset
             day_offset = 1
             try:
-                from datetime import timezone as _tz
                 mdate      = datetime.strptime(date_str, "%Y-%m-%d").date()
-                today_utc  = datetime.now(_tz.utc).date()
-                day_offset = max(0, (mdate - today_utc).days)
-                day_offset = max(1, day_offset)
+                day_offset = max(1, (mdate - today_utc).days)
             except Exception:
                 pass
 
-            forecast_result = get_corrected_forecast(city_slug, day_offset)
+            # Usa forecast do cache — sem nova chamada à API
+            forecast_result = forecast_cache.get(day_offset)
             if forecast_result is None or forecast_result[0] is None:
-                logger.debug(f"Forecast indisponível para {name}")
+                logger.debug(f"Forecast indisponível para {name} D+{day_offset}")
                 continue
 
             forecast_c, sigma, bias = forecast_result
