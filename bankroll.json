@@ -1,5 +1,5 @@
 {
-    "balance": 413.6227,
+    "balance": 413.5227,
     "history": [
         {
             "pnl": -3.92,
@@ -410,7 +410,7 @@
             "city": "Madrid",
             "question": "Will the highest temperature in Madrid be 33°C on June 9?",
             "market_date": "2026-06-09",
-            "entry_time": "2026-06-09T00:50:53.049206",
+            "entry_time": "2026-06-09T00:52:59.975059",
             "exit_time": null,
             "type": "EXACT",
             "side": "NO",
@@ -422,11 +422,11 @@
             "sigma_total": 4.0,
             "shares": 10,
             "model_prob": 0.0928,
-            "market_price": 0.615,
-            "entry_price": 0.385,
-            "edge": 0.5222,
-            "ev": 1.3565,
-            "stake": 3.85,
+            "market_price": 0.605,
+            "entry_price": 0.395,
+            "edge": 0.5122,
+            "ev": 1.2968,
+            "stake": 3.95,
             "result": "OPEN",
             "pnl": 0,
             "fee": 0.0,
