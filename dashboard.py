@@ -9,8 +9,6 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 
 PORT = int(os.environ.get("PORT", 8765))
 
-# ── Carrega dados ─────────────────────────────────────────────────────────────
-
 def load_data():
     errors = []
     db_url = os.environ.get("DATABASE_URL")
@@ -156,7 +154,6 @@ def build_stats(data):
             city_stats[c]["open_stake"] += float(t.get("stake") or 0)
         city_stats[c]["stake"] += float(t.get("stake") or 0)
 
-    # Por tipo (ABOVE / BELOW / EXACT)
     type_stats = {}
     for t in closed:
         tp = (t.get("type") or "?").upper()
@@ -168,7 +165,6 @@ def build_stats(data):
             type_stats[tp]["losses"] += 1
         type_stats[tp]["pnl"] += float(t.get("pnl") or 0)
 
-    # Equity curve + drawdown
     equity_curve = []
     running = float(start)
     eq_vals = [running]
@@ -192,14 +188,11 @@ def build_stats(data):
         _prob_yes = float(_t.get("model_prob") or 0)
         _side = (_t.get("side") or "YES").upper()
         _outcome = 1.0 if _t.get("result") == "WIN" else 0.0
-        # Para NO: probabilidade apostada é prob_no = 1 - prob_yes
         _prob_aposta = (1.0 - _prob_yes) if _side == "NO" else _prob_yes
         brier_scores.append((_prob_aposta - _outcome) ** 2)
     brier = round(sum(brier_scores)/len(brier_scores),4) if brier_scores else None
 
     avg_edge = round(sum(float(t.get("edge") or 0) for t in history)/len(history)*100,2) if history else 0
-
-    # Rolling win rate (last 10)
     wr10 = _rolling_winrate(closed, 10)
 
     return {
@@ -232,7 +225,6 @@ def build_stats(data):
         "updated":        datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
     }
 
-# ── HTML ──────────────────────────────────────────────────────────────────────
 
 HTML = r"""<!DOCTYPE html>
 <html lang="pt">
@@ -525,52 +517,37 @@ function sign(v){return v>=0?'+':''}
 function updateKPIs(){
   const d=DATA;
   const pnlPct=d.start_balance>0?((d.balance-d.start_balance)/d.start_balance*100).toFixed(1):0;
-
-  // Saldo
   document.getElementById('kBalance').textContent='$'+d.balance.toFixed(2);
   document.getElementById('kBalanceSub').textContent=sign(d.balance-d.start_balance)+'$'+(d.balance-d.start_balance).toFixed(2)+' vs início';
   const barW=Math.min(100,Math.max(0,(d.balance/d.start_balance)*100));
   document.getElementById('kBalanceBar').style.width=barW+'%';
-
-  // PnL
   const pnlEl=document.getElementById('kPnl');
   pnlEl.textContent=sign(d.pnl)+'$'+Math.abs(d.pnl).toFixed(2);
   pnlEl.style.color=d.pnl>=0?'var(--green)':'var(--red)';
   document.getElementById('kPnlSub').textContent=sign(parseFloat(pnlPct))+pnlPct+'% retorno';
-
-  // Win Rate
   document.getElementById('kWR').textContent=d.win_rate+'%';
   document.getElementById('kWRSub').textContent=d.wins+'W / '+d.losses+'L ('+d.total_closed+' trades)';
-
-  // Profit Factor
   const pfEl=document.getElementById('kPF');
   if(d.profit_factor!==null&&d.profit_factor!==undefined){
     pfEl.textContent=d.profit_factor.toFixed(2)+'×';
     pfEl.style.color=d.profit_factor>=1.5?'var(--green)':d.profit_factor>=1.0?'var(--amber)':'var(--red)';
   }else{pfEl.textContent='N/A';pfEl.style.color='var(--muted)'}
-
-  // Max Drawdown
   const mddEl=document.getElementById('kMDD');
   mddEl.textContent=(d.max_drawdown||0).toFixed(1)+'%';
   mddEl.style.color=d.max_drawdown>50?'var(--red)':d.max_drawdown>25?'var(--amber)':'var(--green)';
-
-  // Sharpe
   const shrEl=document.getElementById('kSharpe');
   if(d.sharpe!==null&&d.sharpe!==undefined){
     shrEl.textContent=d.sharpe.toFixed(2);
     shrEl.style.color=d.sharpe>=1?'var(--green)':d.sharpe>=0?'var(--amber)':'var(--red)';
   }else{shrEl.textContent='N/A';shrEl.style.color='var(--muted)'}
-
-  // Info bar
   document.getElementById('iOpen').textContent=d.open_count+' ($'+d.exposure.toFixed(2)+')';
   document.getElementById('iEdge').textContent=sign(d.avg_edge)+d.avg_edge.toFixed(1)+'%';
   document.getElementById('iBrier').textContent=d.brier!==null&&d.brier!==undefined?d.brier:'N/A';
-  document.getElementById('iWR10').textContent=d.win_rate_10!==null&&d.win_rate_10!==undefined?d.win_rate_10+'%':'N/A';
   const wr10El=document.getElementById('iWR10');
   if(d.win_rate_10!==null&&d.win_rate_10!==undefined){
     wr10El.textContent=d.win_rate_10+'%';
     wr10El.style.color=d.win_rate_10>=55?'var(--green)':d.win_rate_10>=45?'var(--amber)':'var(--red)';
-  }
+  }else{wr10El.textContent='N/A'}
 }
 
 function buildCityChips(){
@@ -692,10 +669,13 @@ function updateTables(){
   const open=filteredOpen();
   document.getElementById('openCount').textContent=open.length+' posições';
   const ob=document.getElementById('openBody');
-  if(!open.length){ob.innerHTML='<tr><td colspan="8" class="empty">Nenhuma posição aberta</td></tr>';return}
+  if(!open.length){ob.innerHTML='<tr><td colspan="9" class="empty">Nenhuma posição aberta</td></tr>';return}
   ob.innerHTML=open.map(t=>{
     const side=t.side||'YES';
-    const probAposta=side==='NO'?Math.round((1-(t.model_prob||0))*100):Math.round((t.model_prob||0)*100);
+    // FIX: mostra — quando model_prob ausente (trades antigos sem esse campo)
+    const probAposta=t.model_prob!=null?(side==='NO'?Math.round((1-t.model_prob)*100):Math.round(t.model_prob*100)):null;
+    const probStr=probAposta!=null?probAposta+'%':'—';
+    const probWidth=probAposta!=null?probAposta:0;
     const entryPct=Math.round((t.entry_price||t.market_price||0)*100);
     const edge=((t.edge||0)*100).toFixed(1);
     const cls=parseFloat(edge)>=0?'edge-pos':'edge-neg';
@@ -706,7 +686,7 @@ function updateTables(){
       <td><b style="color:${sideClr}">${side}</b></td>
       <td style="color:var(--amber)">${t.type||'—'}</td>
       <td>$${(t.stake||0).toFixed(2)}</td>
-      <td><div class="prob-bar-row"><div class="prob-bar-bg"><div class="prob-bar-fill" style="width:${probAposta}%"></div></div><span>${probAposta}%</span></div></td>
+      <td><div class="prob-bar-row"><div class="prob-bar-bg"><div class="prob-bar-fill" style="width:${probWidth}%"></div></div><span>${probStr}</span></div></td>
       <td>${entryPct}%</td>
       <td class="${cls}">${parseFloat(edge)>=0?'+':''}${edge}%</td>
       <td style="color:var(--muted);font-size:11px">${(t.question||'').substring(0,50)}…</td>
@@ -715,13 +695,15 @@ function updateTables(){
   const closed=filteredClosed();
   document.getElementById('closedCount').textContent=closed.length+' trades';
   const cb=document.getElementById('closedBody');
-  if(!closed.length){cb.innerHTML='<tr><td colspan="9" class="empty">Nenhum trade fechado</td></tr>';return}
+  if(!closed.length){cb.innerHTML='<tr><td colspan="10" class="empty">Nenhum trade fechado</td></tr>';return}
   cb.innerHTML=closed.map(t=>{
     const isWin=t.result==='WIN';
     const pnl=t.pnl||0;
     const temp=t.real_temp_c!=null?t.real_temp_c.toFixed(1)+'°C':'—';
     const side=t.side||'YES';
-    const probAposta=side==='NO'?Math.round((1-(t.model_prob||0))*100):Math.round((t.model_prob||0)*100);
+    // FIX: mostra — quando model_prob ausente
+    const probAposta=t.model_prob!=null?(side==='NO'?Math.round((1-t.model_prob)*100):Math.round(t.model_prob*100)):null;
+    const probStr=probAposta!=null?probAposta+'%':'—';
     const entryPct=Math.round((t.entry_price||t.market_price||0)*100);
     const sideClr=side==='NO'?'var(--amber)':'var(--cyan)';
     return`<tr>
@@ -732,7 +714,7 @@ function updateTables(){
       <td style="color:var(--muted)">${t.type||''} ${t.target||''}°${t.unit||'C'}</td>
       <td>$${(t.stake||0).toFixed(2)}</td>
       <td class="${pnl>=0?'badge-win':'badge-loss'}" style="font-weight:600">${pnl>=0?'+':''}$${Math.abs(pnl).toFixed(2)}</td>
-      <td>${probAposta}%</td>
+      <td>${probStr}</td>
       <td>${entryPct}%</td>
       <td style="color:var(--cyan)">${temp}</td>
     </tr>`}).join('');
