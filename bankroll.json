@@ -410,7 +410,7 @@
             "city": "Seoul",
             "question": "Will the highest temperature in Seoul be 24°C on June 9?",
             "market_date": "2026-06-09",
-            "entry_time": "2026-06-09T03:52:32.741468",
+            "entry_time": "2026-06-09T03:53:14.024896",
             "exit_time": null,
             "type": "EXACT",
             "side": "NO",
