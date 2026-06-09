@@ -1,5 +1,5 @@
 {
-    "balance": 409.9227,
+    "balance": 413.7727,
     "history": [
         {
             "pnl": -3.92,
@@ -406,39 +406,11 @@
             "market_price": 0.64
         },
         {
-            "ev": 1.3612,
-            "fee": 0.0,
-            "pnl": 0,
-            "city": "Seoul",
-            "edge": 0.5241,
-            "side": "NO",
-            "type": "EXACT",
-            "unit": "C",
-            "stake": 3.85,
-            "result": "OPEN",
-            "shares": 10,
-            "target": 25.0,
-            "question": "Will the highest temperature in Seoul be 25°C on June 9?",
-            "exit_time": null,
-            "market_id": "2459770_NO",
-            "target_hi": null,
-            "target_lo": null,
-            "entry_time": "2026-06-09T03:43:03.559174",
-            "forecast_c": 26.7,
-            "model_prob": 0.0909,
-            "entry_price": 0.385,
-            "market_date": "2026-06-09",
-            "real_temp_c": null,
-            "sigma_total": 4.0,
-            "forecast_day": 1,
-            "market_price": 0.615
-        },
-        {
             "market_id": "2459888_NO",
             "city": "Madrid",
             "question": "Will the highest temperature in Madrid be 33°C on June 9?",
             "market_date": "2026-06-09",
-            "entry_time": "2026-06-09T03:43:44.672644",
+            "entry_time": "2026-06-09T03:45:53.769686",
             "exit_time": null,
             "type": "EXACT",
             "side": "NO",
