@@ -1,5 +1,5 @@
 {
-    "balance": 409.9227,
+    "balance": 413.7827,
     "history": [
         {
             "pnl": -3.92,
@@ -406,39 +406,11 @@
             "market_price": 0.64
         },
         {
-            "ev": 4.8304,
-            "fee": 0.0,
-            "pnl": 0,
-            "city": "Tokyo",
-            "edge": 0.7463,
-            "side": "NO",
-            "type": "EXACT",
-            "unit": "C",
-            "stake": 3.86,
-            "result": "OPEN",
-            "shares": 25,
-            "target": 22.0,
-            "question": "Will the highest temperature in Tokyo be 22°C on June 9?",
-            "exit_time": null,
-            "market_id": "2459831_NO",
-            "target_hi": null,
-            "target_lo": null,
-            "entry_time": "2026-06-09T08:49:20.912210",
-            "forecast_c": 21.7,
-            "model_prob": 0.0992,
-            "entry_price": 0.1545,
-            "market_date": "2026-06-09",
-            "real_temp_c": null,
-            "sigma_total": 4.0,
-            "forecast_day": 1,
-            "market_price": 0.8455
-        },
-        {
             "market_id": "2459888_NO",
             "city": "Madrid",
             "question": "Will the highest temperature in Madrid be 33°C on June 9?",
             "market_date": "2026-06-09",
-            "entry_time": "2026-06-09T08:50:10.072041",
+            "entry_time": "2026-06-09T08:52:13.337702",
             "exit_time": null,
             "type": "EXACT",
             "side": "NO",
