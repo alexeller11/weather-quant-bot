@@ -1,5 +1,5 @@
 {
-    "balance": 409.6827,
+    "balance": 413.4727,
     "history": [
         {
             "pnl": -3.92,
@@ -406,39 +406,11 @@
             "market_price": 0.64
         },
         {
-            "ev": 1.6209,
-            "fee": 0.0,
-            "pnl": 0,
-            "city": "Madrid",
-            "edge": 0.5592,
-            "side": "NO",
-            "type": "EXACT",
-            "unit": "C",
-            "stake": 3.79,
-            "result": "OPEN",
-            "shares": 11,
-            "target": 33.0,
-            "question": "Will the highest temperature in Madrid be 33°C on June 9?",
-            "exit_time": null,
-            "market_id": "2459888_NO",
-            "target_hi": null,
-            "target_lo": null,
-            "entry_time": "2026-06-09T14:33:48.314699",
-            "forecast_c": 31.9,
-            "model_prob": 0.0958,
-            "entry_price": 0.345,
-            "market_date": "2026-06-09",
-            "real_temp_c": null,
-            "sigma_total": 4.0,
-            "forecast_day": 1,
-            "market_price": 0.655
-        },
-        {
             "market_id": "2459875_NO",
             "city": "Milan",
             "question": "Will the highest temperature in Milan be 27°C on June 9?",
             "market_date": "2026-06-09",
-            "entry_time": "2026-06-09T14:33:53.989269",
+            "entry_time": "2026-06-09T14:34:41.794679",
             "exit_time": null,
             "type": "EXACT",
             "side": "NO",
