@@ -414,7 +414,7 @@
             "question": "Will the highest temperature in Sao Paulo be 24°C on June 10?",
             "market_date": "2026-06-10",
             "event_slug": "highest-temperature-in-sao-paulo-on-june-10-2026",
-            "entry_time": "2026-06-10T17:35:35.531602",
+            "entry_time": "2026-06-10T17:36:46.380776",
             "exit_time": null,
             "type": "EXACT",
             "side": "NO",
