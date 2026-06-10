@@ -7,6 +7,8 @@ import os, json, base64
 from datetime import datetime, timezone
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
+from bankroll import dedupe_history_by_market
+
 PORT = int(os.environ.get("PORT", 8765))
 
 def load_data():
@@ -124,7 +126,8 @@ def _rolling_winrate(closed, window=10):
 
 
 def build_stats(data):
-    history  = data.get("history", [])
+    raw_history = data.get("history", [])
+    history = dedupe_history_by_market(raw_history)
     balance  = data.get("balance", 0)
     start    = data.get("start_balance", 50)
     closed   = sorted(
@@ -222,6 +225,7 @@ def build_stats(data):
         "open_trades":    open_t,
         "closed_trades":  list(reversed(closed))[:50],
         "all_trades":     history,
+        "duplicate_trades_hidden": max(0, len(raw_history) - len(history)),
         "updated":        datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
     }
 

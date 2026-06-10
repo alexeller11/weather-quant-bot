@@ -1,39 +1,44 @@
 #!/usr/bin/env python3
 """
-bot.py — Weather Quant Bot v5.5
+bot.py — Weather Quant Bot v5.6
 
-v5.5: Correções de bugs
-v5.4: Suporte a apostas NO
-- Após avaliar YES, avalia também NO para cada mercado
-- NO: apostamos quando mercado paga muito para YES mas modelo discorda
-- Exemplos: Toronto ABOVE 28°C mkt=0.725 prob=0.21 → NO edge=0.51
-            Miami BELOW 85°F mkt=0.914 prob=0.23 → NO edge=0.68
+v5.6: Correções estruturais
+- Chaves canônicas para evitar duplicidade de mercados e trades
+- Slug de cidade normalizado (São Paulo -> sao-paulo)
+- Day offset corrigido (hoje = 1, amanhã = 2)
+- Deduplicação de mercados repetidos vindos da Gamma API
+- Histórico deduplicado para cálculo de risco / Kelly
 """
 
-import logging, time, json, os, sys, schedule
+import logging
+import time
+import os
+import sys
+import schedule
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+from bankroll import (
+    load_bankroll,
+    save_bankroll,
+    already_traded,
+    dedupe_history_by_market,
+    canonical_market_base,
+    normalize_city_slug,
 )
-logger = logging.getLogger("bot")
-
-from gamma_parser import fetch_markets
-from forecast import get_corrected_forecast
-from model import calculate_probability
-from risk import (
-    kelly_criterion, kelly_criterion_no,
-    check_guardrails, dynamic_kelly_fraction,
-)
-
-from bankroll import load_bankroll, save_bankroll, already_traded
-from settlement import settle_all
-from notificador import notificar_entrada_trade, iniciar_listener
 from consensus import ConsensusEngine
-from station_data import get_intraday_confirmation, city_is_reliable
-
+from forecast import get_corrected_forecast
+from gamma_parser import fetch_markets
+from model import calculate_probability
+from notificador import iniciar_listener, notificar_entrada_trade
+from risk import (
+    check_guardrails,
+    dynamic_kelly_fraction,
+    kelly_criterion,
+    kelly_criterion_no,
+)
+from settlement import settle_all
+from station_data import city_is_reliable, get_intraday_confirmation
 from config import (
     TRADING_ENABLED,
     MAX_OPEN_TRADES,
@@ -41,6 +46,12 @@ from config import (
     MAX_POSITION,
     CITIES,
 )
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger("bot")
 
 consensus_engine = ConsensusEngine()
 cities = CITIES
@@ -50,20 +61,30 @@ if not cities:
     sys.exit(1)
 
 logger.info(
-    f"Weather Quant Bot v5.5 | {len(cities)} cidades | "
+    f"Weather Quant Bot v5.6 | {len(cities)} cidades | "
     f"Trading: {'ON' if TRADING_ENABLED else 'OFF (observação)'}"
 )
 
 
 def _get_open_trades(history):
-    return [t for t in history if t.get("result") == "OPEN"]
+    history_view = dedupe_history_by_market(history)
+    return [t for t in history_view if t.get("result") == "OPEN"]
+
+
+def _forecast_day_for_market(market_date: str, today_utc: datetime.date) -> int:
+    try:
+        mdate = datetime.strptime(market_date, "%Y-%m-%d").date()
+        # Hoje = 1, amanhã = 2, etc.
+        return max(1, (mdate - today_utc).days + 1)
+    except Exception:
+        return 1
 
 
 def process_city(city: Dict):
     name = city["name"]
     logger.info(f"Processando: {name}")
 
-    city_slug = name.lower().replace(" ", "-")
+    city_slug = normalize_city_slug(name)
 
     if not city_is_reliable(city_slug):
         logger.info(f"{name}: cidade não confiável — pulando")
@@ -81,88 +102,97 @@ def process_city(city: Dict):
 
     logger.info(f"{name}: {len(markets)} mercados válidos encontrados")
 
-    # Pré-busca forecasts por day_offset — UMA chamada por dia, não uma por mercado
-    # Evita rate limit 429 na Open-Meteo quando há muitos mercados por cidade
     from datetime import timezone as _tz
     today_utc = datetime.now(_tz.utc).date()
 
-    forecast_cache = {}  # day_offset -> (forecast_c, sigma, bias)
+    forecast_cache = {}  # forecast_day -> (forecast_c, sigma, bias)
     for m in markets:
-        date_str = m.get("market_date", "")
-        try:
-            mdate      = datetime.strptime(date_str, "%Y-%m-%d").date()
-            day_offset = max(1, (mdate - today_utc).days)
-        except Exception:
-            day_offset = 1
-        if day_offset not in forecast_cache:
-            result = get_corrected_forecast(city_slug, day_offset)
-            forecast_cache[day_offset] = result
+        date_str = str(m.get("market_date", ""))
+        forecast_day = _forecast_day_for_market(date_str, today_utc)
+        if forecast_day not in forecast_cache:
+            result = get_corrected_forecast(city_slug, forecast_day)
+            forecast_cache[forecast_day] = result
             if result is None or result[0] is None:
-                logger.debug(f"Forecast indisponível para {name} D+{day_offset}")
+                logger.debug(f"Forecast indisponível para {name} D+{forecast_day-1}")
             else:
-                logger.debug(f"Forecast {name} D+{day_offset}: {result[0]:.1f}°C sigma={result[1]:.2f}")
+                logger.debug(
+                    f"Forecast {name} D+{forecast_day-1}: {result[0]:.1f}°C sigma={result[1]:.2f}"
+                )
 
-    data    = load_bankroll()
+    data = load_bankroll()
     history = data.get("history", [])
+    history_view = dedupe_history_by_market(history)
     balance = float(data.get("balance", 0))
 
+    seen_market_keys = set()
+
     for m in markets:
         try:
-            market_date = m.get("market_date", "")
-            market_id   = str(m.get("market_id", ""))
+            market_date = str(m.get("market_date", ""))
+            condition = str(m.get("condition", "above")).upper()
+            target = float(m.get("target", 0))
+            unit = str(m.get("unit", "C")).upper()
+            target_lo = m.get("target_lo")
+            target_hi = m.get("target_hi")
+            market_base = str(
+                m.get("market_id")
+                or canonical_market_base(
+                    city=name,
+                    market_date=market_date,
+                    condition=condition,
+                    target=target,
+                    unit=unit,
+                    target_lo=target_lo,
+                    target_hi=target_hi,
+                )
+            )
 
-            # Checagem de duplicata — cobre IDs com sufixo _YES/_NO e sem sufixo (trades antigos)
-            yes_traded = already_traded(history, market_id + "_YES") or already_traded(history, market_id)
-            no_traded  = already_traded(history, market_id + "_NO")
+            if market_base in seen_market_keys:
+                logger.debug(f"{name}: mercado duplicado no ciclo — {market_base}")
+                continue
+            seen_market_keys.add(market_base)
+
+            yes_trade_id = f"{market_base}_YES"
+            no_trade_id = f"{market_base}_NO"
+
+            yes_traded = already_traded(history, yes_trade_id)
+            no_traded = already_traded(history, no_trade_id)
             if yes_traded and no_traded:
-                logger.debug(f"Já negociado (ambos lados): {market_id}")
+                logger.debug(f"Já negociado (ambos lados): {market_base}")
                 continue
 
-            open_count = len(_get_open_trades(history))
+            open_count = len(_get_open_trades(history_view))
             if open_count >= MAX_OPEN_TRADES:
                 logger.info(f"Limite de {MAX_OPEN_TRADES} trades abertos atingido")
                 break
 
-            exposure = sum(float(t.get("stake", 0)) for t in _get_open_trades(history))
+            exposure = sum(float(t.get("stake", 0)) for t in _get_open_trades(history_view))
             if exposure >= MAX_TOTAL_EXPOSURE:
                 logger.info(f"Exposição máxima ${MAX_TOTAL_EXPOSURE:.2f} atingida")
                 break
 
-            date_str = market_date if isinstance(market_date, str) else str(market_date)
-
-            # Calcula day_offset
-            day_offset = 1
-            try:
-                mdate      = datetime.strptime(date_str, "%Y-%m-%d").date()
-                day_offset = max(1, (mdate - today_utc).days)
-            except Exception:
-                pass
-
-            # Usa forecast do cache — sem nova chamada à API
-            forecast_result = forecast_cache.get(day_offset)
+            forecast_day = _forecast_day_for_market(market_date, today_utc)
+            forecast_result = forecast_cache.get(forecast_day)
             if forecast_result is None or forecast_result[0] is None:
-                logger.debug(f"Forecast indisponível para {name} D+{day_offset}")
+                logger.debug(f"Forecast indisponível para {name} D+{forecast_day-1}")
                 continue
 
             forecast_c, sigma, bias = forecast_result
 
-            condition  = m.get("condition", "above").upper()
-
             cons = consensus_engine.consensus_temperature(
-                city["lat"], city["lon"], date_str, forecast_c,
+                city["lat"], city["lon"], market_date, forecast_c,
                 condition=condition,
             )
             if not cons["consensus"]:
                 logger.info(f"{name}: {cons['reason']}")
                 continue
-            target     = float(m.get("target", 0))
-            unit       = m.get("unit", "C")
-            yes_price  = float(m.get("yes_price", 0))
-            target_lo  = m.get("target_lo")
-            target_hi  = m.get("target_hi")
 
-            # Confirmação intra-dia para D+0
-            if day_offset <= 1 and condition in ("ABOVE", "BELOW"):
+            yes_price = float(m.get("yes_price", 0))
+            target_lo = m.get("target_lo")
+            target_hi = m.get("target_hi")
+
+            # Confirmação intra-dia para o mercado de hoje.
+            if forecast_day == 1 and condition in ("ABOVE", "BELOW"):
                 target_c_check = (target - 32) * 5 / 9 if unit == "F" else target
                 intra = get_intraday_confirmation(city_slug, condition, target_c_check)
                 if intra["confirmed"] is False:
@@ -171,12 +201,11 @@ def process_city(city: Dict):
                 if intra["confirmed"] is True:
                     logger.info(f"{name}: intra-dia POSITIVO — {intra['reason']}")
 
-            # Calcula probabilidade
             prob = calculate_probability(
                 city=name,
                 target_temp=target,
                 forecast_temp=forecast_c,
-                day_offset=day_offset,
+                day_offset=forecast_day,
                 condition=condition,
                 unit=unit,
                 sigma=sigma,
@@ -185,7 +214,7 @@ def process_city(city: Dict):
             )
 
             edge_yes = prob - yes_price
-            edge_no  = yes_price - prob  # NO edge: quanto mkt paga a mais
+            edge_no  = yes_price - prob
 
             logger.info(
                 f"  {condition} {target}°{unit} | "
@@ -198,39 +227,40 @@ def process_city(city: Dict):
                 "condition":   condition,
                 "target_temp": target,
                 "price":       yes_price,
-                "day_offset":  day_offset,
+                "day_offset":  forecast_day,
                 "unit":        unit,
             }
 
             # --- AVALIAR YES ---
             if edge_yes > 0 and not yes_traded:
                 if check_guardrails(market_dict, prob, forecast_c, sigma=sigma, side="YES"):
-                    kf    = dynamic_kelly_fraction(history)
+                    kf = dynamic_kelly_fraction(history_view)
                     stake = kelly_criterion(prob, yes_price, balance, fraction=kf)
                     _execute_trade(
-                        data, history, balance, name, m, date_str, condition,
+                        data, history, balance, name, m, market_date, condition,
                         target, unit, yes_price, prob, edge_yes, stake,
-                        day_offset, sigma, forecast_c, target_lo, target_hi,
-                        market_id + "_YES", side="YES",
+                        forecast_day, sigma, forecast_c, target_lo, target_hi,
+                        yes_trade_id, side="YES",
                     )
-                    # Recarrega após trade
-                    data    = load_bankroll()
+                    data = load_bankroll()
                     history = data.get("history", [])
+                    history_view = dedupe_history_by_market(history)
                     balance = float(data.get("balance", 0))
 
             # --- AVALIAR NO ---
-            if edge_no > 0 and not already_traded(history, market_id + "_NO"):
+            if edge_no > 0 and not no_traded:
                 if check_guardrails(market_dict, prob, forecast_c, sigma=sigma, side="NO"):
-                    kf    = dynamic_kelly_fraction(history)
+                    kf = dynamic_kelly_fraction(history_view)
                     stake = kelly_criterion_no(prob, yes_price, balance, fraction=kf)
                     _execute_trade(
-                        data, history, balance, name, m, date_str, condition,
+                        data, history, balance, name, m, market_date, condition,
                         target, unit, yes_price, prob, edge_no, stake,
-                        day_offset, sigma, forecast_c, target_lo, target_hi,
-                        market_id + "_NO", side="NO",
+                        forecast_day, sigma, forecast_c, target_lo, target_hi,
+                        no_trade_id, side="NO",
                     )
-                    data    = load_bankroll()
+                    data = load_bankroll()
                     history = data.get("history", [])
+                    history_view = dedupe_history_by_market(history)
                     balance = float(data.get("balance", 0))
 
         except Exception as e:
@@ -261,34 +291,44 @@ def _execute_trade(
     if stake <= 0:
         return
 
+    market_key = trade_id
+    if market_key.endswith("_YES"):
+        market_key = market_key[:-4]
+    elif market_key.endswith("_NO"):
+        market_key = market_key[:-3]
+
     trade = dict(
-        market_id    = trade_id,
-        city         = name,
-        question     = m.get("question", ""),
-        market_date  = date_str,
-        entry_time   = datetime.utcnow().isoformat(),
-        exit_time    = None,
-        type         = condition,
-        side         = side,
-        unit         = unit,
-        target       = target,
-        target_lo    = target_lo,
-        target_hi    = target_hi,
-        forecast_c   = forecast_c,
-        sigma_total  = round(sigma, 4),
-        shares       = shares,
-        model_prob   = round(prob, 4),
-        market_price = yes_price,
-        entry_price  = entry_price,
-        edge         = round(edge, 4),
-        ev           = round((1.0 - prob) * (1.0 / entry_price - 1.0) - prob, 4) if side == "NO" and entry_price > 0 else
-                       round(prob * (1.0 / yes_price - 1.0) - (1.0 - prob), 4) if yes_price > 0 else 0,
-        stake        = stake,
-        result       = "OPEN",
-        pnl          = 0,
-        fee          = 0.0,
-        forecast_day = day_offset,
-        real_temp_c  = None,
+        market_id      = trade_id,
+        market_key     = market_key,
+        gamma_market_id = str(m.get("gamma_market_id", "")),
+        gamma_event_id = str(m.get("gamma_event_id", "")),
+        city           = name,
+        question       = m.get("question", ""),
+        market_date    = date_str,
+        event_slug     = m.get("event_slug", ""),
+        entry_time     = datetime.utcnow().isoformat(),
+        exit_time      = None,
+        type           = condition,
+        side           = side,
+        unit           = unit,
+        target         = target,
+        target_lo      = target_lo,
+        target_hi      = target_hi,
+        forecast_c     = forecast_c,
+        sigma_total    = round(sigma, 4),
+        shares         = shares,
+        model_prob     = round(prob, 4),
+        market_price   = yes_price,
+        entry_price    = entry_price,
+        edge           = round(edge, 4),
+        ev             = round((1.0 - prob) * (1.0 / entry_price - 1.0) - prob, 4) if side == "NO" and entry_price > 0 else
+                         round(prob * (1.0 / yes_price - 1.0) - (1.0 - prob), 4) if yes_price > 0 else 0,
+        stake          = stake,
+        result         = "OPEN",
+        pnl            = 0,
+        fee            = 0.0,
+        forecast_day   = day_offset,
+        real_temp_c    = None,
     )
 
     if TRADING_ENABLED:
@@ -365,5 +405,5 @@ def run():
 
 
 if __name__ == "__main__":
-    logger.info("Weather Quant Bot v5.5")
+    logger.info("Weather Quant Bot v5.6")
     run()

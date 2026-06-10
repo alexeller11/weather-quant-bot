@@ -37,24 +37,29 @@ AUDITORIA COMPLETA — problemas encontrados e corrigidos:
    provável, não em above/below.
 """
 
-import requests
+import json
 import re
 import time
-import json
 from datetime import datetime, timedelta, timezone
+
+import requests
+
+from bankroll import canonical_market_base, normalize_city_slug
+
 
 def utcnow():
     return datetime.now(timezone.utc).replace(tzinfo=None)
+
 
 BASE_URL = "https://gamma-api.polymarket.com"
 HEADERS  = {"User-Agent": "Mozilla/5.0"}
 
 CITY_SLUG_ALIASES = {
-    "new-york":    ["nyc", "new-york"],
+    "new-york":    ["nyc", "new-york", "new-york-city"],
     "hong-kong":   ["hong-kong", "hongkong"],
     "los-angeles": ["los-angeles", "la"],
-    "sao-paulo":   ["sao-paulo"],           # sem acento
-    "mexico-city": ["mexico-city"],
+    "sao-paulo":   ["sao-paulo", "são-paulo"],
+    "mexico-city": ["mexico-city", "mexico city"],
     "toronto":     ["toronto"],
     "madrid":      ["madrid"],
     "london":      ["london"],
@@ -74,8 +79,16 @@ CITY_SLUG_ALIASES = {
     "boston":      ["boston"],
 }
 
+
 def _get_city_slugs(city):
-    return CITY_SLUG_ALIASES.get(city, [city])
+    slug = normalize_city_slug(city)
+    aliases = CITY_SLUG_ALIASES.get(slug, [slug])
+    out = []
+    for candidate in [slug, *aliases]:
+        candidate = normalize_city_slug(candidate)
+        if candidate and candidate not in out:
+            out.append(candidate)
+    return out or [slug]
 
 
 def safe_request(url, retries=4, timeout=15):
@@ -196,15 +209,19 @@ def _slug_variants(city, d):
         variants.append(f"highest-temperature-in-{alias}-on-{month}-{day}")
         # Formato antigo (com ano) — mantido por compatibilidade
         variants.append(f"highest-temperature-in-{alias}-on-{month}-{day}-{year}")
-    return variants
+    # Remove duplicatas preservando ordem
+    out = []
+    for item in variants:
+        if item not in out:
+            out.append(item)
+    return out
 
 
 def _search_fallback(city, d):
     """Busca textual como fallback quando slug não funciona."""
     month = d.strftime('%B').lower()
     day   = d.day
-    # Remove acentos e hífens para a query
-    city_clean = city.replace("-", " ")
+    city_clean = normalize_city_slug(city).replace("-", " ")
     query = f"highest temperature {city_clean} {month} {day}"
     url   = f"{BASE_URL}/events?limit=10&active=true&q={requests.utils.quote(query)}"
     data  = safe_request(url)
@@ -218,6 +235,10 @@ def _search_fallback(city, d):
     return None
 
 
+def _event_key(event):
+    return str(event.get("id") or event.get("slug") or event.get("title") or event.get("name") or "")
+
+
 def fetch_markets(city):
     """
     CORRIGIDO: busca D+0 e D+1 (não D+1 e D+2).
@@ -229,76 +250,103 @@ def fetch_markets(city):
     Retorna lista de mercados válidos com condition, target, unit, yes_price.
     Para buckets range2, inclui target_lo e target_hi.
     """
+    city_slug = normalize_city_slug(city)
     all_markets = []
+    seen_market_keys = set()
 
     for i in range(0, 2):  # D+0 e D+1
         d = utcnow() + timedelta(days=i)
 
-        event = None
-        for slug in _slug_variants(city, d):
+        events = []
+        seen_events = set()
+        for slug in _slug_variants(city_slug, d):
             print(f"  Slug: {slug}")
             data = safe_request(f"{BASE_URL}/events?slug={slug}")
             if data and isinstance(data, list) and len(data) > 0:
-                event = data[0]
-                break
+                for event in data:
+                    ekey = _event_key(event)
+                    if ekey and ekey not in seen_events:
+                        seen_events.add(ekey)
+                        events.append(event)
             time.sleep(0.2)
 
-        if event is None:
-            event = _search_fallback(city, d)
+        if not events:
+            event = _search_fallback(city_slug, d)
             if event:
                 print(f"  Encontrado via busca: {event.get('slug','')}")
+                events.append(event)
 
-        if event is None:
-            print(f"  Sem evento para {city} {d.strftime('%B %d')}")
+        if not events:
+            print(f"  Sem evento para {city_slug} {d.strftime('%B %d')}")
             continue
 
-        for market in event.get("markets", []):
-            try:
-                question  = market.get("question", "")
-                market_id = market.get("id")
-                if not market_id:
-                    continue
+        for event in events:
+            event_slug = event.get("slug", "")
+            event_id = event.get("id", "")
+            for market in event.get("markets", []):
+                try:
+                    question  = market.get("question", "")
+                    gamma_market_id = market.get("id")
+                    if not gamma_market_id:
+                        continue
 
-                outcome_prices = market.get("outcomePrices")
-                if not outcome_prices:
-                    continue
+                    outcome_prices = market.get("outcomePrices")
+                    if not outcome_prices:
+                        continue
 
-                prices = json.loads(outcome_prices) if isinstance(outcome_prices, str) else list(outcome_prices)
-                if len(prices) < 2:
-                    continue
+                    prices = json.loads(outcome_prices) if isinstance(outcome_prices, str) else list(outcome_prices)
+                    if len(prices) < 2:
+                        continue
 
-                yes_price = float(prices[0])
-                no_price  = float(prices[1])
+                    yes_price = float(prices[0])
+                    no_price  = float(prices[1])
 
-                if not market_is_healthy(yes_price, no_price):
-                    print(f"  Market unhealthy (yes={yes_price:.3f} no={no_price:.3f})")
-                    continue
+                    if not market_is_healthy(yes_price, no_price):
+                        print(f"  Market unhealthy (yes={yes_price:.3f} no={no_price:.3f})")
+                        continue
 
-                parsed = parse_question(question)
-                if not parsed:
-                    continue
+                    parsed = parse_question(question)
+                    if not parsed:
+                        continue
 
-                entry = {
-                    "market_id":   market_id,
-                    "question":    question,
-                    "market_date": d.strftime("%Y-%m-%d"),
-                    "event_slug":  event.get("slug", ""),
-                    "condition":   parsed["condition"],
-                    "target":      parsed["target"],
-                    "unit":        parsed["unit"],
-                    "yes_price":   yes_price,
-                    "no_price":    no_price,
-                }
-                # Campos extras para range2
-                if parsed["condition"] == "range2":
-                    entry["target_lo"] = parsed["target_lo"]
-                    entry["target_hi"] = parsed["target_hi"]
+                    market_key = canonical_market_base(
+                        city=city_slug,
+                        market_date=d.strftime("%Y-%m-%d"),
+                        condition=parsed["condition"],
+                        target=parsed["target"],
+                        unit=parsed["unit"],
+                        target_lo=parsed.get("target_lo"),
+                        target_hi=parsed.get("target_hi"),
+                    )
+                    if market_key in seen_market_keys:
+                        continue
+                    seen_market_keys.add(market_key)
 
-                all_markets.append(entry)
-                print(f"  OK: {parsed['condition']} {parsed['target']}°{parsed['unit']} @ {yes_price:.3f}")
+                    entry = {
+                        "market_id":      market_key,
+                        "market_key":     market_key,
+                        "gamma_market_id": str(gamma_market_id),
+                        "gamma_event_id":  str(event_id),
+                        "question":       question,
+                        "market_date":    d.strftime("%Y-%m-%d"),
+                        "event_slug":     event_slug,
+                        "city_slug":      city_slug,
+                        "condition":      parsed["condition"],
+                        "target":         parsed["target"],
+                        "unit":           parsed["unit"],
+                        "yes_price":      yes_price,
+                        "no_price":       no_price,
+                    }
+                    # Campos extras para range2
+                    if parsed["condition"] == "range2":
+                        entry["target_lo"] = parsed["target_lo"]
+                        entry["target_hi"] = parsed["target_hi"]
 
-            except Exception as e:
-                print(f"  Erro ao parsear market: {e}")
+                    all_markets.append(entry)
+                    print(f"  OK: {parsed['condition']} {parsed['target']}°{parsed['unit']} @ {yes_price:.3f}")
+
+                except Exception as e:
+                    print(f"  Erro ao parsear market: {e}")
 
         time.sleep(0.8)
 
