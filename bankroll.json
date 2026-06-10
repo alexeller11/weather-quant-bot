@@ -1,5 +1,5 @@
 {
-    "balance": 426.304,
+    "balance": 422.424,
     "history": [
         {
             "pnl": -3.92,
@@ -311,6 +311,7 @@
             "real_temp_c": 28.2
         },
         {
+            "fee": 0.0,
             "pnl": -3.96,
             "city": "Toronto",
             "side": "YES",
@@ -319,14 +320,14 @@
             "stake": 3.96,
             "result": "LOSS",
             "target": 23.0,
+            "exit_time": "2026-06-10T20:19:04.866742+00:00",
             "market_id": "2450061_YES",
             "entry_price": 0.09,
             "market_date": "2026-06-07",
-            "fee": 0.0,
-            "real_temp_c": 23.6,
-            "exit_time": "2026-06-10T20:19:04.866742+00:00"
+            "real_temp_c": 23.6
         },
         {
+            "fee": 0.0,
             "pnl": -4.0,
             "city": "Toronto",
             "side": "YES",
@@ -335,14 +336,14 @@
             "stake": 4.0,
             "result": "LOSS",
             "target": 28.0,
+            "exit_time": "2026-06-10T20:19:06.051489+00:00",
             "market_id": "2450066_YES",
             "entry_price": 0.085,
             "market_date": "2026-06-07",
-            "fee": 0.0,
-            "real_temp_c": 23.6,
-            "exit_time": "2026-06-10T20:19:06.051489+00:00"
+            "real_temp_c": 23.6
         },
         {
+            "fee": 0.0,
             "pnl": -3.96,
             "city": "Toronto",
             "side": "YES",
@@ -351,12 +352,11 @@
             "stake": 3.96,
             "result": "LOSS",
             "target": 29.0,
+            "exit_time": "2026-06-10T20:19:07.312254+00:00",
             "market_id": "2450067_YES",
             "entry_price": 0.055,
             "market_date": "2026-06-07",
-            "fee": 0.0,
-            "real_temp_c": 23.6,
-            "exit_time": "2026-06-10T20:19:07.312254+00:00"
+            "real_temp_c": 23.6
         },
         {
             "ev": 1.1135,
@@ -413,6 +413,38 @@
             "sigma_total": 4.0,
             "forecast_day": 1,
             "market_price": 0.64
+        },
+        {
+            "market_id": "mexico-city|2026-06-10|EXACT|24|C_NO",
+            "market_key": "mexico-city|2026-06-10|EXACT|24|C",
+            "gamma_market_id": "2475386",
+            "gamma_event_id": "574678",
+            "city": "Mexico City",
+            "question": "Will the highest temperature in Mexico City be 24°C on June 10?",
+            "market_date": "2026-06-10",
+            "event_slug": "highest-temperature-in-mexico-city-on-june-10-2026",
+            "entry_time": "2026-06-10T21:21:04.489773",
+            "exit_time": null,
+            "type": "EXACT",
+            "side": "NO",
+            "unit": "C",
+            "target": 24.0,
+            "target_lo": null,
+            "target_hi": null,
+            "forecast_c": 23.7,
+            "sigma_total": 4.0,
+            "shares": 21,
+            "model_prob": 0.0992,
+            "market_price": 0.815,
+            "entry_price": 0.185,
+            "edge": 0.7158,
+            "ev": 3.8692,
+            "stake": 3.88,
+            "result": "OPEN",
+            "pnl": 0,
+            "fee": 0.0,
+            "forecast_day": 1,
+            "real_temp_c": null
         }
     ],
     "created_at": "2026-06-01T00:00:00+00:00",
