@@ -1,5 +1,5 @@
 {
-    "balance": 406.504,
+    "balance": 426.304,
     "history": [
         {
             "pnl": -3.92,
@@ -324,7 +324,7 @@
             "market_date": "2026-06-07",
             "fee": 0.0,
             "real_temp_c": 23.6,
-            "exit_time": "2026-06-10T20:15:53.880200+00:00"
+            "exit_time": "2026-06-10T20:19:04.866742+00:00"
         },
         {
             "pnl": -4.0,
@@ -340,7 +340,7 @@
             "market_date": "2026-06-07",
             "fee": 0.0,
             "real_temp_c": 23.6,
-            "exit_time": "2026-06-10T20:15:55.105202+00:00"
+            "exit_time": "2026-06-10T20:19:06.051489+00:00"
         },
         {
             "pnl": -3.96,
@@ -356,7 +356,7 @@
             "market_date": "2026-06-07",
             "fee": 0.0,
             "real_temp_c": 23.6,
-            "exit_time": "2026-06-10T20:15:56.295252+00:00"
+            "exit_time": "2026-06-10T20:19:07.312254+00:00"
         },
         {
             "ev": 1.1135,
@@ -372,7 +372,7 @@
             "shares": 9,
             "target": 34.0,
             "question": "Will the highest temperature in Madrid be 34°C on June 8?",
-            "exit_time": "2026-06-10T20:15:57.495110+00:00",
+            "exit_time": "2026-06-10T20:19:08.494167+00:00",
             "market_id": "2456279_NO",
             "target_hi": null,
             "target_lo": null,
@@ -400,7 +400,7 @@
             "shares": 11,
             "target": 22.0,
             "question": "Will the highest temperature in Paris be 22°C on June 8?",
-            "exit_time": "2026-06-10T20:15:58.734303+00:00",
+            "exit_time": "2026-06-10T20:19:09.744928+00:00",
             "market_id": "2456147_NO",
             "target_hi": null,
             "target_lo": null,
