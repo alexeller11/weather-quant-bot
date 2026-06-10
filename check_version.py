@@ -61,11 +61,12 @@ try:
     from config import TRADING_ENABLED, MIN_PRICE, MAX_POSITION, MAX_TOTAL_EXPOSURE
     status = "LIGADO ⚠" if TRADING_ENABLED else "DESLIGADO (observação)"
     print(f"    TRADING_ENABLED = {TRADING_ENABLED} — {status}")
-    print(f"    MIN_PRICE       = {MIN_PRICE}  (esperado: 0.10)")
+    expected_min_price = 0.15
+    print(f"    MIN_PRICE       = {MIN_PRICE}  (esperado: {expected_min_price:.2f})")
     print(f"    MAX_POSITION    = ${MAX_POSITION}  (esperado: $4.00)")
     print(f"    MAX_EXPOSURE    = ${MAX_TOTAL_EXPOSURE}  (esperado: $20.00)")
-    if MIN_PRICE != 0.10:
-        print(f"    AVISO: MIN_PRICE={MIN_PRICE} — esperado 0.10")
+    if MIN_PRICE != expected_min_price:
+        print(f"    AVISO: MIN_PRICE={MIN_PRICE} — esperado {expected_min_price:.2f}")
 except Exception as e:
     print(f"    ERRO: {e}")
 
@@ -82,9 +83,14 @@ else:
         abertos  = [t for t in history if t.get("result") == "OPEN"]
         fechados = [t for t in history if t.get("result") in ("WIN","LOSS")]
         exposure = sum(float(t.get("stake", 0)) for t in abertos)
+        closed_pnl = sum(float(t.get("pnl", 0)) for t in fechados)
+        start_balance = float(data.get("start_balance", balance))
+        expected_available = round(start_balance + closed_pnl - exposure, 2)
         print(f"    Saldo:    ${balance:.2f}")
         print(f"    Abertos:  {len(abertos)}  (exposição ${exposure:.2f})")
         print(f"    Fechados: {len(fechados)}")
+        if abs(round(balance, 2) - expected_available) > 0.05:
+            print(f"    AVISO: saldo esperado ${expected_available:.2f} (start + pnl fechado - exposicao aberta)")
 
         # Verifica se há trades com tipo range2
         range2 = [t for t in history if t.get("type","").upper() == "RANGE2"]

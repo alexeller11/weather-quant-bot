@@ -91,20 +91,20 @@ def _get_city_slugs(city):
     return out or [slug]
 
 
-def safe_request(url, retries=4, timeout=15):
+def safe_request(url, retries=2, timeout=8):
     for attempt in range(retries):
         try:
             r = requests.get(url, headers=HEADERS, timeout=timeout)
             if r.status_code == 200:
                 return r.json()
             if r.status_code == 429:
-                print(f"Rate limit (429). Aguardando 60s...")
-                time.sleep(60)
+                print(f"Rate limit (429) para {url}")
                 continue
             print(f"HTTP {r.status_code} para {url}")
         except Exception as e:
             print(f"Request error (tentativa {attempt+1}): {e}")
-        time.sleep(2 ** attempt)
+        if attempt < retries - 1:
+            time.sleep(min(2 ** attempt, 4))
     return None
 
 

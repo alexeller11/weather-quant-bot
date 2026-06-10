@@ -320,7 +320,7 @@ def load_bankroll():
     4. valor inicial
     """
     # ── OVERRIDE MANUAL ──────────────────────────────────────
-    if os.path.exists(OVERRIDE_FILE):
+    if os.path.exists(OVERRIDE_FILE) and os.environ.get("APPLY_BANKROLL_OVERRIDE", "0") == "1":
         try:
             with open(OVERRIDE_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)

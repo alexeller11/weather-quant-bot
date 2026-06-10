@@ -398,6 +398,7 @@ def run():
     schedule.every(1).hours.do(scheduled_trading)
     schedule.every(1).hours.do(settlement_cycle)
     schedule.every().sunday.at("08:00").do(weekly_report_cycle)
+    settlement_cycle()
     scheduled_trading()
     while True:
         schedule.run_pending()

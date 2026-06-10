@@ -159,12 +159,15 @@ def settle_trade(trade: Dict, bankroll_data: Dict) -> Dict:
             gross = stake / entry_price
             fee   = round(gross * 0.02, 4)
             pnl   = round(gross - stake - fee, 4)
+            settlement_credit = round(gross - fee, 4)
         else:
             fee = 0.0
             pnl = 0.0
+            settlement_credit = 0.0
     else:
         fee = 0.0
         pnl = round(-stake, 4)
+        settlement_credit = 0.0
 
     trade = dict(trade)
     trade["result"]      = "WIN" if won else "LOSS"
@@ -173,7 +176,12 @@ def settle_trade(trade: Dict, bankroll_data: Dict) -> Dict:
     trade["real_temp_c"] = actual_temp_c
     trade["exit_time"]   = datetime.now(timezone.utc).isoformat()
 
-    bankroll_data["balance"] = round(float(bankroll_data.get("balance", 0)) + pnl, 4)
+    # O stake ja foi debitado na abertura. No settlement, o saldo recebe
+    # apenas o valor resgatado: payout liquido no WIN, zero no LOSS.
+    bankroll_data["balance"] = round(
+        float(bankroll_data.get("balance", 0)) + settlement_credit,
+        4,
+    )
 
     logger.info(
         f"{'WIN' if won else 'LOSS'}: {city} {condition} {target}°{unit} "

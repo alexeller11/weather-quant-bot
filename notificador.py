@@ -15,7 +15,13 @@ import time
 from datetime import datetime, timezone
 from threading import Thread
 
-from config import TELEGRAM_TOKEN, CHAT_ID, MAX_POSITION, KELLY_FRACTION
+from config import (
+    TELEGRAM_TOKEN,
+    CHAT_ID,
+    MAX_POSITION,
+    KELLY_FRACTION,
+    MAX_KELLY_FRACTION_CAP,
+)
 
 BOT_DIR      = os.path.dirname(os.path.abspath(__file__))
 TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
@@ -49,8 +55,9 @@ def _kelly_math(balance, model_prob, market_price):
     b    = (1.0 / market_price) - 1.0 if market_price > 0 else 0
     f_puro  = max((p * b - q) / b, 0.0) if b > 0 else 0.0
     f_half  = f_puro * KELLY_FRACTION
-    f_cap   = min(f_half, MAX_POSITION)
+    f_cap   = min(f_half, MAX_KELLY_FRACTION_CAP)
     stake_t = round(balance * f_cap, 2)
+    stake_t = min(stake_t, MAX_POSITION)
     shares  = int(stake_t / market_price) if market_price > 0 else 0
     custo   = round(shares * market_price, 2)
     desp    = round((1 - custo / stake_t) * 100, 1) if stake_t > 0 else 0
@@ -58,7 +65,8 @@ def _kelly_math(balance, model_prob, market_price):
     return {
         "kelly_puro_pct": round(f_puro * 100, 1),
         "half_kelly_pct": round(f_half * 100, 1),
-        "cap_pct":        int(round(MAX_POSITION * 100, 0)),
+        "cap_pct":        int(round(MAX_KELLY_FRACTION_CAP * 100, 0)),
+        "cap_usd":        MAX_POSITION,
         "ev_pct":         ev_pct,
         "stake_teorico":  stake_t,
         "custo_real":     custo,
@@ -114,7 +122,7 @@ def notificar_entrada_trade(city, market_date, target, unit, stake,
             f"\n\n<b>Matematica Kelly</b>\n"
             f"Kelly puro: <b>{km['kelly_puro_pct']}%</b> | "
             f"Half-Kelly: <b>{km['half_kelly_pct']}%</b> | "
-            f"Cap: <b>{km['cap_pct']}%</b>\n"
+            f"Cap: <b>{km['cap_pct']}%</b> / ${km['cap_usd']:.2f}\n"
             f"Teorico: ${km['stake_teorico']:.2f} → Real: ${km['custo_real']:.2f}"
         )
         if km["desperdicio_pct"] > 5:
@@ -128,7 +136,7 @@ def notificar_entrada_trade(city, market_date, target, unit, stake,
         f"<b>Aposta:</b> <b>${stake:.2f}</b>{shares_ln}\n\n"
         f"Modelo: <b>{model_prob*100:.1f}%</b> | "
         f"Mercado: <b>{market_price*100:.1f}%</b>\n"
-        f"Edge: <b>+{edge:.1f}%</b> | EV: <b>+{ev_pct:.1f}%</b>"
+        f"Edge: <b>+{edge*100:.1f}%</b> | EV: <b>+{ev_pct:.1f}%</b>"
         f"{kelly_block}\n\n"
         f"Aguardando resolucao..."
     )
