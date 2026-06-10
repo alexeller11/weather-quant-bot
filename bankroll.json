@@ -1,5 +1,5 @@
 {
-    "balance": 413.6227,
+    "balance": 413.4827,
     "history": [
         {
             "pnl": -3.92,
@@ -414,7 +414,7 @@
             "question": "Will the highest temperature in Los Angeles be 75°F or below on June 10?",
             "market_date": "2026-06-10",
             "event_slug": "highest-temperature-in-los-angeles-on-june-10-2026",
-            "entry_time": "2026-06-10T02:17:39.057072",
+            "entry_time": "2026-06-10T02:18:59.132974",
             "exit_time": null,
             "type": "BELOW",
             "side": "NO",
@@ -426,11 +426,11 @@
             "sigma_total": 4.0,
             "shares": 14,
             "model_prob": 0.0545,
-            "market_price": 0.725,
-            "entry_price": 0.275,
-            "edge": 0.6705,
-            "ev": 2.4382,
-            "stake": 3.85,
+            "market_price": 0.715,
+            "entry_price": 0.285,
+            "edge": 0.6605,
+            "ev": 2.3176,
+            "stake": 3.99,
             "result": "OPEN",
             "pnl": 0,
             "fee": 0.0,
