@@ -1,5 +1,5 @@
 {
-    "balance": 413.7827,
+    "balance": 413.6527,
     "history": [
         {
             "pnl": -3.92,
@@ -414,7 +414,7 @@
             "question": "Will the highest temperature in Paris be 18°C on June 10?",
             "market_date": "2026-06-10",
             "event_slug": "highest-temperature-in-paris-on-june-10-2026",
-            "entry_time": "2026-06-10T11:52:30.743848",
+            "entry_time": "2026-06-10T11:53:58.097716",
             "exit_time": null,
             "type": "EXACT",
             "side": "NO",
@@ -426,11 +426,11 @@
             "sigma_total": 4.0,
             "shares": 9,
             "model_prob": 0.0995,
-            "market_price": 0.59,
-            "entry_price": 0.41,
-            "edge": 0.4905,
-            "ev": 1.1964,
-            "stake": 3.69,
+            "market_price": 0.575,
+            "entry_price": 0.425,
+            "edge": 0.4755,
+            "ev": 1.1189,
+            "stake": 3.82,
             "result": "OPEN",
             "pnl": 0,
             "fee": 0.0,
