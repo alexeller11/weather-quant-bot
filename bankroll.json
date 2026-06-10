@@ -414,7 +414,7 @@
             "question": "Will the highest temperature in Madrid be 31°C on June 10?",
             "market_date": "2026-06-10",
             "event_slug": "highest-temperature-in-madrid-on-june-10-2026",
-            "entry_time": "2026-06-10T13:03:59.985553",
+            "entry_time": "2026-06-10T13:05:32.455997",
             "exit_time": null,
             "type": "EXACT",
             "side": "NO",
