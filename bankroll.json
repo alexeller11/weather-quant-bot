@@ -406,11 +406,15 @@
             "market_price": 0.64
         },
         {
-            "market_id": "2475360_NO",
+            "market_id": "los-angeles|2026-06-10|BELOW|75|F_NO",
+            "market_key": "los-angeles|2026-06-10|BELOW|75|F",
+            "gamma_market_id": "2475360",
+            "gamma_event_id": "574676",
             "city": "Los Angeles",
             "question": "Will the highest temperature in Los Angeles be 75°F or below on June 10?",
             "market_date": "2026-06-10",
-            "entry_time": "2026-06-10T01:31:54.244960",
+            "event_slug": "highest-temperature-in-los-angeles-on-june-10-2026",
+            "entry_time": "2026-06-10T01:32:41.640234",
             "exit_time": null,
             "type": "BELOW",
             "side": "NO",
