@@ -410,7 +410,7 @@
             "city": "Los Angeles",
             "question": "Will the highest temperature in Los Angeles be 75°F or below on June 10?",
             "market_date": "2026-06-10",
-            "entry_time": "2026-06-10T01:07:38.216071",
+            "entry_time": "2026-06-10T01:08:09.801791",
             "exit_time": null,
             "type": "BELOW",
             "side": "NO",
