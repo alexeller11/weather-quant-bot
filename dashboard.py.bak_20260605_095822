@@ -1,39 +1,15 @@
 """
 DASHBOARD — WEATHER QUANT BOT
 Dashboard de última geração: globo 3D, gráficos interativos, filtros em tempo real.
-
-CORREÇÕES (auditoria):
-1. updateTables(): o `return` antecipado quando não havia posições
-   abertas PULAVA a renderização da tabela de trades fechados — com
-   0 posições abertas (estado real atual), a tabela de fechados nunca
-   aparecia. Blocos agora são independentes.
-2. _calibration_bins(): bins de calibração agora usam a probabilidade
-   do LADO apostado (NO → 1−model_prob) e o "previsto" do bin é a média
-   das probs (consistente com o Brier já corrigido neste arquivo).
-3. start_balance: fallback agora é config.START_BALANCE (era 50
-   hardcoded, divergindo do default 100 do resto do sistema).
-4. Exibe alerta na warning-bar quando o invariante de saldo diverge
-   (balance ≠ start − stakes_abertos + pnl_fechado) — foi exatamente
-   essa divergência (-$19.80) que ficou invisível nos dados reais.
-5. ThreadingHTTPServer no lugar de HTTPServer (single-thread travava
-   o dashboard inteiro em qualquer request lenta).
 """
 
 import os, json, base64
 from datetime import datetime, timezone
 from http.server import HTTPServer, BaseHTTPRequestHandler
-try:
-    from http.server import ThreadingHTTPServer
-except ImportError:  # Py < 3.7
-    ThreadingHTTPServer = HTTPServer
-
-from bankroll import dedupe_history_by_market, check_balance_invariant
-try:
-    from config import START_BALANCE
-except Exception:
-    START_BALANCE = 100.0
 
 PORT = int(os.environ.get("PORT", 8765))
+
+# ── Carrega dados ─────────────────────────────────────────────────────────────
 
 def load_data():
     errors = []
@@ -124,31 +100,21 @@ def _profit_factor(wins, losses_list):
 
 def _calibration_bins(closed, n_bins=5):
     from collections import defaultdict
-    bins = defaultdict(list)  # b -> lista de (prob_apostada, outcome)
+    bins = defaultdict(list)
     for t in closed:
         prob = t.get("model_prob")
         if prob is None:
             continue
-        # Probabilidade do LADO apostado (NO → 1 − prob_yes),
-        # consistente com o Brier calculado em build_stats.
-        p = float(prob)
-        if (t.get("side") or "YES").upper() == "NO":
-            p = 1.0 - p
-        b = min(int(p * n_bins), n_bins - 1)
-        bins[b].append((p, 1.0 if t.get("result") == "WIN" else 0.0))
+        b = min(int(float(prob) * n_bins), n_bins - 1)
+        bins[b].append(1.0 if t.get("result") == "WIN" else 0.0)
     result = []
     for b in range(n_bins):
         lo = b / n_bins * 100
         hi = (b + 1) / n_bins * 100
-        pares = bins.get(b, [])
-        if pares:
-            # "Previsto" = média das probs do bin (não o midpoint)
-            predicted = round(sum(p for p, _ in pares) / len(pares) * 100, 1)
-            wr = round(sum(o for _, o in pares) / len(pares) * 100, 1)
-        else:
-            predicted = (lo + hi) / 2
-            wr = None
-        result.append({"label": f"{lo:.0f}–{hi:.0f}%", "predicted": predicted, "actual": wr, "n": len(pares)})
+        mid = (lo + hi) / 2
+        outcomes = bins.get(b, [])
+        wr = round(sum(outcomes) / len(outcomes) * 100, 1) if outcomes else None
+        result.append({"label": f"{lo:.0f}–{hi:.0f}%", "predicted": mid, "actual": wr, "n": len(outcomes)})
     return result
 
 
@@ -160,19 +126,9 @@ def _rolling_winrate(closed, window=10):
 
 
 def build_stats(data):
-    raw_history = data.get("history", [])
-    history = dedupe_history_by_market(raw_history)
+    history  = data.get("history", [])
     balance  = data.get("balance", 0)
-    start    = data.get("start_balance", START_BALANCE)
-
-    # Divergência do invariante de saldo:
-    #   balance ≈ start − Σ stakes(OPEN) + Σ pnl(WIN/LOSS)
-    # Divergência ≠ 0 indica corrupção (perda de update concorrente,
-    # crédito/débito duplo). Exposto na warning-bar do dashboard.
-    try:
-        balance_divergence = check_balance_invariant(data)
-    except Exception:
-        balance_divergence = 0.0
+    start    = data.get("start_balance", 50)
     closed   = sorted(
         [t for t in history if t.get("result") in ("WIN","LOSS")],
         key=lambda x: x.get("exit_time","") or ""
@@ -200,6 +156,7 @@ def build_stats(data):
             city_stats[c]["open_stake"] += float(t.get("stake") or 0)
         city_stats[c]["stake"] += float(t.get("stake") or 0)
 
+    # Por tipo (ABOVE / BELOW / EXACT)
     type_stats = {}
     for t in closed:
         tp = (t.get("type") or "?").upper()
@@ -211,6 +168,7 @@ def build_stats(data):
             type_stats[tp]["losses"] += 1
         type_stats[tp]["pnl"] += float(t.get("pnl") or 0)
 
+    # Equity curve + drawdown
     equity_curve = []
     running = float(start)
     eq_vals = [running]
@@ -227,24 +185,20 @@ def build_stats(data):
     dd_series = _drawdown_series(eq_vals)
     mdd       = _max_drawdown(eq_vals)
 
-    brier_scores = []
-    for _t in closed:
-        if _t.get("model_prob") is None:
-            continue
-        _prob_yes = float(_t.get("model_prob") or 0)
-        _side = (_t.get("side") or "YES").upper()
-        _outcome = 1.0 if _t.get("result") == "WIN" else 0.0
-        _prob_aposta = (1.0 - _prob_yes) if _side == "NO" else _prob_yes
-        brier_scores.append((_prob_aposta - _outcome) ** 2)
+    brier_scores = [
+        (float(t.get("model_prob") or 0) - (1.0 if t.get("result")=="WIN" else 0))**2
+        for t in closed if t.get("model_prob") is not None
+    ]
     brier = round(sum(brier_scores)/len(brier_scores),4) if brier_scores else None
 
     avg_edge = round(sum(float(t.get("edge") or 0) for t in history)/len(history)*100,2) if history else 0
+
+    # Rolling win rate (last 10)
     wr10 = _rolling_winrate(closed, 10)
 
     return {
         "balance":        round(float(balance),2),
         "start_balance":  round(float(start),2),
-        "balance_divergence": round(float(balance_divergence), 2),
         "pnl":            round(pnl,2),
         "win_rate":       win_rate,
         "win_rate_10":    wr10,
@@ -269,10 +223,10 @@ def build_stats(data):
         "open_trades":    open_t,
         "closed_trades":  list(reversed(closed))[:50],
         "all_trades":     history,
-        "duplicate_trades_hidden": max(0, len(raw_history) - len(history)),
         "updated":        datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
     }
 
+# ── HTML ──────────────────────────────────────────────────────────────────────
 
 HTML = r"""<!DOCTYPE html>
 <html lang="pt">
@@ -494,8 +448,8 @@ tr:hover td{background:rgba(0,200,255,.03)}
     <div class="tbl-wrap">
       <table>
         <thead><tr>
-          <th>Cidade</th><th>Data</th><th>Side</th><th>Tipo</th><th>Stake</th>
-          <th>Prob Aposta</th><th>Entry</th><th>Edge</th><th>Pergunta</th>
+          <th>Cidade</th><th>Data</th><th>Tipo</th><th>Stake</th>
+          <th>Prob Modelo</th><th>Mkt Price</th><th>Edge</th><th>Pergunta</th>
         </tr></thead>
         <tbody id="openBody"></tbody>
       </table>
@@ -509,8 +463,8 @@ tr:hover td{background:rgba(0,200,255,.03)}
     <div class="tbl-wrap">
       <table>
         <thead><tr>
-          <th></th><th>Cidade</th><th>Data</th><th>Side</th><th>Target</th>
-          <th>Stake</th><th>PnL</th><th>Prob</th><th>Entry</th><th>Temp Real</th>
+          <th></th><th>Cidade</th><th>Data</th><th>Target</th>
+          <th>Stake</th><th>PnL</th><th>Prob</th><th>Mkt</th><th>Temp Real</th>
         </tr></thead>
         <tbody id="closedBody"></tbody>
       </table>
@@ -565,37 +519,52 @@ function sign(v){return v>=0?'+':''}
 function updateKPIs(){
   const d=DATA;
   const pnlPct=d.start_balance>0?((d.balance-d.start_balance)/d.start_balance*100).toFixed(1):0;
+
+  // Saldo
   document.getElementById('kBalance').textContent='$'+d.balance.toFixed(2);
   document.getElementById('kBalanceSub').textContent=sign(d.balance-d.start_balance)+'$'+(d.balance-d.start_balance).toFixed(2)+' vs início';
   const barW=Math.min(100,Math.max(0,(d.balance/d.start_balance)*100));
   document.getElementById('kBalanceBar').style.width=barW+'%';
+
+  // PnL
   const pnlEl=document.getElementById('kPnl');
   pnlEl.textContent=sign(d.pnl)+'$'+Math.abs(d.pnl).toFixed(2);
   pnlEl.style.color=d.pnl>=0?'var(--green)':'var(--red)';
   document.getElementById('kPnlSub').textContent=sign(parseFloat(pnlPct))+pnlPct+'% retorno';
+
+  // Win Rate
   document.getElementById('kWR').textContent=d.win_rate+'%';
   document.getElementById('kWRSub').textContent=d.wins+'W / '+d.losses+'L ('+d.total_closed+' trades)';
+
+  // Profit Factor
   const pfEl=document.getElementById('kPF');
   if(d.profit_factor!==null&&d.profit_factor!==undefined){
     pfEl.textContent=d.profit_factor.toFixed(2)+'×';
     pfEl.style.color=d.profit_factor>=1.5?'var(--green)':d.profit_factor>=1.0?'var(--amber)':'var(--red)';
   }else{pfEl.textContent='N/A';pfEl.style.color='var(--muted)'}
+
+  // Max Drawdown
   const mddEl=document.getElementById('kMDD');
   mddEl.textContent=(d.max_drawdown||0).toFixed(1)+'%';
   mddEl.style.color=d.max_drawdown>50?'var(--red)':d.max_drawdown>25?'var(--amber)':'var(--green)';
+
+  // Sharpe
   const shrEl=document.getElementById('kSharpe');
   if(d.sharpe!==null&&d.sharpe!==undefined){
     shrEl.textContent=d.sharpe.toFixed(2);
     shrEl.style.color=d.sharpe>=1?'var(--green)':d.sharpe>=0?'var(--amber)':'var(--red)';
   }else{shrEl.textContent='N/A';shrEl.style.color='var(--muted)'}
+
+  // Info bar
   document.getElementById('iOpen').textContent=d.open_count+' ($'+d.exposure.toFixed(2)+')';
   document.getElementById('iEdge').textContent=sign(d.avg_edge)+d.avg_edge.toFixed(1)+'%';
   document.getElementById('iBrier').textContent=d.brier!==null&&d.brier!==undefined?d.brier:'N/A';
+  document.getElementById('iWR10').textContent=d.win_rate_10!==null&&d.win_rate_10!==undefined?d.win_rate_10+'%':'N/A';
   const wr10El=document.getElementById('iWR10');
   if(d.win_rate_10!==null&&d.win_rate_10!==undefined){
     wr10El.textContent=d.win_rate_10+'%';
     wr10El.style.color=d.win_rate_10>=55?'var(--green)':d.win_rate_10>=45?'var(--amber)':'var(--red)';
-  }else{wr10El.textContent='N/A'}
+  }
 }
 
 function buildCityChips(){
@@ -717,63 +686,42 @@ function updateTables(){
   const open=filteredOpen();
   document.getElementById('openCount').textContent=open.length+' posições';
   const ob=document.getElementById('openBody');
-  if(!open.length){
-    // CORRIGIDO: antes havia um `return` aqui que PULAVA a renderização
-    // da tabela de fechados quando não havia posições abertas.
-    ob.innerHTML='<tr><td colspan="9" class="empty">Nenhuma posição aberta</td></tr>';
-  }else{
+  if(!open.length){ob.innerHTML='<tr><td colspan="8" class="empty">Nenhuma posição aberta</td></tr>';return}
   ob.innerHTML=open.map(t=>{
-    const side=t.side||'YES';
-    // FIX: mostra — quando model_prob ausente (trades antigos sem esse campo)
-    const probAposta=t.model_prob!=null?(side==='NO'?Math.round((1-t.model_prob)*100):Math.round(t.model_prob*100)):null;
-    const probStr=probAposta!=null?probAposta+'%':'—';
-    const probWidth=probAposta!=null?probAposta:0;
-    const entryPct=Math.round((t.entry_price||t.market_price||0)*100);
+    const prob=Math.round((t.model_prob||0)*100);
+    const mkt=Math.round((t.market_price||0)*100);
     const edge=((t.edge||0)*100).toFixed(1);
     const cls=parseFloat(edge)>=0?'edge-pos':'edge-neg';
-    const sideClr=side==='NO'?'var(--amber)':'var(--cyan)';
     return`<tr>
       <td><span class="city-tag">${t.city||'—'}</span></td>
       <td>${t.market_date||'—'}</td>
-      <td><b style="color:${sideClr}">${side}</b></td>
       <td style="color:var(--amber)">${t.type||'—'}</td>
       <td>$${(t.stake||0).toFixed(2)}</td>
-      <td><div class="prob-bar-row"><div class="prob-bar-bg"><div class="prob-bar-fill" style="width:${probWidth}%"></div></div><span>${probStr}</span></div></td>
-      <td>${entryPct}%</td>
+      <td><div class="prob-bar-row"><div class="prob-bar-bg"><div class="prob-bar-fill" style="width:${prob}%"></div></div><span>${prob}%</span></div></td>
+      <td>${mkt}%</td>
       <td class="${cls}">${parseFloat(edge)>=0?'+':''}${edge}%</td>
       <td style="color:var(--muted);font-size:11px">${(t.question||'').substring(0,50)}…</td>
     </tr>`}).join('');
-  }
 
   const closed=filteredClosed();
   document.getElementById('closedCount').textContent=closed.length+' trades';
   const cb=document.getElementById('closedBody');
-  if(!closed.length){
-    cb.innerHTML='<tr><td colspan="10" class="empty">Nenhum trade fechado</td></tr>';
-  }else{
+  if(!closed.length){cb.innerHTML='<tr><td colspan="9" class="empty">Nenhum trade fechado</td></tr>';return}
   cb.innerHTML=closed.map(t=>{
     const isWin=t.result==='WIN';
     const pnl=t.pnl||0;
     const temp=t.real_temp_c!=null?t.real_temp_c.toFixed(1)+'°C':'—';
-    const side=t.side||'YES';
-    // FIX: mostra — quando model_prob ausente
-    const probAposta=t.model_prob!=null?(side==='NO'?Math.round((1-t.model_prob)*100):Math.round(t.model_prob*100)):null;
-    const probStr=probAposta!=null?probAposta+'%':'—';
-    const entryPct=Math.round((t.entry_price||t.market_price||0)*100);
-    const sideClr=side==='NO'?'var(--amber)':'var(--cyan)';
     return`<tr>
       <td class="${isWin?'badge-win':'badge-loss'}" style="font-size:15px">${isWin?'✓':'✗'}</td>
       <td><span class="city-tag">${t.city||'—'}</span></td>
       <td>${t.market_date||'—'}</td>
-      <td><b style="color:${sideClr}">${side}</b></td>
       <td style="color:var(--muted)">${t.type||''} ${t.target||''}°${t.unit||'C'}</td>
       <td>$${(t.stake||0).toFixed(2)}</td>
       <td class="${pnl>=0?'badge-win':'badge-loss'}" style="font-weight:600">${pnl>=0?'+':''}$${Math.abs(pnl).toFixed(2)}</td>
-      <td>${probStr}</td>
-      <td>${entryPct}%</td>
+      <td>${Math.round((t.model_prob||0)*100)}%</td>
+      <td>${Math.round((t.market_price||0)*100)}%</td>
       <td style="color:var(--cyan)">${temp}</td>
     </tr>`}).join('');
-  }
 }
 
 function updateDrawdown(){
@@ -1040,18 +988,8 @@ class Handler(BaseHTTPRequestHandler):
                     self.wfile.write(json.dumps({"error": warning}).encode())
                     return
                 stats = build_stats(data)
-                warns = []
                 if warning:
-                    warns.append(warning)
-                div = stats.get("balance_divergence") or 0
-                if abs(div) > 0.05:
-                    warns.append(
-                        f"⚠ Divergência de saldo: ${div:+.2f} "
-                        f"(balance ≠ start − stakes abertos + PnL fechado — "
-                        f"possível corrupção por escrita concorrente)"
-                    )
-                if warns:
-                    stats["warning"] = " | ".join(warns)
+                    stats["warning"] = warning
                 body = json.dumps(stats, ensure_ascii=False).encode('utf-8')
                 self.send_response(200)
                 self.send_header('Content-Type','application/json; charset=utf-8')
@@ -1080,6 +1018,6 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == '__main__':
     print(f'Dashboard rodando em http://0.0.0.0:{PORT}')
     try:
-        ThreadingHTTPServer(('0.0.0.0', PORT), Handler).serve_forever()
+        HTTPServer(('0.0.0.0', PORT), Handler).serve_forever()
     except KeyboardInterrupt:
         print('\nEncerrado')

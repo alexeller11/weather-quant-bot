@@ -8,8 +8,27 @@ v5.4: Suporte a apostas NO (vender YES)
 - NO edge = price_yes - prob_yes  (mercado superestima a prob)
 - Requer: NO edge >= MIN_EDGE_NO, prob_yes <= MAX_PROB_FOR_NO
 - Kelly para NO: b = (1/price_no) - 1 = (1/(1-price_yes)) - 1
+
+CORREÇÕES (auditoria):
+1. FEE_RATE (2%) agora entra no Kelly e no EV. O settlement desconta
+   2% do payout bruto na vitória, então o ganho líquido por $1 apostado
+   é b_eff = (1-FEE)/price - 1, e não (1/price) - 1. Ignorar a fee
+   superestimava b e o EV, gerando overbetting sistemático e aprovando
+   trades cujo EV líquido real era negativo na margem.
+2. MIN_EV (config) agora é APLICADO: trades com EV líquido por $1
+   apostado abaixo de MIN_EV são bloqueados. A constante existia em
+   config.py e nunca era usada em lugar nenhum.
+3. Novos helpers de exposição usados pelo bot:
+   - exposure_headroom(): quanto AINDA cabe sem estourar MAX_TOTAL_EXPOSURE
+     (o check antigo `exposure >= MAX` antes do trade deixava ultrapassar
+     o teto em até +MAX_POSITION).
+   - event_open_stake() + MAX_EVENT_EXPOSURE: limite de stake somado em
+     buckets do MESMO evento (cidade+dia), que são mutuamente exclusivos
+     e correlacionados — antes era possível abrir N posições YES no mesmo
+     evento em que no máximo UMA pode vencer.
 """
 
+import os
 import logging
 from config import (
     KELLY_FRACTION,
@@ -19,6 +38,7 @@ from config import (
     MIN_TARGET_ZSCORE,
     MIN_EDGE,
     MIN_EDGE_EXACT,
+    MIN_EV,
     SIGMA_CAP_ABOVE_BELOW,
     SIGMA_CAP_EXACT,
     PROB_DEADZONE_MIN,
@@ -39,6 +59,15 @@ MIN_EDGE_RANGE2 = 0.02
 MIN_EDGE_NO       = 0.15   # edge mínimo para NO (price_yes - prob_yes)
 MAX_PROB_FOR_NO   = 0.35   # só apostar NO se modelo diz prob_yes <= 35%
 MIN_PRICE_YES_FOR_NO = 0.55  # só apostar NO se mercado paga >= 55% para YES
+
+# Fee de liquidação aplicada pelo settlement sobre o payout bruto na vitória.
+# Precisa ser idêntica à usada em settlement.py (que importa daqui).
+FEE_RATE = 0.02
+
+# Limite de stake somado por EVENTO (mesma cidade + mesma data de mercado).
+# Buckets do mesmo evento são mutuamente exclusivos: por padrão permitimos
+# no máximo o equivalente a UMA posição cheia por evento.
+MAX_EVENT_EXPOSURE = float(os.getenv("MAX_EVENT_EXPOSURE", str(MAX_POSITION)))
 
 
 def consecutive_losses(history: list) -> int:
@@ -63,6 +92,31 @@ def dynamic_kelly_fraction(history: list) -> float:
     return KELLY_FRACTION
 
 
+def _net_odds(price: float) -> float:
+    """
+    Ganho líquido por $1 apostado, já descontando a fee do settlement.
+    shares = stake/price; payout bruto na vitória = shares × $1;
+    líquido = bruto × (1 - FEE_RATE). Logo b_eff = (1-FEE)/price - 1.
+    """
+    return (1.0 - FEE_RATE) / price - 1.0
+
+
+def expected_value(prob: float, price: float) -> float:
+    """
+    EV líquido por $1 apostado (fee incluída):
+        EV = prob × b_eff − (1 − prob)
+    """
+    if price <= 0 or price >= 1:
+        return -1.0
+    b = _net_odds(price)
+    return prob * b - (1.0 - prob)
+
+
+def expected_value_no(model_prob_yes: float, price_yes: float) -> float:
+    """EV líquido por $1 apostado no lado NO (fee incluída)."""
+    return expected_value(1.0 - model_prob_yes, 1.0 - price_yes)
+
+
 def kelly_criterion(
     prob: float,
     price: float,
@@ -72,7 +126,11 @@ def kelly_criterion(
     if prob <= 0 or prob >= 1 or price <= 0 or price >= 1:
         return 0.0
 
-    b = (1.0 / price) - 1.0
+    # Odds líquidas (com fee). Antes usava (1/price - 1), superestimando
+    # o ganho na vitória e, portanto, a fração de Kelly.
+    b = _net_odds(price)
+    if b <= 0:
+        return 0.0
     q = 1.0 - prob
 
     kelly_pct = (prob * b - q) / b
@@ -127,6 +185,15 @@ def check_guardrails(
         return False
 
     edge = model_prob - price_yes
+
+    # EV líquido mínimo (fee incluída) — vale para todas as condições.
+    ev = expected_value(model_prob, price_yes)
+    if ev < MIN_EV:
+        logger.info(
+            f"Bloqueado: EV líquido insuficiente ({ev:+.3f} < {MIN_EV}) "
+            f"[prob={model_prob:.3f} price={price_yes:.3f} fee={FEE_RATE}]"
+        )
+        return False
 
     if condition in ("ABOVE", "BELOW"):
         if PROB_DEADZONE_MIN <= model_prob <= PROB_DEADZONE_MAX:
@@ -184,7 +251,7 @@ def check_guardrails(
 
     logger.info(
         f"GUARDRAIL OK [{side}]: {condition} target={target_raw}°{unit} "
-        f"price_yes={price_yes:.3f} prob={model_prob:.3f} edge={edge:+.3f}"
+        f"price_yes={price_yes:.3f} prob={model_prob:.3f} edge={edge:+.3f} EV={ev:+.3f}"
     )
     return True
 
@@ -192,10 +259,10 @@ def check_guardrails(
 def _check_no_guardrails(condition: str, price_yes: float, model_prob: float) -> bool:
     """
     Guardrails para apostas NO.
-    
+
     Lógica: apostamos NO quando o mercado paga muito para YES (price_yes alto)
     mas o modelo estima que a prob de YES é baixa.
-    
+
     NO edge = price_yes - model_prob
     Exemplos do log:
       Toronto ABOVE 28°C: mkt=0.725, model=0.212 → NO edge = 0.513
@@ -228,9 +295,17 @@ def _check_no_guardrails(condition: str, price_yes: float, model_prob: float) ->
         logger.info(f"NO bloqueado: price_no muito baixo ({price_no:.3f})")
         return False
 
+    # EV líquido mínimo do lado NO (fee incluída)
+    ev_no = expected_value_no(model_prob, price_yes)
+    if ev_no < MIN_EV:
+        logger.info(
+            f"NO bloqueado: EV líquido insuficiente ({ev_no:+.3f} < {MIN_EV})"
+        )
+        return False
+
     logger.info(
         f"GUARDRAIL OK [NO]: {condition} price_yes={price_yes:.3f} "
-        f"price_no={price_no:.3f} prob={model_prob:.3f} NO_edge={no_edge:+.3f}"
+        f"price_no={price_no:.3f} prob={model_prob:.3f} NO_edge={no_edge:+.3f} EV={ev_no:+.3f}"
     )
     return True
 
@@ -252,7 +327,10 @@ def kelly_criterion_no(
     if prob_no <= 0 or prob_no >= 1 or price_no <= 0 or price_no >= 1:
         return 0.0
 
-    b = (1.0 / price_no) - 1.0
+    # Odds líquidas (com fee) — mesma correção do kelly_criterion.
+    b = _net_odds(price_no)
+    if b <= 0:
+        return 0.0
     q = 1.0 - prob_no  # = model_prob_yes
 
     kelly_pct = (prob_no * b - q) / b
@@ -266,3 +344,41 @@ def kelly_criterion_no(
     stake = min(stake, MAX_POSITION)
 
     return round(stake, 2)
+
+
+# ── Exposição: helpers usados pelo bot ───────────────────────────────
+
+def exposure_headroom(current_exposure: float) -> float:
+    """
+    Quanto de stake ainda CABE sem ultrapassar MAX_TOTAL_EXPOSURE.
+    O bot deve clampar o stake a este valor (e descartar se <= 0).
+    """
+    return max(0.0, MAX_TOTAL_EXPOSURE - max(0.0, current_exposure))
+
+
+def event_open_stake(open_trades: list, city: str, market_date: str) -> float:
+    """
+    Soma do stake já aberto em buckets do MESMO evento
+    (mesma cidade normalizada + mesma data de mercado).
+    """
+    city_key = (city or "").strip().lower()
+    total = 0.0
+    for t in open_trades or []:
+        if (t.get("city", "") or "").strip().lower() != city_key:
+            continue
+        if str(t.get("market_date", "")) != str(market_date):
+            continue
+        try:
+            total += float(t.get("stake", 0) or 0)
+        except (TypeError, ValueError):
+            continue
+    return total
+
+
+def event_headroom(open_trades: list, city: str, market_date: str) -> float:
+    """
+    Quanto de stake ainda cabe NESTE evento (cidade+dia) sem ultrapassar
+    MAX_EVENT_EXPOSURE. Buckets do mesmo evento são mutuamente exclusivos.
+    """
+    used = event_open_stake(open_trades, city, market_date)
+    return max(0.0, MAX_EVENT_EXPOSURE - used)

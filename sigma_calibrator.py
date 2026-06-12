@@ -7,13 +7,21 @@ MELHORIAS v2:
 - Decaimento temporal: erros recentes pesam mais que antigos
 - Limite de ajuste: sigma não pode ficar abaixo de 2.0 nem acima de 8.0
 - Log de evolução para diagnóstico
+
+CORREÇÕES v3 (auditoria):
+- record_trade_result aceita market_date e deduplica amostras: vários trades
+  liquidados sobre o MESMO (cidade, condição, dia) não inflam mais a
+  estatística de erro com observações repetidas (pseudo-replicação).
+- Novo helper get_recent_errors(city, condition=None) — fonte de dados
+  correta para o ml_adjuster (a estrutura interna é
+  calibration_data[city][COND]["errors"], e o ML lia o nível errado).
 """
 
 import json
 import os
 import logging
 from datetime import datetime, timezone
-from typing import Dict
+from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +115,17 @@ class SigmaCalibrator:
         predicted_temp: float,
         actual_temp: float,
         condition: str = "ABOVE",
+        market_date: str = None,
     ):
+        """
+        Registra UMA observação de erro de forecast.
+
+        market_date (opcional, "YYYY-MM-DD"): identifica o dia do mercado.
+        Quando informado, observações repetidas para o mesmo
+        (cidade, condição, market_date) são ignoradas — vários buckets do
+        mesmo evento liquidados juntos representam UM único erro de
+        forecast, não N erros independentes.
+        """
         city_key = city.strip().lower()
         error    = abs(predicted_temp - actual_temp)
         cond_key = condition.upper()
@@ -121,16 +139,30 @@ class SigmaCalibrator:
                 "sigma_adjustment": 0.0,
             }
 
+        errors_list = self.calibration_data[city_key][cond_key]["errors"]
+
+        # Dedup por dia de mercado: o erro do forecast de um dia é um
+        # evento único, independentemente de quantos trades existiam nele.
+        if market_date:
+            for e in errors_list:
+                if e.get("market_date") == market_date:
+                    logger.debug(
+                        f"[sigma] {city_key}/{cond_key} {market_date}: "
+                        f"amostra já registrada — ignorando duplicata"
+                    )
+                    return
+
         entry = {
             "day_offset": day_offset,
             "error":      round(error, 2),
             "timestamp":  datetime.now(timezone.utc).isoformat(),
         }
-        self.calibration_data[city_key][cond_key]["errors"].append(entry)
+        if market_date:
+            entry["market_date"] = market_date
+        errors_list.append(entry)
 
         # Janela máxima de 40 observações
-        self.calibration_data[city_key][cond_key]["errors"] = \
-            self.calibration_data[city_key][cond_key]["errors"][-40:]
+        self.calibration_data[city_key][cond_key]["errors"] = errors_list[-40:]
 
         # Recalcula ajuste com decaimento temporal
         errors_list = self.calibration_data[city_key][cond_key]["errors"]
@@ -173,6 +205,41 @@ class SigmaCalibrator:
         sigma = base_sigma + adjustment
         sigma = max(SIGMA_MIN, min(SIGMA_MAX, sigma))
         return round(sigma, 4)
+
+    def get_recent_errors(
+        self,
+        city: str,
+        condition: Optional[str] = None,
+    ) -> List[float]:
+        """
+        Lista de erros recentes (float, °C) para a cidade.
+
+        condition=None agrega todas as condições (ordenadas por timestamp);
+        com condition específica, retorna só aquela série. É a interface
+        que o ml_adjuster deve usar — a estrutura interna aninhada por
+        condição não é mais acessada de fora.
+        """
+        city_key = city.strip().lower()
+        conds = self.calibration_data.get(city_key, {})
+        if not isinstance(conds, dict):
+            return []
+
+        if condition is not None:
+            data = conds.get(condition.upper(), {})
+            entries = data.get("errors", []) if isinstance(data, dict) else []
+            return [
+                float(e["error"]) for e in entries
+                if isinstance(e, dict) and "error" in e
+            ]
+
+        merged = []
+        for data in conds.values():
+            if isinstance(data, dict):
+                for e in data.get("errors", []):
+                    if isinstance(e, dict) and "error" in e:
+                        merged.append((e.get("timestamp", ""), float(e["error"])))
+        merged.sort(key=lambda t: t[0])
+        return [v for _, v in merged]
 
     def resumo_calibracao(self) -> str:
         """Retorna resumo legível da calibração atual por cidade."""

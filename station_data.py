@@ -13,21 +13,34 @@ Uso no bot:
   from station_data import get_intraday_confirmation
   conf = get_intraday_confirmation(city_slug, condition, target_c)
   # retorna {'confirmed': bool, 'current_max': float, 'reason': str}
+
+CORREÇÕES (auditoria):
+1. Os dados horários agora são pedidos com timezone=auto e o "hoje" é o
+   dia LOCAL da cidade. Antes tudo era UTC: para Los Angeles, "18h"
+   significava 11h da manhã local, e o filtro de "horas já passadas"
+   misturava observações do dia local errado.
+2. Os cutoffs de decisão (>=18h, >=12h) agora são comparados com a HORA
+   LOCAL da cidade — a heurística é sobre o ciclo diurno local ("já é
+   tarde, a máxima do dia já aconteceu"), não sobre o relógio UTC.
 """
 
 import requests
 import time
 from datetime import datetime, timezone
 
-from forecast import CITY_COORDS
+from forecast import CITY_COORDS, city_now, city_today
 
 _INTRADAY_CACHE = {}
 _INTRADAY_TTL   = 1800  # 30 min
 
 
-def _fetch_hourly(lat, lon):
-    """Busca temperatura horária de hoje via Open-Meteo."""
-    cache_key = (round(lat, 2), round(lon, 2))
+def _fetch_hourly(lat, lon, local_today: str):
+    """
+    Busca temperatura horária do DIA LOCAL da cidade via Open-Meteo.
+    timezone=auto faz a API devolver timestamps já na hora local da
+    coordenada, e start/end_date interpretados como dia local.
+    """
+    cache_key = (round(lat, 2), round(lon, 2), local_today)
     now = time.time()
     if cache_key in _INTRADAY_CACHE:
         age = now - _INTRADAY_CACHE[cache_key]["ts"]
@@ -35,16 +48,14 @@ def _fetch_hourly(lat, lon):
             return _INTRADAY_CACHE[cache_key]["data"]
 
     try:
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         url = "https://api.open-meteo.com/v1/forecast"
         params = {
             "latitude":      lat,
             "longitude":     lon,
             "hourly":        "temperature_2m",
-            "timezone":      "UTC",
-            "start_date":    today,
-            "end_date":      today,
-            "forecast_days": 1,
+            "timezone":      "auto",
+            "start_date":    local_today,
+            "end_date":      local_today,
         }
         r = requests.get(url, params=params, timeout=10)
         if r.status_code != 200:
@@ -63,17 +74,17 @@ def get_intraday_confirmation(city_slug: str, condition: str, target_c: float) -
     """
     Verifica tendência intra-dia para confirmar ou rejeitar entrada.
 
-    Para mercados que resolvem HOJE:
-      - Pega temperatura máxima horária observada até agora
+    Para mercados que resolvem HOJE (dia local da cidade):
+      - Pega temperatura máxima horária observada até agora (hora local)
       - Se max_atual já passou o target ABOVE → prob ~0.95 → confirma
-      - Se hora atual > 18:00 UTC e max_atual < target - 2°C → prob ~0.05 → rejeita
+      - Se hora local > 18:00 e max_atual < target - 2°C → prob ~0.05 → rejeita
 
     Para mercados futuros (D+2, D+3): retorna neutro (não há dados ainda).
 
     Retorna:
       confirmed  — True = sinal forte, False = sinal fraco, None = neutro
       current_max — temperatura máxima observada hoje (ou None)
-      current_hour — hora UTC atual
+      current_hour — hora LOCAL da cidade
       reason — descrição do veredito
     """
     result = {
@@ -87,14 +98,18 @@ def get_intraday_confirmation(city_slug: str, condition: str, target_c: float) -
         return result
 
     lat, lon = CITY_COORDS[city_slug]
-    hourly = _fetch_hourly(lat, lon)
+    local_today = city_today(city_slug)
+    hourly = _fetch_hourly(lat, lon, local_today)
     if not hourly:
         return result
 
-    now_hour = datetime.now(timezone.utc).hour
+    # Hora LOCAL da cidade (não UTC): a heurística é sobre o ciclo diurno.
+    now_hour = city_now(city_slug).hour
     result["current_hour"] = now_hour
 
-    # Filtra apenas horas já passadas (dados observados, não previstos)
+    # Filtra apenas horas já passadas (dados observados, não previstos).
+    # Com timezone=auto, os timestamps horários vêm em hora LOCAL,
+    # comparável diretamente com now_hour local.
     observed = []
     for time_str, temp in hourly:
         try:
@@ -119,30 +134,30 @@ def get_intraday_confirmation(city_slug: str, condition: str, target_c: float) -
             result["confirmed"] = True
             result["reason"] = f"max atual {current_max:.1f}°C já passou target {target_c:.1f}°C"
         elif now_hour >= 18 and current_max < target_c - 2.0:
-            # Tarde, bem abaixo do target — muito improvável resolver YES
+            # Tarde (hora local), bem abaixo do target — muito improvável resolver YES
             result["confirmed"] = False
             result["reason"] = (
-                f"hora {now_hour}h UTC, max {current_max:.1f}°C < "
+                f"hora {now_hour}h local, max {current_max:.1f}°C < "
                 f"target {target_c:.1f}°C - 2°C — improvável superar"
             )
         else:
             result["reason"] = (
                 f"max até agora: {current_max:.1f}°C, target: {target_c:.1f}°C "
-                f"(hora {now_hour}h UTC)"
+                f"(hora {now_hour}h local)"
             )
 
     elif condition == "BELOW":
         if current_max >= target_c + 2.0 and now_hour >= 12:
-            # Já quente demais, tarde — não vai resolver BELOW
+            # Já quente demais, tarde (hora local) — não vai resolver BELOW
             result["confirmed"] = False
             result["reason"] = (
                 f"max {current_max:.1f}°C já acima de target {target_c:.1f}°C + 2°C"
             )
         elif current_max < target_c and now_hour >= 18:
-            # Tarde, ainda abaixo — muito provável resolver BELOW
+            # Tarde (hora local), ainda abaixo — muito provável resolver BELOW
             result["confirmed"] = True
             result["reason"] = (
-                f"hora {now_hour}h UTC, max {current_max:.1f}°C < target {target_c:.1f}°C"
+                f"hora {now_hour}h local, max {current_max:.1f}°C < target {target_c:.1f}°C"
             )
 
     return result
@@ -150,9 +165,15 @@ def get_intraday_confirmation(city_slug: str, condition: str, target_c: float) -
 
 # Mapeamento de cidades problemáticas com erro sistemático alto
 # Dados dos 39 trades: eliminar cidades onde erro de forecast > 5°C médio
+# NOTA (auditoria): os erros gigantes de Beijing (25.5°C) e Hong Kong (11°C)
+# eram em grande parte ARTEFATO do bug de timezone (settlement comparava a
+# máxima do dia UTC com mercados que resolvem pelo dia local — para a Ásia a
+# diferença é enorme). Com as correções de timezone, estas cidades tendem a
+# voltar a ser utilizáveis; mantemos a lista por segurança até que novas
+# estatísticas pós-correção confirmem.
 UNRELIABLE_CITIES = {
-    "beijing",    # erro médio 25.5°C (provável problema de estação)
-    "hong-kong",  # erro médio 11°C (possível problema de estação/timezone)
+    "beijing",    # erro médio 25.5°C (artefato de timezone + possível estação)
+    "hong-kong",  # erro médio 11°C (artefato de timezone + possível estação)
 }
 
 

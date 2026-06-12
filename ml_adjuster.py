@@ -8,6 +8,24 @@ MELHORIAS v2:
   umidade, pressão atmosférica (quando disponíveis)
 - Feedback loop: registra Brier score por semana para medir melhora
 - Fallback limpo para cidade sem dados
+
+CORREÇÕES v3 (auditoria):
+1. Os erros da cidade agora vêm de calibrator.get_recent_errors(city).
+   A leitura antiga (calibration_data[city]["errors"]) apontava para um
+   nível inexistente da estrutura (que é [city][COND]["errors"]) e
+   retornava SEMPRE lista vazia — as features 3, 4 e 5 estavam mortas
+   silenciosamente.
+2. n_trades agora é persistido junto com o modelo no kv_store
+   ({"pkl_b64", "n_trades"}). Antes ficava só em memória e zerava a cada
+   deploy/restart, fazendo o gate `n >= 5` quase nunca passar: o ML era
+   treinado mas praticamente nunca aplicado.
+3. Features normalizadas para escalas comparáveis (~[0,1]) antes do SGD.
+   O SGD sem normalização era dominado por hour_utc (0–23) e day_offset.
+   O prefixo de chave do modelo subiu para "ml_model_v3_" para NÃO
+   misturar pickles treinados na escala antiga com a nova.
+4. update() recebe hour_utc real do trade (passado pelo settlement a
+   partir do entry_time) — antes treinava com a hora da liquidação e
+   servia com hour=12 fixo (train/serve skew).
 """
 
 import os
@@ -24,7 +42,7 @@ from sklearn.linear_model import SGDClassifier
 logger = logging.getLogger(__name__)
 
 MODEL_FILE   = "ml_adjuster.pkl"
-_DB_KEY_PFX  = "ml_model_v2_"   # prefixo por cidade
+_DB_KEY_PFX  = "ml_model_v3_"    # prefixo por cidade (v3: features normalizadas)
 _DB_KEY_PERF = "ml_performance"  # histórico de Brier por semana
 
 
@@ -85,16 +103,23 @@ def _kv_set(conn, key, value: dict):
 
 def _new_model() -> SGDClassifier:
     m = SGDClassifier(loss="log_loss", random_state=42, max_iter=1000)
-    # Treino inicial com 2 exemplos neutros para evitar erro de classe única
-    X = np.array([[0.7, 1, 6, 2.0, 1.0, 0.0, 0.0],
-                  [0.3, 3, 9, 3.5, 1.5, -0.5, 0.0]])
+    # Treino inicial com 2 exemplos neutros (já na escala NORMALIZADA)
+    # para evitar erro de classe única no primeiro partial_fit real.
+    X = np.array([
+        # prob, day/3, hour/24, mean/5, std/5, trend/5, temp_trend/5
+        [0.7, 1 / 3.0,  6 / 24.0, 2.0 / 5.0, 1.0 / 5.0,  0.0,        0.0],
+        [0.3, 3 / 3.0,  9 / 24.0, 3.5 / 5.0, 1.5 / 5.0, -0.5 / 5.0,  0.0],
+    ])
     y = np.array([1, 0])
     m.partial_fit(X, y, classes=np.array([0, 1]))
     return m
 
 
-def _load_model(city_key: str) -> SGDClassifier:
-    """Carrega modelo da cidade do PostgreSQL ou cria novo."""
+def _load_model(city_key: str):
+    """
+    Carrega (modelo, n_trades) da cidade do PostgreSQL ou cria novo.
+    Retorna tupla (SGDClassifier, int).
+    """
     import base64
     conn = _db_connect()
     if conn:
@@ -102,24 +127,29 @@ def _load_model(city_key: str) -> SGDClassifier:
             data = _kv_get(conn, _DB_KEY_PFX + city_key)
             conn.close()
             if data and data.get("pkl_b64"):
-                return pickle.loads(base64.b64decode(data["pkl_b64"]))
+                model = pickle.loads(base64.b64decode(data["pkl_b64"]))
+                n_trades = int(data.get("n_trades", 0))
+                return model, n_trades
         except Exception as e:
             logger.debug(f"[ml] load_model {city_key}: {e}")
             try:
                 conn.close()
             except Exception:
                 pass
-    return _new_model()
+    return _new_model(), 0
 
 
-def _save_model(city_key: str, model: SGDClassifier):
-    """Salva modelo da cidade no PostgreSQL."""
+def _save_model(city_key: str, model: SGDClassifier, n_trades: int):
+    """Salva (modelo, n_trades) da cidade no PostgreSQL."""
     import base64
     pkl_b64 = base64.b64encode(pickle.dumps(model)).decode()
     conn = _db_connect()
     if conn:
         try:
-            _kv_set(conn, _DB_KEY_PFX + city_key, {"pkl_b64": pkl_b64})
+            _kv_set(conn, _DB_KEY_PFX + city_key, {
+                "pkl_b64":  pkl_b64,
+                "n_trades": int(n_trades),
+            })
             conn.close()
         except Exception as e:
             logger.debug(f"[ml] save_model {city_key}: {e}")
@@ -138,17 +168,17 @@ def compute_features(
     hour_utc: int = 12,
     month: int = 6,
     temp_trend: float = 0.0,   # tendência horária °C/h (intra-dia)
-    humidity: float = 0.0,     # 0-100, 0 se indisponível
+    humidity: float = 0.0,     # 0-100, 0 se indisponível (reservado)
 ) -> np.ndarray:
     """
-    Features v2 (7 dimensões):
-      0: model_prob
-      1: day_offset
-      2: hour_utc         (quando o trade foi aberto)
-      3: mean_error_cidade
-      4: std_error_cidade
-      5: recent_trend     (erro recente vs anterior)
-      6: temp_trend       (tendência intra-dia em °C/h)
+    Features v3 (7 dimensões, NORMALIZADAS para ~[0,1] / [-1,1]):
+      0: model_prob          (já em [0,1])
+      1: day_offset / 3
+      2: hour_utc / 24       (quando o trade foi aberto)
+      3: mean_error / 5      (erro médio da cidade, °C)
+      4: std_error / 5
+      5: recent_trend / 5    (erro recente vs anterior)
+      6: temp_trend / 5      (tendência intra-dia °C/h)
     """
     if not city_errors:
         mean_err, std_err = 2.0, 1.0
@@ -158,17 +188,47 @@ def compute_features(
 
     recent_trend = 0.0
     if len(city_errors) >= 2:
-        recent_trend = city_errors[-1] - city_errors[-2]
+        recent_trend = float(city_errors[-1]) - float(city_errors[-2])
 
     return np.array([
-        model_prob,
-        day_offset,
-        hour_utc,
-        mean_err,
-        std_err,
-        recent_trend,
-        temp_trend,
+        float(model_prob),
+        float(day_offset) / 3.0,
+        float(hour_utc) / 24.0,
+        mean_err / 5.0,
+        std_err / 5.0,
+        recent_trend / 5.0,
+        float(temp_trend) / 5.0,
     ]).reshape(1, -1)
+
+
+def _errors_for_city(calibrator, city_key: str) -> list:
+    """
+    Obtém a série de erros recentes da cidade de forma tolerante:
+    usa o helper oficial do calibrador quando existir; caso contrário,
+    percorre a estrutura aninhada [city][COND]["errors"] corretamente.
+    """
+    try:
+        if hasattr(calibrator, "get_recent_errors"):
+            return list(calibrator.get_recent_errors(city_key))
+    except Exception as e:
+        logger.debug(f"[ml] get_recent_errors {city_key}: {e}")
+
+    # Fallback defensivo (estrutura aninhada por condição)
+    out = []
+    try:
+        conds = calibrator.calibration_data.get(city_key, {})
+        if isinstance(conds, dict):
+            merged = []
+            for data in conds.values():
+                if isinstance(data, dict):
+                    for e in data.get("errors", []):
+                        if isinstance(e, dict) and "error" in e:
+                            merged.append((e.get("timestamp", ""), float(e["error"])))
+            merged.sort(key=lambda t: t[0])
+            out = [v for _, v in merged]
+    except Exception as e:
+        logger.debug(f"[ml] errors fallback {city_key}: {e}")
+    return out
 
 
 # ── API pública ───────────────────────────────────────────────
@@ -182,8 +242,9 @@ class MLProbabilityAdjuster:
 
     def _get_model(self, city_key: str) -> SGDClassifier:
         if city_key not in self._models:
-            self._models[city_key] = _load_model(city_key)
-            self._n_trades[city_key] = 0
+            model, n_trades = _load_model(city_key)
+            self._models[city_key] = model
+            self._n_trades[city_key] = n_trades
         return self._models[city_key]
 
     def adjust_probability(
@@ -196,17 +257,17 @@ class MLProbabilityAdjuster:
         temp_trend: float = 0.0,
     ) -> float:
         city_key = city.strip().lower()
-        errors = [
-            e["error"]
-            for e in calibrator.calibration_data.get(city_key, {}).get("errors", [])
-        ]
+
+        # Garante que modelo + contador persistido estejam carregados
+        # ANTES de checar o gate (o contador agora sobrevive a restarts).
+        model = self._get_model(city_key)
+        errors = _errors_for_city(calibrator, city_key)
         n = self._n_trades.get(city_key, 0)
 
         # Só aplica ajuste ML quando há dados suficientes desta cidade
         if n < 5:
             return model_prob
 
-        model = self._get_model(city_key)
         X = compute_features(model_prob, day_offset, errors, hour_utc, temp_trend=temp_trend)
         try:
             proba = model.predict_proba(X)[0][1]
@@ -229,10 +290,7 @@ class MLProbabilityAdjuster:
         temp_trend: float = 0.0,
     ):
         city_key = city.strip().lower()
-        errors = [
-            e["error"]
-            for e in calibrator.calibration_data.get(city_key, {}).get("errors", [])
-        ]
+        errors = _errors_for_city(calibrator, city_key)
         model = self._get_model(city_key)
         X = compute_features(model_prob, day_offset, errors, hour_utc, temp_trend=temp_trend)
         y = np.array([1 if trade_success else 0])
@@ -240,7 +298,7 @@ class MLProbabilityAdjuster:
             model.partial_fit(X, y)
             self._models[city_key] = model
             self._n_trades[city_key] = self._n_trades.get(city_key, 0) + 1
-            _save_model(city_key, model)
+            _save_model(city_key, model, self._n_trades[city_key])
             logger.info(f"[ml] {city_key} atualizado (n={self._n_trades[city_key]})")
         except Exception as e:
             logger.warning(f"[ml] update {city_key}: {e}")

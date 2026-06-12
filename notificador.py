@@ -5,12 +5,25 @@ Notificações automáticas + IA Groq (llama-3.3-70b) para conversa natural.
 CORRIGIDO: docstring dizia "Grok" (xAI), mas o serviço usado é Groq
 (startup de infraestrutura, groq.com). São produtos diferentes.
 Variável de ambiente: GROQ_API_KEY (correta).
+
+CORREÇÕES (auditoria):
+1. AUTENTICAÇÃO: o listener agora SÓ processa mensagens vindas do
+   CHAT_ID configurado. Antes, QUALQUER pessoa que encontrasse o bot no
+   Telegram podia executar /resetbankroll (zerando histórico e saldo) e
+   /settlement — o bot processava comandos de qualquer chat e apenas
+   respondia no CHAT_ID.
+2. /settlement agora roda EM PROCESSO via settle_all(), que é atômico
+   (advisory lock + lock de arquivo). Antes era um SUBPROCESSO
+   `python settlement.py` rodando em paralelo com o loop principal do
+   worker — terceiro escritor concorrente do bankroll sem lock, um dos
+   vetores da divergência de saldo.
+3. Brier do contexto da IA agora é ciente do lado (NO → 1−model_prob),
+   consistente com validacao.py.
 """
 
 import os
 import requests
 import json
-import subprocess
 import time
 from datetime import datetime, timezone
 from threading import Thread
@@ -51,8 +64,13 @@ def enviar_mensagem(texto, parse_mode="HTML"):
 # ──────────────────────────────────────────────────────────────
 
 def _kelly_math(balance, model_prob, market_price):
+    # Odds líquidas com fee — consistente com risk.kelly_criterion.
+    try:
+        from risk import FEE_RATE
+    except Exception:
+        FEE_RATE = 0.02
     p, q = model_prob, 1.0 - model_prob
-    b    = (1.0 / market_price) - 1.0 if market_price > 0 else 0
+    b    = ((1.0 - FEE_RATE) / market_price) - 1.0 if market_price > 0 else 0
     f_puro  = max((p * b - q) / b, 0.0) if b > 0 else 0.0
     f_half  = f_puro * KELLY_FRACTION
     f_cap   = min(f_half, MAX_KELLY_FRACTION_CAP)
@@ -61,7 +79,7 @@ def _kelly_math(balance, model_prob, market_price):
     shares  = int(stake_t / market_price) if market_price > 0 else 0
     custo   = round(shares * market_price, 2)
     desp    = round((1 - custo / stake_t) * 100, 1) if stake_t > 0 else 0
-    ev_pct  = round((p / market_price - 1) * 100, 1) if market_price > 0 else 0
+    ev_pct  = round((p * (1.0 - FEE_RATE) / market_price - 1) * 100, 1) if market_price > 0 else 0
     return {
         "kelly_puro_pct": round(f_puro * 100, 1),
         "half_kelly_pct": round(f_half * 100, 1),
@@ -223,8 +241,11 @@ def _build_context():
 
     validacao_str = ""
     if fechados and any(t.get("model_prob") for t in fechados):
+        def _prob_lado(t):
+            p = t.get("model_prob", 0) or 0
+            return (1.0 - p) if str(t.get("side", "YES")).upper() == "NO" else p
         brier_scores = [
-            (t.get("model_prob", 0) - (1.0 if t.get("result") == "WIN" else 0))**2
+            (_prob_lado(t) - (1.0 if t.get("result") == "WIN" else 0))**2
             for t in fechados if t.get("model_prob")
         ]
         if brier_scores:
@@ -323,19 +344,14 @@ def processar_comando(texto):
     if cmd == "/settlement":
         enviar_mensagem("Executando settlement...")
         try:
-            res = subprocess.run(
-                ["python", "settlement.py"],
-                capture_output=True, text=True, timeout=60, cwd=BOT_DIR,
-            )
-            if res.returncode == 0:
-                enviar_mensagem("Settlement executado!")
-            else:
-                erro = res.stderr[:400] if res.stderr else "sem detalhes"
-                enviar_mensagem(f"Erro no settlement:\n<pre>{erro}</pre>")
-        except subprocess.TimeoutExpired:
-            enviar_mensagem("Timeout no settlement (>60s)")
+            # Em processo, sob o mesmo lock do bankroll — NÃO mais via
+            # subprocesso paralelo (que escrevia o bankroll por fora do
+            # processo principal, sem coordenação).
+            from settlement import settle_all
+            settle_all()
+            enviar_mensagem("Settlement executado!")
         except Exception as e:
-            enviar_mensagem(f"Erro: {e}")
+            enviar_mensagem(f"Erro no settlement:\n<pre>{str(e)[:400]}</pre>")
 
     elif cmd == "/status":
         try:
@@ -423,6 +439,19 @@ def processar_comando(texto):
 # LISTENER LONG-POLLING
 # ──────────────────────────────────────────────────────────────
 
+def _chat_autorizado(msg: dict) -> bool:
+    """
+    Só o CHAT_ID configurado pode comandar o bot. Sem isto, qualquer
+    pessoa que encontre o bot no Telegram pode resetar o bankroll ou
+    disparar settlement.
+    """
+    try:
+        chat_id = str(msg.get("chat", {}).get("id", ""))
+        return bool(CHAT_ID) and chat_id == str(CHAT_ID)
+    except Exception:
+        return False
+
+
 def iniciar_listener():
     def listen():
         offset = 0
@@ -441,9 +470,14 @@ def iniciar_listener():
                             offset = update["update_id"] + 1
                             msg    = update.get("message", {})
                             texto  = msg.get("text", "").strip()
-                            if texto:
-                                print(f"Telegram: {texto[:60]}")
-                                processar_comando(texto)
+                            if not texto:
+                                continue
+                            if not _chat_autorizado(msg):
+                                quem = msg.get("chat", {}).get("id", "?")
+                                print(f"Telegram: mensagem de chat NÃO autorizado ({quem}) — ignorada")
+                                continue
+                            print(f"Telegram: {texto[:60]}")
+                            processar_comando(texto)
                 time.sleep(1)
             except Exception as e:
                 print(f"Listener erro: {e}")

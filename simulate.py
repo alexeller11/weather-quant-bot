@@ -15,6 +15,24 @@ Uso:
     python simulate.py --param      # Só sensitivity analysis
     python simulate.py --monte      # Só Monte Carlo (1000 simulações)
     python simulate.py --csv        # Exporta trades para CSV
+
+CORREÇÕES (auditoria):
+1. Todas as métricas de calibração (Brier, ECE, reliability diagram,
+   edge realizado) agora usam a probabilidade DO LADO APOSTADO:
+   YES → model_prob; NO → 1 − model_prob. Antes comparavam model_prob
+   (prob de YES) com o WIN do trade — para os trades NO (maioria do
+   histórico real) o erro de calibração saía com o sinal invertido.
+2. ECE e reliability diagram: o "previsto" do bin agora é a MÉDIA das
+   probabilidades dos trades do bin, não o ponto médio do bin (com
+   poucos trades por bin, o midpoint distorce o desvio).
+3. Monte Carlo: a probabilidade de ruína agora é calculada sobre o
+   MÍNIMO da trajetória (tocar $0 em qualquer ponto = ruína), não só
+   sobre o saldo final — um caminho que quebra e "se recupera" no
+   bootstrap não é um caminho sobrevivente na prática.
+4. Sensitivity analysis: o stake recalculado usa o saldo inicial REAL e
+   o cap MAX_POSITION do config (eram hardcoded 100 e 2.0), o preço do
+   LADO apostado (entry_price) e odds líquidas com fee — consistente
+   com risk.py.
 """
 
 import json
@@ -27,6 +45,24 @@ from pathlib import Path
 
 BANKROLL_FILE = Path("bankroll.json")
 
+try:
+    from config import MAX_POSITION as _MAX_POSITION, START_BALANCE as _START_BALANCE
+except Exception:
+    _MAX_POSITION, _START_BALANCE = 4.0, 100.0
+
+try:
+    from risk import FEE_RATE as _FEE_RATE
+except Exception:
+    _FEE_RATE = 0.02
+
+
+def prob_apostada(t):
+    """Prob do lado apostado: YES → model_prob; NO → 1 − model_prob."""
+    p = float(t.get("model_prob") or 0)
+    if str(t.get("side", "YES")).upper() == "NO":
+        return 1.0 - p
+    return p
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # CARREGAMENTO
@@ -36,7 +72,7 @@ def load_trades():
     data = json.loads(BANKROLL_FILE.read_text(encoding="utf-8"))
     history  = data.get("history", [])
     balance  = float(data.get("balance", 0))
-    start    = float(data.get("start_balance", 100))
+    start    = float(data.get("start_balance", _START_BALANCE))
     closed   = [t for t in history if t.get("result") in ("WIN", "LOSS")]
     open_t   = [t for t in history if t.get("result") == "OPEN"]
     closed.sort(key=lambda t: t.get("exit_time") or "")
@@ -105,8 +141,9 @@ def profit_factor(closed):
 
 
 def brier_score(closed):
+    # Prob do LADO apostado vs resultado do trade (ciente de YES/NO).
     vals = [
-        (float(t.get("model_prob") or 0) - (1.0 if t.get("result") == "WIN" else 0.0)) ** 2
+        (prob_apostada(t) - (1.0 if t.get("result") == "WIN" else 0.0)) ** 2
         for t in closed if t.get("model_prob") is not None
     ]
     return round(sum(vals) / len(vals), 4) if vals else None
@@ -116,29 +153,36 @@ def expected_calibration_error(closed, n_bins=5):
     """
     ECE — média ponderada da diferença entre prob prevista e win rate real
     por bin. Quanto menor, mais calibrado o modelo (0 = perfeito).
+    O "previsto" do bin é a MÉDIA das probs do bin (não o midpoint).
     """
     if not closed:
         return None
-    bins = defaultdict(list)
+    bins = defaultdict(list)  # b -> lista de (prob_apostada, outcome)
+    total = 0
     for t in closed:
-        prob = t.get("model_prob")
-        if prob is None:
+        if t.get("model_prob") is None:
             continue
+        prob = prob_apostada(t)
         b = min(int(prob * n_bins), n_bins - 1)
-        bins[b].append(1.0 if t.get("result") == "WIN" else 0.0)
+        bins[b].append((prob, 1.0 if t.get("result") == "WIN" else 0.0))
+        total += 1
+
+    if total == 0:
+        return None
 
     ece = 0.0
-    n   = len(closed)
-    for b, outcomes in bins.items():
-        mid       = (b + 0.5) / n_bins
+    for b, pares in bins.items():
+        probs    = [p for p, _ in pares]
+        outcomes = [o for _, o in pares]
+        mean_prob = sum(probs) / len(probs)
         actual_wr = sum(outcomes) / len(outcomes)
-        ece      += (len(outcomes) / n) * abs(mid - actual_wr)
+        ece      += (len(pares) / total) * abs(mean_prob - actual_wr)
     return round(ece, 4)
 
 
 def edge_realizado(closed):
     vals = [
-        (1.0 if t.get("result") == "WIN" else 0.0) - float(t.get("model_prob") or 0)
+        (1.0 if t.get("result") == "WIN" else 0.0) - prob_apostada(t)
         for t in closed if t.get("model_prob") is not None
     ]
     return round(sum(vals) / len(vals) * 100, 2) if vals else None
@@ -151,16 +195,16 @@ def edge_realizado(closed):
 def calibration_table(closed, n_bins=5):
     """
     Reliability diagram em texto.
-    Compara probabilidade prevista com taxa de acerto real por faixa.
-    Modelo bem calibrado → win rate ≈ prob prevista em cada bin.
+    Compara probabilidade prevista (do LADO apostado) com taxa de acerto
+    real por faixa. Modelo bem calibrado → win rate ≈ prob prevista.
     """
     bins = defaultdict(list)
     for t in closed:
-        prob = t.get("model_prob")
-        if prob is None:
+        if t.get("model_prob") is None:
             continue
-        b = min(int(float(prob) * n_bins), n_bins - 1)
-        bins[b].append(t)
+        prob = prob_apostada(t)
+        b = min(int(prob * n_bins), n_bins - 1)
+        bins[b].append((prob, t))
 
     lines = [
         "",
@@ -169,27 +213,29 @@ def calibration_table(closed, n_bins=5):
         "-" * 50,
     ]
     for b in range(n_bins):
-        trades = bins.get(b, [])
+        pares = bins.get(b, [])
         lo = b / n_bins * 100
         hi = (b + 1) / n_bins * 100
-        if not trades:
+        if not pares:
             lines.append(f"  {lo:.0f}%–{hi:.0f}%             (sem dados)")
             continue
-        mid     = (lo + hi) / 2
-        wins    = sum(1 for t in trades if t.get("result") == "WIN")
-        wr      = wins / len(trades) * 100
-        desvio  = wr - mid
-        sinal   = "+" if desvio >= 0 else ""
-        flag    = "⚠" if abs(desvio) > 15 else "✓"
+        trades   = [t for _, t in pares]
+        mean_p   = sum(p for p, _ in pares) / len(pares) * 100
+        wins     = sum(1 for t in trades if t.get("result") == "WIN")
+        wr       = wins / len(trades) * 100
+        desvio   = wr - mean_p
+        sinal    = "+" if desvio >= 0 else ""
+        flag     = "⚠" if abs(desvio) > 15 else "✓"
         lines.append(
             f"  {lo:.0f}%–{hi:.0f}%"
             f"  {len(trades):>4}"
             f"  {wr:>5.1f}%"
-            f"  {mid:>7.1f}%"
+            f"  {mean_p:>7.1f}%"
             f"  {sinal}{desvio:>6.1f}% {flag}"
         )
     lines.append(
         "\n  ✓ = desvio ≤ 15pp   ⚠ = desvio > 15pp (modelo mal calibrado nesta faixa)"
+        "\n  'Previsto' = média das probs do bin (lado apostado)"
     )
     return "\n".join(lines)
 
@@ -198,25 +244,28 @@ def calibration_table(closed, n_bins=5):
 # SENSITIVITY ANALYSIS
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _apply_filters(closed, min_prob, min_edge, kelly_fraction):
+def _apply_filters(closed, min_prob, min_edge, kelly_fraction, start_balance=None):
     """Simula filtragem retroativa com parâmetros alternativos."""
+    bal = float(start_balance) if start_balance else _START_BALANCE
     filtered = []
     for t in closed:
-        prob  = float(t.get("model_prob") or 0)
+        prob  = prob_apostada(t)
         edge  = float(t.get("edge") or 0)
         stake = float(t.get("stake") or 0)
-        price = float(t.get("market_price") or 0.5)
+        # Preço do LADO apostado: YES → market_price; NO → entry_price (1−yes)
+        price = float(t.get("entry_price") or t.get("market_price") or 0.5)
 
         if prob < min_prob:
             continue
         if edge < min_edge:
             continue
 
-        # Recalcula stake com kelly_fraction alternativa
-        b = (1.0 / price) - 1.0 if price > 0 else 0
+        # Recalcula stake com kelly_fraction alternativa,
+        # odds líquidas (com fee) e cap real MAX_POSITION.
+        b = ((1.0 - _FEE_RATE) / price) - 1.0 if price > 0 else 0
         q = 1.0 - prob
         kelly_pct = max(0.0, (prob * b - q) / b) if b > 0 else 0
-        new_stake = min(kelly_pct * kelly_fraction * 100, 2.0)
+        new_stake = min(kelly_pct * kelly_fraction * bal, _MAX_POSITION)
 
         # Escala o PnL proporcionalmente ao novo stake
         scale = new_stake / stake if stake > 0 else 1.0
@@ -226,10 +275,12 @@ def _apply_filters(closed, min_prob, min_edge, kelly_fraction):
     return filtered
 
 
-def sensitivity_analysis(closed, start_balance=100.0):
+def sensitivity_analysis(closed, start_balance=None):
     """Varre combinações de parâmetros e exibe tabela de resultados."""
     if len(closed) < 5:
         return "\nSensitivity analysis: poucos trades fechados (mínimo 5).\n"
+
+    start_balance = float(start_balance) if start_balance else _START_BALANCE
 
     min_probs    = [0.60, 0.65, 0.70, 0.75, 0.80]
     kelly_fracs  = [0.25, 0.50, 0.75]
@@ -246,7 +297,7 @@ def sensitivity_analysis(closed, start_balance=100.0):
 
     for min_prob in min_probs:
         for kf in kelly_fracs:
-            filtered = _apply_filters(closed, min_prob, 0.02, kf)
+            filtered = _apply_filters(closed, min_prob, 0.02, kf, start_balance)
             if not filtered:
                 continue
             wins   = [t for t in filtered if t.get("result") == "WIN"]
@@ -326,8 +377,9 @@ def per_type_stats(closed):
 
 def monte_carlo(closed, start_balance, n_sim=1000, n_trades=50, seed=42):
     """
-    Simula n_sim trajetórias de n_trades trades sortendo com reposição
+    Simula n_sim trajetórias de n_trades trades sorteando com reposição
     do histórico fechado. Retorna percentis de saldo final.
+    Ruína = tocar saldo <= 0 em QUALQUER ponto da trajetória.
     """
     if len(closed) < 5:
         return "\nMonte Carlo: poucos trades fechados (mínimo 5).\n"
@@ -335,12 +387,18 @@ def monte_carlo(closed, start_balance, n_sim=1000, n_trades=50, seed=42):
     random.seed(seed)
     returns = [float(t.get("pnl") or 0) for t in closed]
     finals  = []
+    ruined  = 0
 
     for _ in range(n_sim):
         bal = start_balance
+        min_bal = bal
         for pnl in random.choices(returns, k=n_trades):
             bal += pnl
+            if bal < min_bal:
+                min_bal = bal
         finals.append(bal)
+        if min_bal <= 0:
+            ruined += 1
 
     finals.sort()
     p5   = finals[int(0.05 * n_sim)]
@@ -348,7 +406,7 @@ def monte_carlo(closed, start_balance, n_sim=1000, n_trades=50, seed=42):
     p50  = finals[int(0.50 * n_sim)]
     p75  = finals[int(0.75 * n_sim)]
     p95  = finals[int(0.95 * n_sim)]
-    prob_ruin = sum(1 for f in finals if f <= 0) / n_sim * 100
+    prob_ruin   = ruined / n_sim * 100
     prob_profit = sum(1 for f in finals if f > start_balance) / n_sim * 100
 
     lines = [
@@ -364,10 +422,11 @@ def monte_carlo(closed, start_balance, n_sim=1000, n_trades=50, seed=42):
         f"  Percentil 95%  (otimista):    ${p95:.2f}",
         "",
         f"  Prob. de lucro (> ${start_balance:.0f}): {prob_profit:.1f}%",
-        f"  Prob. de ruína (≤ $0):         {prob_ruin:.1f}%",
+        f"  Prob. de ruína (mín ≤ $0):     {prob_ruin:.1f}%",
         "",
         "  NOTA: simulação usa distribuição empírica de PnL (bootstrap com",
         "  reposição). Com N < 50 trades, resultados têm alta variância.",
+        "  Ruína = saldo tocar zero em qualquer ponto da trajetória.",
     ]
     return "\n".join(lines)
 
@@ -378,8 +437,8 @@ def monte_carlo(closed, start_balance, n_sim=1000, n_trades=50, seed=42):
 
 def export_csv(closed, path="trades_export.csv"):
     fields = [
-        "city", "market_date", "type", "unit", "target", "forecast_c",
-        "model_prob", "market_price", "edge", "ev", "stake", "shares",
+        "city", "market_date", "type", "side", "unit", "target", "forecast_c",
+        "model_prob", "market_price", "entry_price", "edge", "ev", "stake", "shares",
         "result", "pnl", "fee", "real_temp_c", "sigma_total", "forecast_day",
         "entry_time", "exit_time",
     ]

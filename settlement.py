@@ -5,6 +5,34 @@ settlement.py — Liquidação de trades
 CORRIGIDO v5: suporte ao tipo range2 (bucket de 2°F/°C).
 Para range2, o trade vence se a temperatura real cair dentro do bucket:
   target_lo <= real_temp <= target_hi
+
+CORREÇÕES (auditoria):
+1. TIMEZONE: a temperatura real agora é a máxima do DIA LOCAL da cidade
+   (timezone=auto), e a prontidão do trade é avaliada contra o dia local
+   (city_today). Antes tudo era UTC — para cidades da Ásia a máxima
+   comparada era de um recorte de dia errado (causa principal dos erros
+   "impossíveis" de Beijing 25.5°C e Hong Kong 11°C que envenenaram o
+   calibrador de sigma).
+2. FONTE DE DADOS: o archive-api (ERA5) tem ~5 dias de atraso; agora há
+   fallback para a forecast-API com past_days, que cobre o intervalo
+   recente em que os trades de D+0/D+1 são liquidados.
+3. ATOMICIDADE/IDEMPOTÊNCIA: a liquidação inteira acontece dentro de
+   bankroll.atomic_update (lock de thread + arquivo + advisory lock no
+   Postgres) e cada trade é re-checado como OPEN DENTRO do lock — dois
+   processos liquidando ao mesmo tempo não creditam em dobro.
+4. ORDEM DOS EFEITOS: calibrador, ML e notificações Telegram só rodam
+   DEPOIS que o bankroll foi persistido. Antes rodavam por trade, antes
+   do save: um crash no meio re-liquidava tudo no ciclo seguinte,
+   duplicando amostras de calibração e notificações.
+5. PAYOUT: quando o trade tem `shares` gravado, o payout bruto é
+   shares × $1 (o que a Polymarket paga de fato), não stake/entry_price
+   (que ignora o arredondamento de shares para inteiro).
+6. EXACT/RANGE2: a comparação usa a meia-largura na UNIDADE DO MERCADO
+   (0.5°F ≈ 0.278°C), consistente com model.py.
+7. FEE: importada de risk.FEE_RATE (fonte única), em vez do literal 0.02.
+8. Calibrador recebe market_date (dedup de amostras) e o ML treina com a
+   hora de ABERTURA do trade (entry_time) — mesma feature usada na
+   predição, eliminando o train/serve skew.
 """
 
 import logging
@@ -12,12 +40,21 @@ import json
 import os
 import requests
 from datetime import datetime, timezone
-from typing import Dict, Optional
+from typing import Dict, List, Optional, Tuple
 
 from sigma_calibrator import SigmaCalibrator
 from ml_adjuster import MLProbabilityAdjuster
-from model import get_calibrator, get_ml_adjuster
-from bankroll import load_bankroll, save_bankroll, get_open_trades
+from model import get_calibrator, get_ml_adjuster, delta_to_celsius
+from bankroll import (
+    load_bankroll,
+    save_bankroll,
+    get_open_trades,
+    atomic_update,
+    trade_unique_key,
+    normalize_city_slug,
+)
+from forecast import city_today
+from risk import FEE_RATE
 
 logger = logging.getLogger("settlement")
 
@@ -26,6 +63,15 @@ _ml_adjuster = get_ml_adjuster()
 
 
 def get_actual_temperature(lat: float, lon: float, date: str) -> Optional[float]:
+    """
+    Máxima do DIA LOCAL `date` na coordenada.
+
+    1) archive-api (ERA5) com timezone=auto — histórico consolidado,
+       mas com ~5 dias de atraso de disponibilidade;
+    2) fallback: forecast-api com past_days=5 e timezone=auto, que cobre
+       os dias recentes (caso típico: liquidar D+0/D+1 no dia seguinte).
+    """
+    # 1) Arquivo histórico (ERA5)
     try:
         url = "https://archive-api.open-meteo.com/v1/archive"
         params = {
@@ -34,15 +80,41 @@ def get_actual_temperature(lat: float, lon: float, date: str) -> Optional[float]
             "start_date": date,
             "end_date":   date,
             "daily":      "temperature_2m_max",
-            "timezone":   "UTC",
+            "timezone":   "auto",
         }
         resp = requests.get(url, params=params, timeout=15)
         resp.raise_for_status()
         data = resp.json()
-        temp = data["daily"]["temperature_2m_max"][0]
-        if temp is None:
-            raise ValueError("Temperatura ausente")
-        return float(temp)
+        days  = data.get("daily", {}).get("time", []) or []
+        temps = data.get("daily", {}).get("temperature_2m_max", []) or []
+        for d, t in zip(days, temps):
+            if d == date and t is not None:
+                return float(t)
+        raise ValueError("Temperatura ausente no archive")
+    except Exception as e:
+        logger.warning(f"archive-api indisponível para ({lat},{lon}) em {date}: {e}")
+
+    # 2) Fallback: forecast-api com dias passados
+    try:
+        url = "https://api.open-meteo.com/v1/forecast"
+        params = {
+            "latitude":  lat,
+            "longitude": lon,
+            "daily":     "temperature_2m_max",
+            "timezone":  "auto",
+            "past_days": 5,
+            "forecast_days": 1,
+        }
+        resp = requests.get(url, params=params, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+        days  = data.get("daily", {}).get("time", []) or []
+        temps = data.get("daily", {}).get("temperature_2m_max", []) or []
+        for d, t in zip(days, temps):
+            if d == date and t is not None:
+                logger.info(f"Temperatura real via forecast-api (past_days): {date} = {t}°C")
+                return float(t)
+        raise ValueError(f"Data {date} fora da janela past_days")
     except Exception as e:
         logger.error(f"Temperatura real indisponível para ({lat},{lon}) em {date}: {e}")
         return None
@@ -72,25 +144,41 @@ def _get_city_coordinates(city_name: str) -> tuple:
 
 
 def _trade_is_ready(trade: Dict) -> bool:
+    """
+    Pronto para liquidar quando o dia do mercado JÁ TERMINOU no fuso
+    LOCAL da cidade (market_date < hoje-local). Comparar com o dia UTC
+    liquidava cedo demais (Américas) ou tarde demais (Ásia).
+    """
     market_date_str = trade.get("market_date", "")
     if not market_date_str:
         return False
     try:
         market_date = datetime.strptime(market_date_str, "%Y-%m-%d").date()
-        today_utc   = datetime.now(timezone.utc).date()
-        return market_date < today_utc
+        slug = normalize_city_slug(trade.get("city", ""))
+        local_today = datetime.strptime(city_today(slug), "%Y-%m-%d").date()
+        return market_date < local_today
     except Exception:
         return False
 
 
-def settle_trade(trade: Dict, bankroll_data: Dict) -> Dict:
-    if trade.get("result") != "OPEN":
-        return trade
-    if not _trade_is_ready(trade):
-        return trade
+def _entry_hour_utc(trade: Dict) -> int:
+    """Hora UTC de ABERTURA do trade (feature usada pelo ML na predição)."""
+    raw = trade.get("entry_time") or ""
+    try:
+        dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc).hour
+    except Exception:
+        return datetime.now(timezone.utc).hour
 
-    city        = trade.get("city", "")
-    market_date = trade.get("market_date", "")
+
+def _compute_settlement(trade: Dict, actual_temp_c: float) -> Dict:
+    """
+    Calcula o trade liquidado (puro: sem I/O, sem efeitos colaterais).
+    Retorna o dict do trade com result/pnl/fee/real_temp_c/exit_time e
+    o crédito de settlement em trade["_settlement_credit"] (interno).
+    """
     condition   = (trade.get("type") or "ABOVE").upper()
     target      = float(trade.get("target", 0))
     unit        = (trade.get("unit") or "C").upper()
@@ -98,11 +186,100 @@ def settle_trade(trade: Dict, bankroll_data: Dict) -> Dict:
     market_price = float(trade.get("market_price", 0))
     entry_price  = float(trade.get("entry_price") or market_price)
     side         = trade.get("side", "YES").upper()
-    model_prob  = float(trade.get("model_prob") or 0.5)
-    forecast_c  = trade.get("forecast_c")
-    day_offset  = trade.get("forecast_day", 1)
     target_lo   = trade.get("target_lo")
     target_hi   = trade.get("target_hi")
+
+    # Converte para Celsius para comparação
+    if unit == "F":
+        target_c = (target - 32) * 5 / 9
+        lo_c = ((target_lo - 32) * 5 / 9) if target_lo is not None else None
+        hi_c = ((target_hi - 32) * 5 / 9) if target_hi is not None else None
+    else:
+        target_c = target
+        lo_c = target_lo
+        hi_c = target_hi
+
+    # Meia-largura do bucket na unidade do mercado, convertida p/ °C
+    # (0.5°F ≈ 0.278°C; antes era 0.5°C fixo — bucket 80% mais largo em °F).
+    half_exact  = delta_to_celsius(0.5, unit)
+    half_range2 = delta_to_celsius(1.0, unit)
+
+    if condition == "ABOVE":
+        won = actual_temp_c > target_c
+    elif condition == "BELOW":
+        won = actual_temp_c < target_c
+    elif condition == "RANGE2":
+        if lo_c is not None and hi_c is not None:
+            if lo_c > hi_c:
+                lo_c, hi_c = hi_c, lo_c
+            won = lo_c <= actual_temp_c <= hi_c
+        else:
+            won = abs(actual_temp_c - target_c) <= half_range2
+    else:  # EXACT
+        won = abs(actual_temp_c - target_c) <= half_exact
+
+    # PnL — entry_price já gravado corretamente pelo bot:
+    #   YES: entry_price = yes_price
+    #   NO:  entry_price = 1 - yes_price  (price_no)
+    # Para NO: won = YES resolveu FALSO = NO ganhou
+    if side == "NO":
+        won = not won
+
+    # Garante entry_price correto por side como fallback
+    if entry_price <= 0 or entry_price >= 1:
+        if side == "NO":
+            entry_price = round(1.0 - market_price, 4)
+        else:
+            entry_price = market_price
+
+    shares = trade.get("shares")
+
+    if won:
+        # Payout bruto real: shares × $1 quando shares foi gravado
+        # (a Polymarket paga por share inteiro; stake/entry_price ignora
+        # o arredondamento de shares feito na abertura).
+        if shares:
+            gross = float(shares) * 1.0
+        elif entry_price > 0:
+            gross = stake / entry_price
+        else:
+            gross = 0.0
+        if gross > 0:
+            fee   = round(gross * FEE_RATE, 4)
+            pnl   = round(gross - stake - fee, 4)
+            settlement_credit = round(gross - fee, 4)
+        else:
+            fee = 0.0
+            pnl = 0.0
+            settlement_credit = 0.0
+    else:
+        fee = 0.0
+        pnl = round(-stake, 4)
+        settlement_credit = 0.0
+
+    settled = dict(trade)
+    settled["result"]      = "WIN" if won else "LOSS"
+    settled["pnl"]         = pnl
+    settled["fee"]         = fee
+    settled["real_temp_c"] = actual_temp_c
+    settled["exit_time"]   = datetime.now(timezone.utc).isoformat()
+    settled["_settlement_credit"] = settlement_credit
+    return settled
+
+
+def settle_trade(trade: Dict, bankroll_data: Dict) -> Dict:
+    """
+    Compatibilidade: liquida UM trade e aplica o crédito em bankroll_data.
+    Não persiste, não notifica, não calibra — quem chama é responsável.
+    O caminho recomendado é settle_all().
+    """
+    if trade.get("result") != "OPEN":
+        return trade
+    if not _trade_is_ready(trade):
+        return trade
+
+    city        = trade.get("city", "")
+    market_date = trade.get("market_date", "")
 
     lat = trade.get("lat")
     lon = trade.get("lon")
@@ -116,122 +293,20 @@ def settle_trade(trade: Dict, bankroll_data: Dict) -> Dict:
     if actual_temp_c is None:
         return trade
 
-    # Converte para Celsius para comparação
-    if unit == "F":
-        target_c = (target - 32) * 5 / 9
-        lo_c = ((target_lo - 32) * 5 / 9) if target_lo is not None else None
-        hi_c = ((target_hi - 32) * 5 / 9) if target_hi is not None else None
-    else:
-        target_c = target
-        lo_c = target_lo
-        hi_c = target_hi
-
-    # Determina resultado
-    if condition == "ABOVE":
-        won = actual_temp_c > target_c
-    elif condition == "BELOW":
-        won = actual_temp_c < target_c
-    elif condition == "RANGE2":
-        # Vence se temperatura real está dentro do bucket
-        if lo_c is not None and hi_c is not None:
-            won = lo_c <= actual_temp_c <= hi_c
-        else:
-            won = abs(actual_temp_c - target_c) <= 1.0
-    else:  # EXACT
-        won = abs(actual_temp_c - target_c) <= 0.5
-
-    # PnL — entry_price já gravado corretamente pelo bot:
-    #   YES: entry_price = yes_price
-    #   NO:  entry_price = 1 - yes_price  (price_no)
-    # Para NO: won = YES resolveu FALSO = NO ganhou
-    if side == "NO":
-        won = not won  # inverte: NO ganha quando YES perde
-
-    # Garante entry_price correto por side como fallback
-    if entry_price <= 0 or entry_price >= 1:
-        if side == "NO":
-            entry_price = round(1.0 - market_price, 4)
-        else:
-            entry_price = market_price
-
-    if won:
-        if entry_price > 0:
-            gross = stake / entry_price
-            fee   = round(gross * 0.02, 4)
-            pnl   = round(gross - stake - fee, 4)
-            settlement_credit = round(gross - fee, 4)
-        else:
-            fee = 0.0
-            pnl = 0.0
-            settlement_credit = 0.0
-    else:
-        fee = 0.0
-        pnl = round(-stake, 4)
-        settlement_credit = 0.0
-
-    trade = dict(trade)
-    trade["result"]      = "WIN" if won else "LOSS"
-    trade["pnl"]         = pnl
-    trade["fee"]         = fee
-    trade["real_temp_c"] = actual_temp_c
-    trade["exit_time"]   = datetime.now(timezone.utc).isoformat()
-
-    # O stake ja foi debitado na abertura. No settlement, o saldo recebe
-    # apenas o valor resgatado: payout liquido no WIN, zero no LOSS.
+    settled = _compute_settlement(trade, actual_temp_c)
+    credit = settled.pop("_settlement_credit", 0.0)
     bankroll_data["balance"] = round(
-        float(bankroll_data.get("balance", 0)) + settlement_credit,
-        4,
+        float(bankroll_data.get("balance", 0)) + credit, 4
     )
-
-    logger.info(
-        f"{'WIN' if won else 'LOSS'}: {city} {condition} {target}°{unit} "
-        f"real={actual_temp_c:.1f}C PnL={pnl:+.2f}"
-    )
-
-    if forecast_c is not None:
-        try:
-            _calibrator.record_trade_result(
-                city=city, day_offset=day_offset,
-                predicted_temp=float(forecast_c),
-                actual_temp=actual_temp_c,
-                condition=condition,
-            )
-            hour_utc = datetime.now(timezone.utc).hour
-            _ml_adjuster.update(
-                model_prob=model_prob, day_offset=day_offset,
-                city=city, calibrator=_calibrator, trade_success=won,
-                hour_utc=hour_utc,
-            )
-        except Exception as e:
-            logger.warning(f"Calibração: {e}")
-
-    try:
-        saldo = bankroll_data.get("balance", 0)
-        if won:
-            from notificador import notificar_settlement_win
-            notificar_settlement_win(
-                city=city, market_date=market_date, target=target, unit=unit,
-                stake=stake, pnl=pnl, saldo=saldo,
-                model_prob=model_prob, real_temp_c=actual_temp_c,
-            )
-        else:
-            from notificador import notificar_settlement_loss
-            notificar_settlement_loss(
-                city=city, market_date=market_date, target=target, unit=unit,
-                stake=stake, pnl=pnl, saldo=saldo,
-                model_prob=model_prob, real_temp_c=actual_temp_c,
-            )
-    except Exception as e:
-        logger.warning(f"Telegram settlement: {e}")
-
-    return trade
+    return settled
 
 
 def settle_all():
-    bankroll_data = load_bankroll()
-    history       = bankroll_data.get("history", [])
-    open_trades   = [t for t in history if t.get("result") == "OPEN"]
-    ready         = [t for t in open_trades if _trade_is_ready(t)]
+    # 1) Leitura SEM lock só para descobrir o que está pronto.
+    snapshot   = load_bankroll()
+    history    = snapshot.get("history", [])
+    open_trades = [t for t in history if t.get("result") == "OPEN"]
+    ready       = [t for t in open_trades if _trade_is_ready(t)]
 
     if not ready:
         logger.info(f"Settlement: {len(open_trades)} abertos, nenhum pronto.")
@@ -239,39 +314,133 @@ def settle_all():
 
     logger.info(f"Settlement: liquidando {len(ready)} de {len(open_trades)} abertos")
 
-    wins = losses = 0
-    total_pnl = 0.0
-    changed = False
-
-    for i, trade in enumerate(history):
-        if trade.get("result") != "OPEN" or not _trade_is_ready(trade):
+    # 2) Busca as temperaturas FORA do lock (chamadas de rede lentas).
+    temps: Dict[Tuple[str, str], Optional[float]] = {}
+    for t in ready:
+        city = t.get("city", "")
+        mdate = t.get("market_date", "")
+        key = (city.lower(), mdate)
+        if key in temps:
             continue
-        updated = settle_trade(trade, bankroll_data)
-        if updated["result"] in ("WIN", "LOSS"):
-            history[i] = updated
-            changed = True
-            if updated["result"] == "WIN":
-                wins += 1
-            else:
-                losses += 1
-            total_pnl += float(updated.get("pnl", 0))
+        lat = t.get("lat")
+        lon = t.get("lon")
+        if lat is None or lon is None:
+            lat, lon = _get_city_coordinates(city)
+        if lat is None:
+            temps[key] = None
+            continue
+        temps[key] = get_actual_temperature(lat, lon, mdate)
 
-    if changed:
-        bankroll_data["history"] = history
-        save_bankroll(bankroll_data)
+    # 3) Aplica TUDO numa única seção crítica (atomic_update).
+    #    Idempotência: cada trade é re-checado como OPEN dentro do lock —
+    #    um settlement concorrente que já liquidou não credita de novo.
+    settled_trades: List[Dict] = []
+    summary = {"wins": 0, "losses": 0, "total_pnl": 0.0, "saldo": 0.0}
+
+    def _mutator(data):
+        hist = data.get("history", [])
+        changed = False
+        for i, tr in enumerate(hist):
+            if tr.get("result") != "OPEN" or not _trade_is_ready(tr):
+                continue
+            key = ((tr.get("city", "") or "").lower(), tr.get("market_date", ""))
+            actual = temps.get(key)
+            if actual is None:
+                continue
+            settled = _compute_settlement(tr, actual)
+            credit = settled.pop("_settlement_credit", 0.0)
+            data["balance"] = round(float(data.get("balance", 0)) + credit, 4)
+            hist[i] = settled
+            changed = True
+            settled_trades.append(settled)
+            if settled["result"] == "WIN":
+                summary["wins"] += 1
+            else:
+                summary["losses"] += 1
+            summary["total_pnl"] += float(settled.get("pnl", 0))
+        if changed:
+            data["history"] = hist
+            summary["saldo"] = float(data.get("balance", 0))
+        return changed  # False → atomic_update aborta sem salvar
+
+    atomic_update(_mutator)
+
+    if not settled_trades:
+        logger.info("Settlement: nada liquidado (sem temperatura ou já liquidado).")
+        return
+
+    logger.info(
+        f"Settlement: {summary['wins']}W/{summary['losses']}L "
+        f"PnL={summary['total_pnl']:+.2f} Saldo=${summary['saldo']:.2f}"
+    )
+
+    # 4) Efeitos colaterais SOMENTE APÓS persistir o bankroll:
+    #    calibração, ML e notificações. Se algo aqui falhar, o estado
+    #    financeiro já está salvo e NÃO será re-liquidado.
+    for settled in settled_trades:
+        city        = settled.get("city", "")
+        market_date = settled.get("market_date", "")
+        condition   = (settled.get("type") or "ABOVE").upper()
+        target      = float(settled.get("target", 0))
+        unit        = (settled.get("unit") or "C").upper()
+        stake       = float(settled.get("stake", 0))
+        model_prob  = float(settled.get("model_prob") or 0.5)
+        forecast_c  = settled.get("forecast_c")
+        day_offset  = settled.get("forecast_day", 1)
+        won         = settled.get("result") == "WIN"
+        pnl         = float(settled.get("pnl", 0))
+        actual_temp_c = settled.get("real_temp_c")
+
         logger.info(
-            f"Settlement: {wins}W/{losses}L PnL={total_pnl:+.2f} "
-            f"Saldo=${bankroll_data.get('balance', 0):.2f}"
+            f"{'WIN' if won else 'LOSS'}: {city} {condition} {target}°{unit} "
+            f"real={actual_temp_c:.1f}C PnL={pnl:+.2f}"
         )
-        if wins + losses > 0:
+
+        if forecast_c is not None and actual_temp_c is not None:
             try:
-                from notificador import notificar_settlement_resumo
-                notificar_settlement_resumo(
-                    total_resolved=wins + losses, wins=wins, losses=losses,
-                    total_pnl=total_pnl, saldo=bankroll_data.get("balance", 0),
+                _calibrator.record_trade_result(
+                    city=city, day_offset=day_offset,
+                    predicted_temp=float(forecast_c),
+                    actual_temp=float(actual_temp_c),
+                    condition=condition,
+                    market_date=market_date,  # dedup de amostra por evento
+                )
+                _ml_adjuster.update(
+                    model_prob=model_prob, day_offset=day_offset,
+                    city=city, calibrator=_calibrator, trade_success=won,
+                    hour_utc=_entry_hour_utc(settled),  # hora de ABERTURA
                 )
             except Exception as e:
-                logger.warning(f"Telegram resumo: {e}")
+                logger.warning(f"Calibração: {e}")
+
+        try:
+            if won:
+                from notificador import notificar_settlement_win
+                notificar_settlement_win(
+                    city=city, market_date=market_date, target=target, unit=unit,
+                    stake=stake, pnl=pnl, saldo=summary["saldo"],
+                    model_prob=model_prob, real_temp_c=actual_temp_c,
+                )
+            else:
+                from notificador import notificar_settlement_loss
+                notificar_settlement_loss(
+                    city=city, market_date=market_date, target=target, unit=unit,
+                    stake=stake, pnl=pnl, saldo=summary["saldo"],
+                    model_prob=model_prob, real_temp_c=actual_temp_c,
+                )
+        except Exception as e:
+            logger.warning(f"Telegram settlement: {e}")
+
+    if summary["wins"] + summary["losses"] > 0:
+        try:
+            from notificador import notificar_settlement_resumo
+            notificar_settlement_resumo(
+                total_resolved=summary["wins"] + summary["losses"],
+                wins=summary["wins"], losses=summary["losses"],
+                total_pnl=summary["total_pnl"], saldo=summary["saldo"],
+            )
+        except Exception as e:
+            logger.warning(f"Telegram resumo: {e}")
 
 
 if __name__ == "__main__":

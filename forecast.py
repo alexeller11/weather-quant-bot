@@ -1,21 +1,37 @@
 # =========================================================
 # FORECAST ENGINE — OPEN METEO (COM TTL + BIAS CORRECTION)
 #
-# CORRIGIDO: sigma base aumentado de {1:2.0, 2:2.3, 3:2.6}
-#   para {1:2.8, 2:3.2, 3:3.5} com base no erro real
-#   observado nos 26 trades: média 2.5°C, máximo 5.3°C.
-#   Sigma muito baixo cria falsa precisão e leva o modelo
-#   a apostar em zonas de incerteza com confiança ilusória.
+# CORREÇÕES DA AUDITORIA (v5.7):
 #
-# MANTIDO: bias_correction() — ainda sem amostras suficientes
-#   por cidade, mas a infraestrutura está pronta.
+# 1. TIMEZONE: as chamadas ao Open-Meteo usavam timezone=UTC.
+#    Com timezone=UTC o "temperature_2m_max" diário é o máximo do
+#    DIA UTC, não do dia LOCAL da cidade. A Polymarket resolve pelo
+#    dia local. Para Tóquio/Seul/Pequim/Hong Kong (UTC+8/+9) e costa
+#    oeste dos EUA (UTC-7/-8) isso desloca o dado em até um dia e
+#    mistura dois dias locais — exatamente o que gerou os "erros
+#    médios de 25.5°C (Beijing) e 11°C (Hong Kong)" anotados em
+#    station_data.py. Agora: timezone=auto (agregação no dia local).
 #
-# MANTIDO: Toronto, Madrid, Mexico City.
+# 2. CITY_TZ + city_today(): o dia "hoje" passa a ser o dia local da
+#    cidade, usado por bot.py (day_offset), gamma_parser (slug da
+#    data) e settlement (prontidão de liquidação).
+#
+# 3. compute_bias(): deduplicação por (market_date, forecast_day).
+#    Antes, vários trades no MESMO dia/cidade (ex.: 3 buckets EXACT
+#    de Toronto em 2026-06-07) contavam o mesmo erro 3×, enviesando
+#    a média (pseudo-replicação).
+#
+# MANTIDO: sigma base {1:4.0, 2:4.5, 3:5.0, ...} e ajustes por cidade.
 # =========================================================
 
 import requests
 import time
 from datetime import datetime, timezone, timedelta
+
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:  # Python < 3.9 (não esperado em produção)
+    ZoneInfo = None
 
 # =========================================================
 # COORDS
@@ -46,6 +62,50 @@ CITY_COORDS = {
     "mexico-city": (19.4326, -99.1332),
 }
 
+# Fuso IANA de cada cidade — os mercados da Polymarket são definidos
+# pelo dia LOCAL da cidade.
+CITY_TZ = {
+    "new-york":    "America/New_York",
+    "london":      "Europe/London",
+    "paris":       "Europe/Paris",
+    "hong-kong":   "Asia/Hong_Kong",
+    "tokyo":       "Asia/Tokyo",
+    "seoul":       "Asia/Seoul",
+    "beijing":     "Asia/Shanghai",
+    "sao-paulo":   "America/Sao_Paulo",
+    "milan":       "Europe/Rome",
+    "los-angeles": "America/Los_Angeles",
+    "houston":     "America/Chicago",
+    "austin":      "America/Chicago",
+    "denver":      "America/Denver",
+    "seattle":     "America/Los_Angeles",
+    "chicago":     "America/Chicago",
+    "phoenix":     "America/Phoenix",
+    "miami":       "America/New_York",
+    "atlanta":     "America/New_York",
+    "boston":      "America/New_York",
+    "toronto":     "America/Toronto",
+    "madrid":      "Europe/Madrid",
+    "mexico-city": "America/Mexico_City",
+}
+
+
+def city_now(city_slug):
+    """datetime atual no fuso da cidade (fallback: UTC)."""
+    tz_name = CITY_TZ.get(city_slug)
+    if tz_name and ZoneInfo is not None:
+        try:
+            return datetime.now(ZoneInfo(tz_name))
+        except Exception:
+            pass
+    return datetime.now(timezone.utc)
+
+
+def city_today(city_slug):
+    """'Hoje' no fuso da cidade, como string ISO 'YYYY-MM-DD'."""
+    return city_now(city_slug).strftime("%Y-%m-%d")
+
+
 # =========================================================
 # BIAS CORRECTION
 # =========================================================
@@ -68,6 +128,8 @@ def compute_bias(city_slug):
     """
     Calcula bias médio do Open-Meteo para a cidade.
     bias = mean(forecast_c - real_temp_c) nos trades fechados.
+    Cada (market_date, forecast_day) conta UMA vez — vários trades no
+    mesmo dia (vários buckets) não multiplicam a mesma amostra.
     Retorna (bias_c, n_samples). Sem amostras suficientes: (0.0, 0).
     """
     now = time.time()
@@ -93,7 +155,7 @@ def compute_bias(city_slug):
         print(f"[bias] erro ao carregar bankroll: {e}")
         return 0.0, 0
 
-    errors = []
+    samples = {}
     for t in history:
         if t.get("result") not in ("WIN", "LOSS"):
             continue
@@ -109,13 +171,19 @@ def compute_bias(city_slug):
         if exit_time_str:
             try:
                 exit_dt = datetime.fromisoformat(exit_time_str.replace("Z", ""))
+                if exit_dt.tzinfo is not None:
+                    exit_dt = exit_dt.astimezone(timezone.utc).replace(tzinfo=None)
                 if exit_dt < cutoff:
                     continue
             except Exception:
                 pass
 
         err = float(t["forecast_c"]) - float(t["real_temp_c"])
-        errors.append(err)
+        # Deduplicação: uma amostra por dia de mercado e horizonte
+        sample_key = (str(t.get("market_date", "")), int(t.get("forecast_day", 1) or 1))
+        samples[sample_key] = err
+
+    errors = list(samples.values())
 
     if len(errors) < BIAS_MIN_SAMPLES:
         _BIAS_CACHE[city_slug] = (0.0, len(errors), now)
@@ -173,10 +241,9 @@ def get_forecast(city_slug, forecast_day=1):
     Retorna (forecast_c, raw_sigma) sem correção de bias.
     Use get_corrected_forecast() em bot.py.
 
-    CORRIGIDO: sigma base aumentado para refletir erro real observado.
-    Dados dos 26 trades: erro médio 2.5°C, máximo 5.3°C (Denver).
-    Sigma de 2.0–2.6 era otimista demais — probabilidades ilusoriamente
-    precisas faziam o modelo apostar onde não tinha convicção real.
+    forecast_day: 1 = HOJE (dia local da cidade), 2 = amanhã, ...
+    Com timezone=auto, o índice 0 do array diário do Open-Meteo é o
+    dia local de hoje na cidade — alinhado com a convenção acima.
     """
     cache_key = (city_slug, forecast_day)
     now       = time.time()
@@ -200,7 +267,8 @@ def get_forecast(city_slug, forecast_day=1):
         "latitude":      lat,
         "longitude":     lon,
         "daily":         "temperature_2m_max",
-        "timezone":      "UTC",
+        # CORRIGIDO: agregação diária no fuso LOCAL da cidade
+        "timezone":      "auto",
         "forecast_days": 7,
     }
 
@@ -222,16 +290,15 @@ def get_forecast(city_slug, forecast_day=1):
 
         temps = data["daily"]["temperature_2m_max"]
         idx   = max(0, min(forecast_day - 1, len(temps) - 1))
+        if temps[idx] is None:
+            print(f"[forecast] valor ausente para {city_slug} d{forecast_day}")
+            return None, None
         forecast_c = float(temps[idx])
 
-        # Sigma recalibrado com base em 39 trades reais (simulação 2026-06-01):
-        # ECE=0.38, Brier=0.34 — modelo era ~2.4× overconfident.
-        # Bin 80-100%: previa 90% de chance, observou 37.5% de wins.
-        # Solução: aumentar sigma substancialmente para reduzir falsas certezas.
+        # Sigma base por horizonte (1 = hoje) + ajustes climáticos por cidade
         base_sigma_by_day = {1: 4.0, 2: 4.5, 3: 5.0, 4: 5.5, 5: 6.0}
         sigma = base_sigma_by_day.get(forecast_day, 6.0)
 
-        # Ajustes climáticos por cidade (variabilidade extra conhecida)
         if city_slug in ["hong-kong", "houston", "austin", "miami"]:
             sigma += 0.40
         if city_slug in ["denver", "seattle", "london", "boston"]:

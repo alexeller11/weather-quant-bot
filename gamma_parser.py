@@ -1,54 +1,39 @@
 """
 gamma_parser.py — Parser de mercados da Polymarket Gamma API
 
-AUDITORIA COMPLETA — problemas encontrados e corrigidos:
+CORREÇÕES DA AUDITORIA (v5.7):
 
-1. FORMATO DO MERCADO MUDOU COMPLETAMENTE
-   Antes: "Will the highest temp in NYC be 75°F or higher?" → above/below
-   Agora: "Highest temperature in NYC on March 17?" com buckets tipo:
-     - "50°F or higher" (above)
-     - "48-49°F" (range de 2 graus)
-     - "31°F or below" (below)
-   O parse_question antigo não reconhecia buckets de 2 graus → descartava
-   quase todos os mercados silenciosamente.
+1. TEMPERATURAS NEGATIVAS
+   "Will the highest temperature in Toronto be -2°C or below?" era
+   parseado como target = +2 (o sinal era descartado pela regex).
+   Probabilidade E settlement saíam errados em qualquer mercado de
+   inverno (Toronto, Denver, Beijing, Chicago, Boston...).
+   Todas as regex agora aceitam '-?' antes do número.
 
-2. MERCADOS SÓ EXISTEM PARA D+0 E D+1
-   A Polymarket cria mercados com ~4 dias de antecedência mas só para D+0/D+1.
-   Buscar D+2 sempre retorna vazio. Corrigido: busca D+0 e D+1.
-   D+0 é útil quando ainda é manhã (mercado não resolvido).
+2. REGEX DE BUCKET (range2) MAIS ESTRITA
+   O padrão antigo '(\\d+)-(\\d+)°?[CcFf]?' tinha unidade totalmente
+   opcional e casava qualquer "N-M" no texto (ex.: intervalos de datas
+   "June 7-8"), criando mercados fantasmas. Agora a unidade (°F/°C ou
+   F/C) é obrigatória logo após o limite superior, e os dois limites
+   aceitam sinal negativo.
 
-3. SLUG MUDOU
-   Antes: "highest-temperature-in-new-york-on-june-2-2026"
-   Agora: "highest-temperature-in-nyc-on-march-17-2026" (sem ano no slug)
-   Adicionados novos aliases e formato sem ano.
-
-4. SÃO PAULO COM ACENTO QUEBRAVA URL
-   Corrigido: slug normalizado para "sao-paulo" sem acento.
-
-5. market_is_healthy MUITO RESTRITIVO
-   O filtro yes < 0.05 eliminava buckets válidos de 2°F que naturalmente
-   têm preços baixos (ex: "48-49°F" a 0.06 é legítimo).
-   Novo piso: 0.03 para aceitar buckets raros mas válidos.
-
-6. ESTRATÉGIA DE TRADING PARA BUCKETS DE 2°F
-   Com forecast de 23.4°C (≈74.1°F) e sigma=4°F (≈2.2°C), o bucket
-   "74-75°F" tem prob ≈ 35-40% — muito acima do preço de mercado típico
-   de 20-25%. Esse é o edge real. O bot precisa apostar no bucket mais
-   provável, não em above/below.
+3. DATA DO MERCADO NO FUSO DA CIDADE
+   Os slugs eram montados com a data UTC. Quando UTC já virou o dia
+   mas a cidade não (ou vice-versa: Tóquio/Seul à frente do UTC), o
+   bot buscava o evento do dia errado e gravava market_date deslocado,
+   desalinhando forecast e settlement. Agora D+0/D+1 usam o dia LOCAL
+   da cidade (forecast.city_today).
 """
 
 import json
 import re
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 import requests
 
 from bankroll import canonical_market_base, normalize_city_slug
-
-
-def utcnow():
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+from forecast import city_today
 
 
 BASE_URL = "https://gamma-api.polymarket.com"
@@ -115,52 +100,60 @@ def detect_unit(question):
     if re.search(r'°[Cc]|[Cc]elsius', question):
         return "C"
     # Heurística: se números > 55 sem unidade explícita, provavelmente °F
-    nums = re.findall(r'\d+', question)
+    nums = re.findall(r'-?\d+', question)
     if nums and max(int(n) for n in nums) > 55:
         return "F"
     return "C"
 
 
+# Número com sinal opcional: -2, 31, 74.5 ...
+_NUM = r'(-?\d+(?:\.\d+)?)'
+
+_RE_ABOVE  = re.compile(_NUM + r'\s*°?\s*[CcFf]?\s+or\s+(?:higher|above)', re.IGNORECASE)
+_RE_BELOW  = re.compile(_NUM + r'\s*°?\s*[CcFf]?\s+or\s+(?:below|lower)', re.IGNORECASE)
+# Bucket "48-49°F" / "-4 - -3°C": unidade OBRIGATÓRIA após o limite superior
+_RE_RANGE2 = re.compile(_NUM + r'\s*[-–]\s*' + _NUM + r'\s*°\s*[CcFf]')
+_RE_EXACT  = re.compile(_NUM + r'\s*°\s*[CcFf]')
+
+
 def parse_question(question):
     """
-    CORRIGIDO: agora reconhece todos os formatos da Polymarket:
-      - "50°F or higher"     → above, target=50, unit=F
-      - "31°F or below"      → below, target=31, unit=F
-      - "48-49°F"            → range de 2°F, target=48.5 (mid), unit=F
-      - "24°C"               → exact, unit=C
-      - "13°C or higher"     → above, unit=C
+    Reconhece os formatos da Polymarket:
+      - "50°F or higher"     → above,  target=50,   unit=F
+      - "-2°C or below"      → below,  target=-2,   unit=C
+      - "48-49°F"            → range2, lo=48 hi=49, unit=F
+      - "-4--3°C"            → range2, lo=-4 hi=-3, unit=C
+      - "24°C"               → exact,  target=24,   unit=C
     """
     q = question.strip()
     unit = detect_unit(q)
 
-    # Padrão: "50°F or higher" ou "13°C or higher"
-    m = re.search(r'(\d+(?:\.\d+)?)\s*°?[CcFf]?\s+or\s+higher', q, re.IGNORECASE)
+    m = _RE_ABOVE.search(q)
     if m:
         target = float(m.group(1))
         return {"condition": "above", "target": target, "unit": unit}
 
-    # Padrão: "31°F or below" ou "18°C or below"
-    m = re.search(r'(\d+(?:\.\d+)?)\s*°?[CcFf]?\s+or\s+(?:below|lower)', q, re.IGNORECASE)
+    m = _RE_BELOW.search(q)
     if m:
         target = float(m.group(1))
         return {"condition": "below", "target": target, "unit": unit}
 
-    # Padrão bucket 2 graus: "48-49°F" ou "74-75°F" ou "22-23°C"
-    m = re.search(r'(\d+(?:\.\d+)?)\s*[-–]\s*(\d+(?:\.\d+)?)\s*°?[CcFf]?', q)
+    m = _RE_RANGE2.search(q)
     if m:
         lo = float(m.group(1))
         hi = float(m.group(2))
+        if hi < lo:
+            lo, hi = hi, lo
         mid = round((lo + hi) / 2, 1)
         return {
-            "condition": "range2",   # novo tipo: bucket de 2 graus
+            "condition": "range2",
             "target":    mid,
             "target_lo": lo,
             "target_hi": hi,
             "unit":      unit,
         }
 
-    # Padrão temperatura exata: "24°C" ou "75°F"
-    m = re.search(r'(\d+(?:\.\d+)?)\s*°[CcFf]', q)
+    m = _RE_EXACT.search(q)
     if m:
         target = float(m.group(1))
         return {"condition": "exact", "target": target, "unit": unit}
@@ -171,9 +164,8 @@ def parse_question(question):
 
 def market_is_healthy(yes_price, no_price):
     """
-    CORRIGIDO: piso reduzido para 0.03 para aceitar buckets de 2°F
-    que legitimamente têm preços baixos (ex: bucket raro a 0.04).
-    O filtro real de entrada continua sendo MIN_PRICE em risk.py (0.10).
+    Piso de 0.03 para aceitar buckets de 2°F que legitimamente têm
+    preços baixos. O filtro real de entrada é MIN_PRICE em risk.py.
     """
     try:
         yes_price = float(yes_price)
@@ -196,20 +188,14 @@ def market_is_healthy(yes_price, no_price):
 
 
 def _slug_variants(city, d):
-    """
-    Gera variantes de slug para a cidade e data.
-    CORRIGIDO: inclui formato sem ano (que a Polymarket usa agora).
-    """
+    """Gera variantes de slug para a cidade e data (com e sem ano)."""
     month = d.strftime('%B').lower()
     day   = d.day
     year  = d.year
     variants = []
     for alias in _get_city_slugs(city):
-        # Formato atual da Polymarket (sem ano)
         variants.append(f"highest-temperature-in-{alias}-on-{month}-{day}")
-        # Formato antigo (com ano) — mantido por compatibilidade
         variants.append(f"highest-temperature-in-{alias}-on-{month}-{day}-{year}")
-    # Remove duplicatas preservando ordem
     out = []
     for item in variants:
         if item not in out:
@@ -241,21 +227,19 @@ def _event_key(event):
 
 def fetch_markets(city):
     """
-    CORRIGIDO: busca D+0 e D+1 (não D+1 e D+2).
-    
-    A Polymarket cria mercados para o dia atual e amanhã.
-    D+0 tem valor quando ainda é manhã/tarde (resultado incerto).
-    D+2 quase nunca existe — removido para não desperdiçar requests.
-    
-    Retorna lista de mercados válidos com condition, target, unit, yes_price.
-    Para buckets range2, inclui target_lo e target_hi.
+    Busca D+0 e D+1 — no calendário LOCAL da cidade.
+
+    Retorna lista de mercados válidos com condition, target, unit,
+    yes_price. Para buckets range2, inclui target_lo e target_hi.
     """
     city_slug = normalize_city_slug(city)
     all_markets = []
     seen_market_keys = set()
 
-    for i in range(0, 2):  # D+0 e D+1
-        d = utcnow() + timedelta(days=i)
+    local_today = datetime.strptime(city_today(city_slug), "%Y-%m-%d").date()
+
+    for i in range(0, 2):  # D+0 e D+1 locais
+        d = local_today + timedelta(days=i)
 
         events = []
         seen_events = set()
@@ -337,7 +321,6 @@ def fetch_markets(city):
                         "yes_price":      yes_price,
                         "no_price":       no_price,
                     }
-                    # Campos extras para range2
                     if parsed["condition"] == "range2":
                         entry["target_lo"] = parsed["target_lo"]
                         entry["target_hi"] = parsed["target_hi"]

@@ -6,6 +6,18 @@ Não depende de validacao.json — usa bankroll como fonte única da verdade.
 Funções exportadas:
     registrar_resultado(market_id, result, real_temp_c, pnl)  — no-op, mantido por compatibilidade
     gerar_relatorio(enviar_telegram=False)
+
+CORREÇÕES (auditoria):
+1. Intervalo de confiança do win rate agora é o Wilson score interval.
+   O método antigo (binom.ppf com p_hat plug-in) é estatisticamente
+   inválido para inferência sobre p: com n=5 e 5 vitórias devolvia
+   CI [100%, 100%] — certeza absoluta com 5 amostras — e aprovava o
+   modelo. Wilson com n=5, wins=5 dá [~57%, 100%], que é o correto.
+2. Brier score e edge realizado agora são CIENTES DO LADO do trade.
+   model_prob é sempre a prob de YES; para um trade NO, a probabilidade
+   apostada é (1 − model_prob). Comparar model_prob com WIN do trade NO
+   invertia o sinal das duas métricas — com 18 dos 28 trades reais sendo
+   NO, as métricas agregadas eram lixo.
 """
 
 from datetime import timezone, datetime
@@ -18,22 +30,46 @@ def registrar_resultado(market_id, result, real_temp_c, pnl):
     pass
 
 
-# ── Intervalo de confiança binomial ──────────────────────────────────────────
+# ── Probabilidade apostada (ciente do lado) ──────────────────────────────────
+
+def prob_apostada(trade) -> float:
+    """
+    Probabilidade que o BOT atribuiu ao desfecho em que apostou:
+      YES → model_prob ;  NO → 1 − model_prob.
+    model_prob é sempre a probabilidade de o mercado resolver YES.
+    """
+    p = float(trade.get("model_prob") or 0.5)
+    side = str(trade.get("side", "YES")).upper()
+    return (1.0 - p) if side == "NO" else p
+
+
+# ── Intervalo de confiança binomial (Wilson score) ───────────────────────────
 
 def _confianca_binomial(n, wins, confidence=0.95):
+    """
+    Wilson score interval para a proporção de vitórias.
+    Correto para n pequeno (não colapsa para [1,1] com 5/5) e não
+    depende de plug-in de p_hat na distribuição.
+    """
     if n < 1:
         return None, None
+
+    # z para o nível de confiança (0.95 → 1.959964)
     try:
-        from scipy.stats import binom
-        p_hat = wins / n
-        alpha = 1 - confidence
-        ci_lower = binom.ppf(alpha / 2, n, p_hat) / n
-        ci_upper = binom.ppf(1 - alpha / 2, n, p_hat) / n
-        return round(ci_lower, 4), round(ci_upper, 4)
+        from scipy.stats import norm
+        z = float(norm.ppf(1 - (1 - confidence) / 2))
     except ImportError:
-        p = wins / n
-        margin = 1.96 * (p * (1 - p) / n) ** 0.5
-        return round(max(0, p - margin), 4), round(min(1, p + margin), 4)
+        z = 1.96  # 95%
+
+    p_hat = wins / n
+    z2 = z * z
+    denom  = 1 + z2 / n
+    center = (p_hat + z2 / (2 * n)) / denom
+    margin = (z / denom) * ((p_hat * (1 - p_hat) / n + z2 / (4 * n * n)) ** 0.5)
+
+    ci_lower = max(0.0, center - margin)
+    ci_upper = min(1.0, center + margin)
+    return round(ci_lower, 4), round(ci_upper, 4)
 
 
 # ── Veredito ─────────────────────────────────────────────────────────────────
@@ -84,19 +120,21 @@ def gerar_relatorio(enviar_telegram=False):
     win_rate = len(wins) / n if n > 0 else 0
     pnl_total = sum(t.get("pnl") or 0 for t in fechados)
 
-    # Brier score
+    # Brier score — usa a probabilidade DO LADO APOSTADO vs o resultado
+    # do trade (WIN/LOSS). Para NO: prob apostada = 1 − model_prob.
     brier = None
     brier_vals = [
-        (t.get("model_prob", 0) - (1.0 if t.get("result") == "WIN" else 0.0)) ** 2
+        (prob_apostada(t) - (1.0 if t.get("result") == "WIN" else 0.0)) ** 2
         for t in fechados if t.get("model_prob") is not None
     ]
     if brier_vals:
         brier = round(sum(brier_vals) / len(brier_vals), 4)
 
-    # Edge realizado: média(outcome - model_prob), positivo = modelo subestimou
+    # Edge realizado: média(outcome - prob_apostada), positivo = modelo
+    # subestimou a chance do lado apostado.
     edge_realizado_pct = None
     edge_vals = [
-        (1.0 if t.get("result") == "WIN" else 0.0) - (t.get("model_prob") or 0)
+        (1.0 if t.get("result") == "WIN" else 0.0) - prob_apostada(t)
         for t in fechados if t.get("model_prob") is not None
     ]
     if edge_vals:

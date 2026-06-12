@@ -4,6 +4,11 @@ Model audit report for the weather paper-trading bot.
 The report is intentionally local and deterministic: it reads bankroll.json and
 flags calibration, exposure, sigma and probability-shape problems without
 calling external APIs.
+
+CORREÇÃO (auditoria): o Brier score agora usa a probabilidade DO LADO
+APOSTADO. model_prob é sempre a prob de YES; para trades NO a prob
+apostada é (1 − model_prob). Comparar model_prob com o WIN do trade NO
+invertia o erro de calibração (mesmo bug de validacao.py/simulate.py).
 """
 
 import json
@@ -25,6 +30,14 @@ def _pct(value):
     return f"{value * 100:.1f}%"
 
 
+def _prob_apostada(trade):
+    """Prob do lado apostado: YES → model_prob; NO → 1 − model_prob."""
+    p = float(trade.get("model_prob"))
+    if str(trade.get("side", "YES")).upper() == "NO":
+        return 1.0 - p
+    return p
+
+
 def load_history():
     data = json.loads(BANKROLL_FILE.read_text(encoding="utf-8"))
     return data, data.get("history", [])
@@ -40,7 +53,7 @@ def summarize():
     closed_pnl = sum(float(t.get("pnl") or 0) for t in closed)
     open_exposure = sum(float(t.get("stake") or 0) for t in open_trades)
     brier_values = [
-        (float(t.get("model_prob")) - (1.0 if t.get("result") == "WIN" else 0.0)) ** 2
+        (_prob_apostada(t) - (1.0 if t.get("result") == "WIN" else 0.0)) ** 2
         for t in closed
         if t.get("model_prob") is not None
     ]

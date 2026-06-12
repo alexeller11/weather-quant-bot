@@ -8,6 +8,30 @@ v5.6: Correções estruturais
 - Day offset corrigido (hoje = 1, amanhã = 2)
 - Deduplicação de mercados repetidos vindos da Gamma API
 - Histórico deduplicado para cálculo de risco / Kelly
+
+CORREÇÕES (auditoria):
+1. O day_offset do mercado agora é calculado contra o DIA LOCAL da
+   cidade (city_today), não contra a data UTC. Para cidades da Ásia o
+   dia UTC fica até 9h atrasado: um mercado de "hoje" em Tóquio era
+   tratado como D+1 (sigma maior, sem confirmação intra-dia).
+2. Registro de trade via bankroll.record_trade(): operação atômica
+   (lock de thread + arquivo + advisory lock no Postgres) e idempotente
+   por chave única. O padrão antigo load→append→save sem lock perdia
+   atualizações quando o listener do Telegram (thread) ou o settlement
+   (subprocesso) salvavam o bankroll ao mesmo tempo — causa direta da
+   divergência de saldo observada nos dados (-$19.80).
+3. Exposição: o stake é CLAMPADO ao headroom de MAX_TOTAL_EXPOSURE.
+   Antes o check era `exposure >= MAX` ANTES do trade, permitindo
+   estourar o teto em até +MAX_POSITION (ex.: 19.99 + 4.00 = 23.99).
+4. Limite por EVENTO (cidade+data): buckets do mesmo evento são
+   mutuamente exclusivos; o stake somado neles agora respeita
+   MAX_EVENT_EXPOSURE (default = MAX_POSITION). Evita o caso real de
+   3 posições YES EXACT no mesmo dia de Toronto (todas perdedoras menos,
+   no máximo, uma — por construção).
+5. EV gravado no trade agora é o EV líquido COM fee (mesma fórmula dos
+   guardrails), e o EV do lado NO usa a fórmula correta
+   (prob_no·b − prob_yes; a antiga tinha sinal invertido).
+6. entry_time agora é timezone-aware UTC (datetime.now(timezone.utc)).
 """
 
 import logging
@@ -15,7 +39,7 @@ import time
 import os
 import sys
 import schedule
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict
 
 from bankroll import (
@@ -25,9 +49,10 @@ from bankroll import (
     dedupe_history_by_market,
     canonical_market_base,
     normalize_city_slug,
+    record_trade,
 )
 from consensus import ConsensusEngine
-from forecast import get_corrected_forecast
+from forecast import get_corrected_forecast, city_today
 from gamma_parser import fetch_markets
 from model import calculate_probability
 from notificador import iniciar_listener, notificar_entrada_trade
@@ -36,6 +61,10 @@ from risk import (
     dynamic_kelly_fraction,
     kelly_criterion,
     kelly_criterion_no,
+    expected_value,
+    expected_value_no,
+    exposure_headroom,
+    event_headroom,
 )
 from settlement import settle_all
 from station_data import city_is_reliable, get_intraday_confirmation
@@ -71,11 +100,16 @@ def _get_open_trades(history):
     return [t for t in history_view if t.get("result") == "OPEN"]
 
 
-def _forecast_day_for_market(market_date: str, today_utc: datetime.date) -> int:
+def _forecast_day_for_market(market_date: str, city_slug: str) -> int:
+    """
+    Hoje (LOCAL da cidade) = 1, amanhã = 2, etc.
+    O mercado da Polymarket resolve pelo dia local da cidade, então a
+    referência de "hoje" precisa ser o calendário local — não o UTC.
+    """
     try:
         mdate = datetime.strptime(market_date, "%Y-%m-%d").date()
-        # Hoje = 1, amanhã = 2, etc.
-        return max(1, (mdate - today_utc).days + 1)
+        local_today = datetime.strptime(city_today(city_slug), "%Y-%m-%d").date()
+        return max(1, (mdate - local_today).days + 1)
     except Exception:
         return 1
 
@@ -102,13 +136,10 @@ def process_city(city: Dict):
 
     logger.info(f"{name}: {len(markets)} mercados válidos encontrados")
 
-    from datetime import timezone as _tz
-    today_utc = datetime.now(_tz.utc).date()
-
     forecast_cache = {}  # forecast_day -> (forecast_c, sigma, bias)
     for m in markets:
         date_str = str(m.get("market_date", ""))
-        forecast_day = _forecast_day_for_market(date_str, today_utc)
+        forecast_day = _forecast_day_for_market(date_str, city_slug)
         if forecast_day not in forecast_cache:
             result = get_corrected_forecast(city_slug, forecast_day)
             forecast_cache[forecast_day] = result
@@ -161,17 +192,29 @@ def process_city(city: Dict):
                 logger.debug(f"Já negociado (ambos lados): {market_base}")
                 continue
 
-            open_count = len(_get_open_trades(history_view))
+            open_trades = _get_open_trades(history_view)
+            open_count = len(open_trades)
             if open_count >= MAX_OPEN_TRADES:
                 logger.info(f"Limite de {MAX_OPEN_TRADES} trades abertos atingido")
                 break
 
-            exposure = sum(float(t.get("stake", 0)) for t in _get_open_trades(history_view))
-            if exposure >= MAX_TOTAL_EXPOSURE:
+            exposure = sum(float(t.get("stake", 0)) for t in open_trades)
+            total_headroom = exposure_headroom(exposure)
+            if total_headroom <= 0:
                 logger.info(f"Exposição máxima ${MAX_TOTAL_EXPOSURE:.2f} atingida")
                 break
 
-            forecast_day = _forecast_day_for_market(market_date, today_utc)
+            # Headroom do EVENTO (cidade+data): buckets mutuamente exclusivos
+            ev_headroom = event_headroom(open_trades, name, market_date)
+            if ev_headroom <= 0:
+                logger.info(
+                    f"{name} {market_date}: limite por evento atingido — pulando bucket"
+                )
+                continue
+
+            stake_cap = min(total_headroom, ev_headroom)
+
+            forecast_day = _forecast_day_for_market(market_date, city_slug)
             forecast_result = forecast_cache.get(forecast_day)
             if forecast_result is None or forecast_result[0] is None:
                 logger.debug(f"Forecast indisponível para {name} D+{forecast_day-1}")
@@ -236,8 +279,9 @@ def process_city(city: Dict):
                 if check_guardrails(market_dict, prob, forecast_c, sigma=sigma, side="YES"):
                     kf = dynamic_kelly_fraction(history_view)
                     stake = kelly_criterion(prob, yes_price, balance, fraction=kf)
+                    stake = min(stake, stake_cap)
                     _execute_trade(
-                        data, history, balance, name, m, market_date, condition,
+                        name, m, market_date, condition,
                         target, unit, yes_price, prob, edge_yes, stake,
                         forecast_day, sigma, forecast_c, target_lo, target_hi,
                         yes_trade_id, side="YES",
@@ -252,8 +296,16 @@ def process_city(city: Dict):
                 if check_guardrails(market_dict, prob, forecast_c, sigma=sigma, side="NO"):
                     kf = dynamic_kelly_fraction(history_view)
                     stake = kelly_criterion_no(prob, yes_price, balance, fraction=kf)
+                    # Recalcula headroom com estado pós-YES deste mesmo bucket
+                    open_trades = _get_open_trades(history_view)
+                    exposure = sum(float(t.get("stake", 0)) for t in open_trades)
+                    stake_cap_no = min(
+                        exposure_headroom(exposure),
+                        event_headroom(open_trades, name, market_date),
+                    )
+                    stake = min(stake, stake_cap_no)
                     _execute_trade(
-                        data, history, balance, name, m, market_date, condition,
+                        name, m, market_date, condition,
                         target, unit, yes_price, prob, edge_no, stake,
                         forecast_day, sigma, forecast_c, target_lo, target_hi,
                         no_trade_id, side="NO",
@@ -268,12 +320,12 @@ def process_city(city: Dict):
 
 
 def _execute_trade(
-    data, history, balance, name, m, date_str, condition,
+    name, m, date_str, condition,
     target, unit, yes_price, prob, edge, stake,
     day_offset, sigma, forecast_c, target_lo, target_hi,
     trade_id, side="YES",
 ):
-    """Registra e notifica um trade YES ou NO."""
+    """Registra (atomicamente) e notifica um trade YES ou NO."""
     if stake <= 0:
         return
 
@@ -297,6 +349,12 @@ def _execute_trade(
     elif market_key.endswith("_NO"):
         market_key = market_key[:-3]
 
+    # EV líquido por $1 apostado, COM fee — consistente com os guardrails.
+    if side == "NO":
+        ev_net = expected_value_no(prob, yes_price)
+    else:
+        ev_net = expected_value(prob, yes_price)
+
     trade = dict(
         market_id      = trade_id,
         market_key     = market_key,
@@ -306,7 +364,7 @@ def _execute_trade(
         question       = m.get("question", ""),
         market_date    = date_str,
         event_slug     = m.get("event_slug", ""),
-        entry_time     = datetime.utcnow().isoformat(),
+        entry_time     = datetime.now(timezone.utc).isoformat(),
         exit_time      = None,
         type           = condition,
         side           = side,
@@ -321,8 +379,7 @@ def _execute_trade(
         market_price   = yes_price,
         entry_price    = entry_price,
         edge           = round(edge, 4),
-        ev             = round((1.0 - prob) * (1.0 / entry_price - 1.0) - prob, 4) if side == "NO" and entry_price > 0 else
-                         round(prob * (1.0 / yes_price - 1.0) - (1.0 - prob), 4) if yes_price > 0 else 0,
+        ev             = round(ev_net, 4),
         stake          = stake,
         result         = "OPEN",
         pnl            = 0,
@@ -332,11 +389,13 @@ def _execute_trade(
     )
 
     if TRADING_ENABLED:
-        history.append(trade)
-        balance -= stake
-        data["history"] = history
-        data["balance"] = round(balance, 4)
-        save_bankroll(data)
+        # record_trade: append + débito do stake numa única seção crítica,
+        # idempotente por chave única do trade.
+        recorded = record_trade(trade)
+        if not recorded:
+            logger.info(f"TRADE NÃO registrado (duplicado?): {trade_id}")
+            return
+        new_balance = float(load_bankroll().get("balance", 0))
         logger.info(
             f"TRADE [{side}]: {name} {condition} {target}°{unit} | "
             f"prob={prob:.3f} edge={edge:.3f} stake=${stake:.2f} "
@@ -347,7 +406,7 @@ def _execute_trade(
                 city=name, market_date=date_str, target=target,
                 unit=unit, stake=stake, model_prob=prob,
                 market_price=yes_price, edge=edge,
-                balance=balance, shares=shares,
+                balance=new_balance, shares=shares,
             )
         except Exception:
             pass
@@ -360,7 +419,7 @@ def _execute_trade(
 
 def weekly_report_cycle():
     """Envia relatório semanal todo domingo às 08:00 UTC."""
-    if datetime.utcnow().weekday() != 6:  # 6 = domingo
+    if datetime.now(timezone.utc).weekday() != 6:  # 6 = domingo
         return
     logger.info("Enviando relatório semanal...")
     try:
