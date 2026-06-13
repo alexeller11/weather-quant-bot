@@ -269,7 +269,7 @@ HTML = """<!DOCTYPE html>
 html{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13px;overflow-x:hidden}
 ::-webkit-scrollbar{width:3px;height:3px}::-webkit-scrollbar-thumb{background:rgba(0,180,255,0.25)}
 body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
-  background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='104'%3E%3Cpath d='M30 68L2 52V20L30 4l28 16v32zm0 0L60 52M2 52l28 16' fill='none' stroke='rgba(0,180,255,0.035)' stroke-width='1'/%3E%3C\/svg%3E\");opacity:.7}
+  background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='104'%3E%3Cpath d='M30 68L2 52V20L30 4l28 16v32zm0 0L60 52M2 52l28 16' fill='none' stroke='rgba(0,180,255,0.035)' stroke-width='1'/%3E%3C/svg%3E\");opacity:.7}
 .wrapper{position:relative;z-index:1;max-width:1800px;margin:0 auto;padding:14px 20px}
 .ticker{overflow:hidden;height:26px;display:flex;align-items:center;background:rgba(0,180,255,0.02);border-bottom:1px solid var(--border);margin-bottom:0}
 .ticker-inner{display:flex;gap:48px;animation:ticker 50s linear infinite;white-space:nowrap;padding:0 20px;font-size:10px;color:var(--muted)}
@@ -487,17 +487,17 @@ function kpis(){
   $('kWR').textContent=d.win_rate+'%';
   $('kWRS').textContent=d.wins+'W / '+d.losses+'L ('+d.total_closed+')';
   const pf=$('kPF');
-  if(d.profit_factor!=null){pf.textContent=d.profit_factor.toFixed(2)+'\u00d7';pf.style.color=d.profit_factor>=1.5?'var(--green)':d.profit_factor>=1?'var(--amber)':'var(--red)'}else pf.textContent='N\/A';
+  if(d.profit_factor!=null){pf.textContent=d.profit_factor.toFixed(2)+'\u00d7';pf.style.color=d.profit_factor>=1.5?'var(--green)':d.profit_factor>=1?'var(--amber)':'var(--red)'}else pf.textContent='N/A';
   const md=$('kMDD');md.textContent=(d.max_drawdown||0).toFixed(1)+'%';md.style.color=d.max_drawdown>40?'var(--red)':d.max_drawdown>20?'var(--amber)':'var(--green)';
   const sh=$('kSh');
-  if(d.sharpe!=null){sh.textContent=d.sharpe.toFixed(2);sh.style.color=d.sharpe>=1?'var(--green)':d.sharpe>=0?'var(--amber)':'var(--red)'}else sh.textContent='N\/A';
+  if(d.sharpe!=null){sh.textContent=d.sharpe.toFixed(2);sh.style.color=d.sharpe>=1?'var(--green)':d.sharpe>=0?'var(--amber)':'var(--red)'}else sh.textContent='N/A';
 }
 function infoBar(){
   $('iO').textContent=D.open_count+' ($'+D.exposure.toFixed(2)+')';
   $('iEd').textContent=sg(D.avg_edge)+D.avg_edge.toFixed(1)+'%';
-  $('iB').textContent=D.brier!=null?D.brier:'N\/A';
+  $('iB').textContent=D.brier!=null?D.brier:'N/A';
   const w=$('iW');
-  if(D.win_rate_10!=null){w.textContent=D.win_rate_10+'%';w.style.color=D.win_rate_10>=55?'var(--green)':D.win_rate_10>=45?'var(--amber)':'var(--red)'}else w.textContent='N\/A';
+  if(D.win_rate_10!=null){w.textContent=D.win_rate_10+'%';w.style.color=D.win_rate_10>=55?'var(--green)':D.win_rate_10>=45?'var(--amber)':'var(--red)'}else w.textContent='N/A';
 }
 function buildChips(){
   const wrap=$('chips');wrap.innerHTML='';
@@ -534,12 +534,12 @@ function heatmap(){
   const ctx=cv.getContext('2d');ctx.clearRect(0,0,W,H);
   ctx.font='9px JetBrains Mono';ctx.fillStyle='#2a4a6a';
   dates.forEach((d,i)=>{
-    const x=lW+i*(cW+pd)+cW\/2;ctx.save();ctx.translate(x,hH-2);ctx.rotate(-Math.PI\/3.5);ctx.fillText(d.slice(5),0,0);ctx.restore();
+    const x=lW+i*(cW+pd)+cW/2;ctx.save();ctx.translate(x,hH-2);ctx.rotate(-Math.PI/3.5);ctx.fillText(d.slice(5),0,0);ctx.restore();
   });
   cities.forEach((city,ci)=>{
     const y=hH+ci*(cH+pd);
     ctx.font='10px JetBrains Mono';ctx.fillStyle='#7ab4d0';ctx.textAlign='right';
-    ctx.fillText(city.length>13?city.slice(0,13):city,lW-5,y+cH\/2+3);ctx.textAlign='left';
+    ctx.fillText(city.length>13?city.slice(0,13):city,lW-5,y+cH/2+3);ctx.textAlign='left';
     dates.forEach((d,di)=>{
       const x=lW+di*(cW+pd);const cell=(mx[city]||{})[d];
       if(!cell){ctx.fillStyle='rgba(0,180,255,.03)';ctx.beginPath();ctx.roundRect(x,y,cW,cH,2);ctx.fill()}
@@ -551,13 +551,13 @@ function heatmap(){
         else if(o>0&&w===0&&l===0)col='rgba(255,184,0,.6)';
         else col='rgba(199,125,255,.6)';
         ctx.fillStyle=col;ctx.beginPath();ctx.roundRect(x,y,cW,cH,2);ctx.fill();
-        if(w+l+o>1){ctx.font='8px JetBrains Mono';ctx.fillStyle='rgba(255,255,255,.8)';ctx.textAlign='center';ctx.fillText(w+l+o,x+cW\/2,y+cH\/2+3);ctx.textAlign='left'}
+        if(w+l+o>1){ctx.font='8px JetBrains Mono';ctx.fillStyle='rgba(255,255,255,.8)';ctx.textAlign='center';ctx.fillText(w+l+o,x+cW/2,y+cH/2+3);ctx.textAlign='left'}
       }
     });
   });
 }
 function gauge(){
-  const wr=D.win_rate\/100;const c=$('gchart');const ctx=c.getContext('2d');
+  const wr=D.win_rate/100;const c=$('gchart');const ctx=c.getContext('2d');
   ctx.clearRect(0,0,200,110);
   const cx=100,cy=100,r=78;
   ctx.beginPath();ctx.arc(cx,cy,r,Math.PI,2*Math.PI);ctx.strokeStyle='rgba(255,255,255,.04)';ctx.lineWidth=13;ctx.lineCap='round';ctx.stroke();
@@ -566,7 +566,7 @@ function gauge(){
   ctx.beginPath();ctx.arc(cx,cy,r,Math.PI,Math.PI+Math.PI*wr);ctx.strokeStyle=g;ctx.lineWidth=13;ctx.lineCap='round';ctx.stroke();
   ctx.beginPath();ctx.arc(cx,cy,r,Math.PI,Math.PI+Math.PI*wr);ctx.strokeStyle=col;ctx.lineWidth=5;ctx.globalAlpha=.25;ctx.stroke();ctx.globalAlpha=1;
   $('gnum').textContent=D.win_rate+'%';$('gnum').style.color=col;
-  $('gsub').textContent=D.wins+'W \/ '+D.losses+'L \u00b7 '+D.total_closed+' fechados';
+  $('gsub').textContent=D.wins+'W / '+D.losses+'L \u00b7 '+D.total_closed+' fechados';
 }
 function cityChart(){
   const cs=D.city_stats;
@@ -579,7 +579,7 @@ function cityChart(){
 function typeChart(){
   const ts=D.type_stats||{};const types=Object.keys(ts);if(!types.length)return;
   const p=types.map(t=>ts[t].pnl||0);
-  const wrs=types.map(t=>{const n=ts[t].wins+ts[t].losses;return n?Math.round(ts[t].wins\/n*100):0});
+  const wrs=types.map(t=>{const n=ts[t].wins+ts[t].losses;return n?Math.round(ts[t].wins/n*100):0});
   mkC('tc',{type:'bar',data:{labels:types.map((t,i)=>`${t} (${wrs[i]}% WR)`),datasets:[{data:p,backgroundColor:p.map(v=>v>=0?'rgba(0,255,136,.6)':'rgba(255,45,85,.6)'),borderColor:p.map(v=>v>=0?'#00ff88':'#ff2d55'),borderWidth:1,borderRadius:4}]},
     options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` $${c.parsed.y.toFixed(2)}`}}},
       scales:{x:{grid:{display:false},ticks:{color:'#b8d4f0',font:{size:10}}},y:{...SC.y,ticks:{...SC.y.ticks,callback:v=>'$'+v.toFixed(0)}}}}});
@@ -602,7 +602,7 @@ function rollingWR(){
 }
 function edgeChart(){
   const edges=(D.all_trades||[]).filter(t=>t.edge!=null).map(t=>Math.round(t.edge*100));
-  const bk={};edges.forEach(e=>{const b=Math.floor(e\/5)*5;bk[b]=(bk[b]||0)+1});
+  const bk={};edges.forEach(e=>{const b=Math.floor(e/5)*5;bk[b]=(bk[b]||0)+1});
   const keys=Object.keys(bk).sort((a,b)=>+a-+b);
   mkC('ed',{type:'bar',data:{labels:keys.map(k=>k+'%'),datasets:[{data:keys.map(k=>bk[k]),backgroundColor:'rgba(199,125,255,.55)',borderColor:'#c77dff',borderWidth:1,borderRadius:3}]},
     options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:SC.x,y:SC.y}}});
@@ -667,10 +667,10 @@ function tables(){
 }
 const CC={'New York':[40.71,-74.01],'London':[51.51,-0.13],'Paris':[48.86,2.35],'Hong Kong':[22.32,114.17],'Tokyo':[35.68,139.65],'Seoul':[37.57,126.98],'Beijing':[39.90,116.41],'S\u00e3o Paulo':[-23.55,-46.63],'Milan':[45.46,9.19],'Los Angeles':[34.05,-118.24],'Houston':[29.76,-95.37],'Austin':[30.27,-97.74],'Denver':[39.74,-104.99],'Seattle':[47.61,-122.33],'Chicago':[41.88,-87.63],'Phoenix':[33.45,-112.07],'Miami':[25.76,-80.19],'Atlanta':[33.75,-84.39],'Boston':[42.36,-71.06],'Toronto':[43.65,-79.38],'Madrid':[40.42,-3.70],'Mexico City':[19.43,-99.13]};
 let gS,gCam,gR,gG,gGr,gDr=false,gPr={x:0,y:0},gAR=true,gMk={},gRc,gMv,gPh=0;
-function ll2v(la,lo,r){const p=(90-la)*Math.PI\/180,t=(lo+180)*Math.PI\/180;return new THREE.Vector3(-r*Math.sin(p)*Math.cos(t),r*Math.cos(p),r*Math.sin(p)*Math.sin(t))}
+function ll2v(la,lo,r){const p=(90-la)*Math.PI/180,t=(lo+180)*Math.PI/180;return new THREE.Vector3(-r*Math.sin(p)*Math.cos(t),r*Math.cos(p),r*Math.sin(p)*Math.sin(t))}
 function initGlobe(){
   const wrap=$('gwrap');const W=wrap.clientWidth,H=370;
-  gS=new THREE.Scene();gCam=new THREE.PerspectiveCamera(40,W\/H,.1,100);gCam.position.z=5.8;
+  gS=new THREE.Scene();gCam=new THREE.PerspectiveCamera(40,W/H,.1,100);gCam.position.z=5.8;
   gR=new THREE.WebGLRenderer({canvas:$('gcanvas'),antialias:true,alpha:true});
   gR.setSize(W,H);gR.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
   gS.add(new THREE.AmbientLight(0x0a1a3a,1));
@@ -678,7 +678,7 @@ function initGlobe(){
   const dl2=new THREE.DirectionalLight(0x00aaff,.5);dl2.position.set(-4,-2,-4);gS.add(dl2);
   gG=new THREE.Mesh(new THREE.SphereGeometry(2,64,64),new THREE.MeshPhongMaterial({color:0x031320,emissive:0x010812,specular:0x004499,shininess:60}));gS.add(gG);
   gGr=new THREE.Mesh(new THREE.SphereGeometry(2.005,32,16),new THREE.MeshBasicMaterial({color:0x00d4ff,wireframe:true,transparent:true,opacity:.04}));gS.add(gGr);
-  [0,Math.PI\/2].forEach(rx=>{const m=new THREE.Mesh(new THREE.TorusGeometry(2.015,.002,8,128),new THREE.MeshBasicMaterial({color:0x00d4ff,transparent:true,opacity:.2}));m.rotation.x=rx;gS.add(m);});
+  [0,Math.PI/2].forEach(rx=>{const m=new THREE.Mesh(new THREE.TorusGeometry(2.015,.002,8,128),new THREE.MeshBasicMaterial({color:0x00d4ff,transparent:true,opacity:.2}));m.rotation.x=rx;gS.add(m);});
   [[2.18,.1],[2.32,.04]].forEach(([r,o])=>{gS.add(new THREE.Mesh(new THREE.SphereGeometry(r,32,32),new THREE.MeshPhongMaterial({color:0x0033aa,emissive:0x001133,transparent:true,opacity:o,side:THREE.BackSide})));});
   const cv=$('gcanvas');
   cv.addEventListener('mousedown',e=>{gDr=true;gAR=false;gPr={x:e.clientX,y:e.clientY}});
@@ -691,18 +691,18 @@ function initGlobe(){
   cv.addEventListener('touchstart',e=>{gDr=true;gAR=false;gPr={x:e.touches[0].clientX,y:e.touches[0].clientY};},{passive:true});
   cv.addEventListener('touchmove',e=>{if(!gDr)return;const dx=e.touches[0].clientX-gPr.x,dy=e.touches[0].clientY-gPr.y;gG.rotation.y+=dx*.004;gG.rotation.x+=dy*.004;gGr.rotation.copy(gG.rotation);gPr={x:e.touches[0].clientX,y:e.touches[0].clientY};},{passive:true});
   cv.addEventListener('touchend',()=>gDr=false);
-  window.addEventListener('resize',()=>{const nw=wrap.clientWidth;gCam.aspect=nw\/H;gCam.updateProjectionMatrix();gR.setSize(nw,H)});
+  window.addEventListener('resize',()=>{const nw=wrap.clientWidth;gCam.aspect=nw/H;gCam.updateProjectionMatrix();gR.setSize(nw,H)});
   ganimate();
 }
 function ghover(e,cv){
   if(!gRc){gRc=new THREE.Raycaster();gMv=new THREE.Vector2()}
-  const rc=cv.getBoundingClientRect();gMv.x=((e.clientX-rc.left)\/rc.width)*2-1;gMv.y=-((e.clientY-rc.top)\/rc.height)*2+1;
+  const rc=cv.getBoundingClientRect();gMv.x=((e.clientX-rc.left)/rc.width)*2-1;gMv.y=-((e.clientY-rc.top)/rc.height)*2+1;
   gRc.setFromCamera(gMv,gCam);
   const meshes=Object.values(gMk).flatMap(m=>m.hits||[]);
   const hits=gRc.intersectObjects(meshes);const tip=$('gtip');
   if(hits.length){
     const city=hits[0].object.userData.city;const s=(D.city_stats||{})[city]||{};
-    const wr=s.wins+s.losses>0?Math.round(s.wins\/(s.wins+s.losses)*100):null;
+    const wr=s.wins+s.losses>0?Math.round(s.wins/(s.wins+s.losses)*100):null;
     tip.style.display='block';tip.style.left=(e.clientX-cv.getBoundingClientRect().left+14)+'px';tip.style.top=(e.clientY-cv.getBoundingClientRect().top-10)+'px';
     tip.innerHTML=`<strong>${city}</strong>
       <div class=\"gs\"><span>Wins</span><span style=\"color:var(--green)\">${s.wins||0}</span></div>
@@ -729,7 +729,7 @@ function globe(){
     dot.position.copy(pos);dot.userData.city=city;pivot.add(dot);
     const bH=.1+sz*2;const bGeo=new THREE.CylinderGeometry(.002,.007,bH,6);
     const beam=new THREE.Mesh(bGeo,new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:.4}));
-    const bPos=pos.clone().multiplyScalar(1+bH\/4);beam.position.copy(bPos);beam.lookAt(new THREE.Vector3(0,0,0));beam.rotateX(Math.PI\/2);pivot.add(beam);
+    const bPos=pos.clone().multiplyScalar(1+bH/4);beam.position.copy(bPos);beam.lookAt(new THREE.Vector3(0,0,0));beam.rotateX(Math.PI/2);pivot.add(beam);
     const halo=new THREE.Mesh(new THREE.SphereGeometry(sz*2.5,10,10),new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:.1,side:THREE.BackSide}));
     halo.position.copy(pos);pivot.add(halo);
     let ring=null;
