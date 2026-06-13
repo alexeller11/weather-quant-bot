@@ -3,29 +3,21 @@
 ml_adjuster.py — Aprendizado online por cidade (SGD Logístico)
 
 MELHORIAS v2:
-- Modelo separado por cidade (em vez de 1 modelo global)
-- Features enriquecidas: hora do dia, mês, tendência horária intra-dia,
-  umidade, pressão atmosférica (quando disponíveis)
-- Feedback loop: registra Brier score por semana para medir melhora
-- Fallback limpo para cidade sem dados
+- Modelo separado por cidade
+- Features enriquecidas
+- Feedback loop: Brier score
+- Fallback para cidade sem dados
 
 CORREÇÕES v3 (auditoria):
-1. Os erros da cidade agora vêm de calibrator.get_recent_errors(city).
-   A leitura antiga (calibration_data[city]["errors"]) apontava para um
-   nível inexistente da estrutura (que é [city][COND]["errors"]) e
-   retornava SEMPRE lista vazia — as features 3, 4 e 5 estavam mortas
-   silenciosamente.
-2. n_trades agora é persistido junto com o modelo no kv_store
-   ({"pkl_b64", "n_trades"}). Antes ficava só em memória e zerava a cada
-   deploy/restart, fazendo o gate `n >= 5` quase nunca passar: o ML era
-   treinado mas praticamente nunca aplicado.
-3. Features normalizadas para escalas comparáveis (~[0,1]) antes do SGD.
-   O SGD sem normalização era dominado por hour_utc (0–23) e day_offset.
-   O prefixo de chave do modelo subiu para "ml_model_v3_" para NÃO
-   misturar pickles treinados na escala antiga com a nova.
-4. update() recebe hour_utc real do trade (passado pelo settlement a
-   partir do entry_time) — antes treinava com a hora da liquidação e
-   servia com hour=12 fixo (train/serve skew).
+1. get_recent_errors() corrigido
+2. n_trades persistido no DB
+3. Features normalizadas
+4. hour_utc real do trade
+
+AUDITORIA SENIOR:
+5. Cache TTL de 1h: _get_model invalida o cache e recarrega do DB
+   apos _MODEL_CACHE_TTL segundos. bot.py e settlement.py rodam como
+   processos separados; sem TTL, bot usava modelo stale do startup.
 """
 
 import os
@@ -33,6 +25,7 @@ import io
 import json
 import pickle
 import logging
+import time
 from datetime import datetime, timezone
 from typing import Optional, Dict
 
@@ -42,11 +35,12 @@ from sklearn.linear_model import SGDClassifier
 logger = logging.getLogger(__name__)
 
 MODEL_FILE   = "ml_adjuster.pkl"
-_DB_KEY_PFX  = "ml_model_v3_"    # prefixo por cidade (v3: features normalizadas)
-_DB_KEY_PERF = "ml_performance"  # histórico de Brier por semana
+_DB_KEY_PFX  = "ml_model_v3_"
+_DB_KEY_PERF = "ml_performance"
+_MODEL_CACHE_TTL = 3600  # segundos; recarrega do DB apos 1h
 
 
-# ── PostgreSQL helpers ────────────────────────────────────────
+# ── PostgreSQL helpers ─────────────────────────────────────────────
 
 def _db_connect():
     url = os.environ.get("DATABASE_URL", "")
@@ -99,14 +93,11 @@ def _kv_set(conn, key, value: dict):
         logger.debug(f"[ml] kv_set {key}: {e}")
 
 
-# ── modelo por cidade ─────────────────────────────────────────
+# ── modelo por cidade ─────────────────────────────────────────────────
 
 def _new_model() -> SGDClassifier:
     m = SGDClassifier(loss="log_loss", random_state=42, max_iter=1000)
-    # Treino inicial com 2 exemplos neutros (já na escala NORMALIZADA)
-    # para evitar erro de classe única no primeiro partial_fit real.
     X = np.array([
-        # prob, day/3, hour/24, mean/5, std/5, trend/5, temp_trend/5
         [0.7, 1 / 3.0,  6 / 24.0, 2.0 / 5.0, 1.0 / 5.0,  0.0,        0.0],
         [0.3, 3 / 3.0,  9 / 24.0, 3.5 / 5.0, 1.5 / 5.0, -0.5 / 5.0,  0.0],
     ])
@@ -116,10 +107,6 @@ def _new_model() -> SGDClassifier:
 
 
 def _load_model(city_key: str):
-    """
-    Carrega (modelo, n_trades) da cidade do PostgreSQL ou cria novo.
-    Retorna tupla (SGDClassifier, int).
-    """
     import base64
     conn = _db_connect()
     if conn:
@@ -140,7 +127,6 @@ def _load_model(city_key: str):
 
 
 def _save_model(city_key: str, model: SGDClassifier, n_trades: int):
-    """Salva (modelo, n_trades) da cidade no PostgreSQL."""
     import base64
     pkl_b64 = base64.b64encode(pickle.dumps(model)).decode()
     conn = _db_connect()
@@ -159,7 +145,7 @@ def _save_model(city_key: str, model: SGDClassifier, n_trades: int):
                 pass
 
 
-# ── features ──────────────────────────────────────────────────
+# ── features ───────────────────────────────────────────────────────
 
 def compute_features(
     model_prob: float,
@@ -167,18 +153,11 @@ def compute_features(
     city_errors: list,
     hour_utc: int = 12,
     month: int = 6,
-    temp_trend: float = 0.0,   # tendência horária °C/h (intra-dia)
-    humidity: float = 0.0,     # 0-100, 0 se indisponível (reservado)
+    temp_trend: float = 0.0,
+    humidity: float = 0.0,
 ) -> np.ndarray:
     """
-    Features v3 (7 dimensões, NORMALIZADAS para ~[0,1] / [-1,1]):
-      0: model_prob          (já em [0,1])
-      1: day_offset / 3
-      2: hour_utc / 24       (quando o trade foi aberto)
-      3: mean_error / 5      (erro médio da cidade, °C)
-      4: std_error / 5
-      5: recent_trend / 5    (erro recente vs anterior)
-      6: temp_trend / 5      (tendência intra-dia °C/h)
+    Features v3 (7 dimensões, NORMALIZADAS para ~[0,1] / [-1,1]).
     """
     if not city_errors:
         mean_err, std_err = 2.0, 1.0
@@ -202,18 +181,12 @@ def compute_features(
 
 
 def _errors_for_city(calibrator, city_key: str) -> list:
-    """
-    Obtém a série de erros recentes da cidade de forma tolerante:
-    usa o helper oficial do calibrador quando existir; caso contrário,
-    percorre a estrutura aninhada [city][COND]["errors"] corretamente.
-    """
     try:
         if hasattr(calibrator, "get_recent_errors"):
             return list(calibrator.get_recent_errors(city_key))
     except Exception as e:
         logger.debug(f"[ml] get_recent_errors {city_key}: {e}")
 
-    # Fallback defensivo (estrutura aninhada por condição)
     out = []
     try:
         conds = calibrator.calibration_data.get(city_key, {})
@@ -231,20 +204,29 @@ def _errors_for_city(calibrator, city_key: str) -> list:
     return out
 
 
-# ── API pública ───────────────────────────────────────────────
+# ── API pública ───────────────────────────────────────────────────────
 
 class MLProbabilityAdjuster:
     def __init__(self):
-        # Cache em memória para evitar carregar do DB a cada ciclo
         self._models: Dict[str, SGDClassifier] = {}
         self._n_trades: Dict[str, int] = {}
+        self._loaded_at: Dict[str, float] = {}  # timestamp do ultimo load por cidade
         logger.info("Modelo ML carregado.")
 
     def _get_model(self, city_key: str) -> SGDClassifier:
-        if city_key not in self._models:
+        """
+        Retorna o modelo da cidade, recarregando do DB se o cache expirou.
+        TTL de _MODEL_CACHE_TTL segundos garante que bot.py veja atualizacoes
+        feitas por settlement.py (processos separados no Railway).
+        """
+        now = time.time()
+        age = now - self._loaded_at.get(city_key, 0)
+        if city_key not in self._models or age >= _MODEL_CACHE_TTL:
             model, n_trades = _load_model(city_key)
             self._models[city_key] = model
             self._n_trades[city_key] = n_trades
+            self._loaded_at[city_key] = now
+            logger.debug(f"[ml] {city_key}: modelo carregado/recarregado (age={age:.0f}s)")
         return self._models[city_key]
 
     def adjust_probability(
@@ -258,21 +240,17 @@ class MLProbabilityAdjuster:
     ) -> float:
         city_key = city.strip().lower()
 
-        # Garante que modelo + contador persistido estejam carregados
-        # ANTES de checar o gate (o contador agora sobrevive a restarts).
         model = self._get_model(city_key)
         errors = _errors_for_city(calibrator, city_key)
         n = self._n_trades.get(city_key, 0)
 
-        # Só aplica ajuste ML quando há dados suficientes desta cidade
         if n < 5:
             return model_prob
 
         X = compute_features(model_prob, day_offset, errors, hour_utc, temp_trend=temp_trend)
         try:
             proba = model.predict_proba(X)[0][1]
-            # Blend conservador: 80% modelo físico + 20% ML (aumenta com dados)
-            peso_ml = min(0.30, n * 0.02)  # cresce até 30% com 15+ trades
+            peso_ml = min(0.30, n * 0.02)
             adjusted = (1 - peso_ml) * model_prob + peso_ml * proba
             return float(max(0.01, min(0.99, adjusted)))
         except Exception as e:
@@ -298,13 +276,13 @@ class MLProbabilityAdjuster:
             model.partial_fit(X, y)
             self._models[city_key] = model
             self._n_trades[city_key] = self._n_trades.get(city_key, 0) + 1
+            self._loaded_at[city_key] = time.time()  # atualiza timestamp apos treino
             _save_model(city_key, model, self._n_trades[city_key])
             logger.info(f"[ml] {city_key} atualizado (n={self._n_trades[city_key]})")
         except Exception as e:
             logger.warning(f"[ml] update {city_key}: {e}")
 
     def registrar_performance_semanal(self, brier: float):
-        """Guarda Brier score semanal para rastrear melhora ao longo do tempo."""
         conn = _db_connect()
         if not conn:
             return
@@ -315,7 +293,6 @@ class MLProbabilityAdjuster:
                 "brier":  round(brier, 4),
                 "ts":     datetime.now(timezone.utc).isoformat(),
             })
-            # Mantém últimas 52 semanas
             data["historico"] = data["historico"][-52:]
             _kv_set(conn, _DB_KEY_PERF, data)
             conn.close()
@@ -327,7 +304,6 @@ class MLProbabilityAdjuster:
                 pass
 
     def tendencia_brier(self) -> str:
-        """Retorna string descrevendo evolução do Brier score."""
         conn = _db_connect()
         if not conn:
             return "N/A"
@@ -345,6 +321,6 @@ class MLProbabilityAdjuster:
         except Exception:
             return "N/A"
 
-    # Compatibilidade com código antigo
     def compute_features(self, model_prob, day_offset, city_errors):
+        """Compatibilidade com codigo antigo."""
         return compute_features(model_prob, day_offset, city_errors)
