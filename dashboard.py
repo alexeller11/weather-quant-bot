@@ -350,8 +350,7 @@ tr:hover td{background:rgba(0,212,255,.02)}
 .gw{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:4px;min-height:160px}
 .gnum{font-family:var(--display);font-size:38px;font-weight:900;color:#fff;text-align:center;line-height:1}
 .gsub{font-size:10px;color:var(--muted);text-align:center}
-@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-.card,.kpi,.tcard{animation:fadeUp .35s ease both}
+.card,.kpi,.tcard{transition:border-color .25s,box-shadow .25s,transform .25s}
 </style>
 </head>
 <body>
@@ -467,12 +466,14 @@ tr:hover td{background:rgba(0,212,255,.02)}
 let D=null,aC='all',aR='all',ch={};
 async function fetchData(){try{const r=await fetch('/api/stats');if(!r.ok)throw new Error(r.status);D=await r.json();render()}catch(e){console.error(e)}}
 fetchData();setInterval(fetchData,20000);
+let _firstRender=true;
 function render(){if(!D)return;
   wbar();kpis();infoBar();ticker();buildChips();
   equity();drawdown();heatmap();gauge();
   cityChart();typeChart();calibration();rollingWR();edgeChart();density();radar();scatter();
   tables();globe();
   document.getElementById('ts').textContent=D.updated||'';
+  _firstRender=false;
 }
 function $(id){return document.getElementById(id)}
 function mkC(id,cfg){if(ch[id])ch[id].destroy();ch[id]=new Chart($(id).getContext('2d'),cfg);return ch[id]}
@@ -510,10 +511,13 @@ function infoBar(){
   if(D.win_rate_10!=null){w.textContent=D.win_rate_10+'%';w.style.color=D.win_rate_10>=55?'var(--green)':D.win_rate_10>=45?'var(--amber)':'var(--red)'}else w.textContent='N/A';
 }
 function buildChips(){
-  const wrap=$('chips');wrap.innerHTML='';
-  ['all',...Object.keys(D.city_stats)].forEach(c=>{
+  const wrap=$('chips');const cities=['all',...Object.keys(D.city_stats)];
+  const cur=[...wrap.querySelectorAll('.chip')].map(b=>b.dataset.c);
+  if(!_firstRender&&cur.join(',')=== cities.join(','))return;
+  wrap.innerHTML='';
+  cities.forEach(c=>{
     const b=document.createElement('button');b.className='chip'+(c===aC?' on':'');
-    b.textContent=c==='all'?'Todas':c;
+    b.dataset.c=c;b.textContent=c==='all'?'Todas':c;
     b.onclick=()=>{aC=c;[...wrap.querySelectorAll('.chip')].forEach(x=>x.classList.remove('on'));b.classList.add('on');cityChart();tables()};
     wrap.appendChild(b);
   });
