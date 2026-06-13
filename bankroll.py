@@ -4,29 +4,16 @@ BANKROLL — WEATHER QUANT
 ========================
 Persistência com camadas de segurança:
 
-1. bankroll_override.json — correção manual (se existir e APPLY_BANKROLL_OVERRIDE=1)
+1. bankroll_override.json — correção manual
 2. PostgreSQL (Railway) — fonte principal
 3. bankroll.json local  — cache local
 4. GitHub commit        — backup externo
 
-CORREÇÕES DA AUDITORIA (v5.7):
-- LOCK de processo (fcntl) + lock de thread em TODA escrita/leitura-modificação.
-  Antes, bot.py (loop principal), o listener Telegram (thread) e o subprocesso
-  "python settlement.py" faziam load→modify→save sem sincronização → lost
-  updates e divergência de saldo (observada: -$19.80 no bankroll.json real).
-- atomic_update(mutator): API única de leitura-modificação-escrita atômica.
-  record_trade, settle e force_close agora passam por ela.
-- Campo "seq" monotônico no JSON: load_bankroll compara seq do PostgreSQL com
-  o do arquivo local e usa o MAIS RECENTE. Antes, se o INSERT no Postgres
-  falhasse (rede) mas o arquivo local fosse escrito, o próximo load carregava
-  o snapshot antigo do banco e SOBRESCREVIA o estado novo → trades sumiam e o
-  saldo "voltava no tempo" silenciosamente.
-- Advisory lock transacional no PostgreSQL (pg_advisory_xact_lock) para
-  serializar escritores em containers diferentes (worker × web × scripts).
-- record_trade idempotente: recusa trade cuja chave única já exista no
-  histórico (defesa extra contra duplicação além do already_traded do bot).
-- check_balance_invariant(): detecta divergência entre saldo e histórico
-  (start - stakes abertos + pnl fechados) e loga em vez de falhar em silêncio.
+AUDITORIA SENIOR:
+- _save_to_db agora prune linhas antigas (mantendo as 100 mais recentes).
+  Antes cada save_bankroll fazia INSERT sem DELETE, crescendo infinitamente.
+- normalize_city corrigida: fazia lookup com slug ('new-york') mas
+  CITY_DISPLAY tem chaves com espaco ('new york') -- o dict era codigo morto.
 """
 
 import json
@@ -44,11 +31,11 @@ BANKROLL_FILE = "bankroll.json"
 OVERRIDE_FILE = "bankroll_override.json"
 LOCK_FILE = "bankroll.lock"
 
-# Chave do advisory lock no PostgreSQL (constante arbitrária estável)
 _PG_ADVISORY_KEY = 815471001
+_BANKROLL_PRUNE_KEEP = 100  # linhas mais recentes a manter na tabela bankroll
 
 _THREAD_LOCK = threading.RLock()
-_LOCK_DEPTH = 0          # reentrância do lock de processo (protegido pelo RLock)
+_LOCK_DEPTH = 0
 _LOCK_FD = None
 
 # ──────────────────────────────────────────────────────────────
@@ -109,7 +96,7 @@ def canonical_market_base(
     return "|".join([city_slug, market_date, condition, target_repr, unit])
 
 
-def _split_trade_id(value: Any) -> tuple[str, Optional[str]]:
+def _split_trade_id(value: Any) -> tuple:
     text = str(value or "").strip()
     if not text:
         return "", None
@@ -188,7 +175,7 @@ def trade_unique_key(trade: Dict[str, Any]) -> str:
     return base
 
 
-def _key_variants(key: Any) -> set[str]:
+def _key_variants(key: Any) -> set:
     text = str(key or "").strip()
     if not text:
         return set()
@@ -260,14 +247,6 @@ def already_traded(history, market_id):
 
 @contextmanager
 def _process_lock():
-    """
-    Lock entre processos do MESMO container (bot, listener-thread,
-    'python settlement.py' via Telegram, scripts manuais).
-    Reentrante dentro do processo: chamadas aninhadas (ex.: load_bankroll
-    dentro de atomic_update) não causam self-deadlock do flock.
-    Entre containers diferentes (worker × web no Railway), a serialização
-    é garantida pelo advisory lock do PostgreSQL em _save_to_db.
-    """
     global _LOCK_DEPTH, _LOCK_FD
     lock_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), LOCK_FILE)
     with _THREAD_LOCK:
@@ -279,8 +258,6 @@ def _process_lock():
                     import fcntl
                     fcntl.flock(_LOCK_FD.fileno(), fcntl.LOCK_EX)
                 except Exception:
-                    # Plataformas sem fcntl (ex.: Windows local): segue só
-                    # com o lock de thread. Em produção (Linux) existe.
                     pass
                 acquired_here = True
             except Exception:
@@ -307,7 +284,6 @@ def _process_lock():
 
 @contextmanager
 def bankroll_lock():
-    """Lock combinado (thread + processo) exportado para os chamadores."""
     with _process_lock():
         yield
 
@@ -351,8 +327,9 @@ def _load_from_db(conn):
 
 def _save_to_db(conn, data):
     """
-    INSERT serializado por advisory lock transacional: dois escritores
-    concorrentes (containers distintos) não intercalam snapshots.
+    INSERT serializado por advisory lock transacional.
+    Apos o INSERT, prune linhas antigas mantendo apenas as
+    _BANKROLL_PRUNE_KEEP mais recentes (antes crescia indefinidamente).
     """
     _ensure_table(conn)
     with conn.cursor() as cur:
@@ -364,6 +341,13 @@ def _save_to_db(conn, data):
         row = cur.fetchone()
         if not row:
             raise Exception("INSERT não retornou id")
+        # Prune: apaga linhas fora das N mais recentes
+        cur.execute("""
+            DELETE FROM bankroll
+            WHERE id NOT IN (
+                SELECT id FROM bankroll ORDER BY id DESC LIMIT %s
+            )
+        """, (_BANKROLL_PRUNE_KEEP,))
     conn.commit()
 
 
@@ -425,11 +409,6 @@ def _write_local(data) -> None:
 
 
 def _load_freshest_unlocked() -> Dict[str, Any]:
-    """
-    Lê PostgreSQL e arquivo local e devolve o snapshot com MAIOR seq.
-    Evita o rollback silencioso quando um save no banco falhou mas o
-    arquivo local foi atualizado (ou vice-versa).
-    """
     db_data = None
     conn = _get_db()
     if conn:
@@ -465,20 +444,12 @@ def _load_freshest_unlocked() -> Dict[str, Any]:
 
 
 def load_bankroll():
-    """
-    Cascata:
-    1. bankroll_override.json — se existir e APPLY_BANKROLL_OVERRIDE=1
-    2. snapshot mais recente entre PostgreSQL e bankroll.json (campo seq)
-    3. valor inicial
-    """
     with bankroll_lock():
-        # ── OVERRIDE MANUAL ──────────────────────────────────
         if os.path.exists(OVERRIDE_FILE) and os.environ.get("APPLY_BANKROLL_OVERRIDE", "0") == "1":
             try:
                 with open(OVERRIDE_FILE, "r", encoding="utf-8") as f:
                     data = json.load(f)
                 data = _coerce_bankroll_shape(data)
-                # Override entra como novo estado: seq acima do mais fresco
                 current = _load_freshest_unlocked()
                 data["seq"] = int(current.get("seq", 0)) + 1
                 print(f"  [override] aplicando bankroll_override.json — saldo ${data.get('balance',0):.2f}")
@@ -498,7 +469,6 @@ def load_bankroll():
 
 
 def _persist_unlocked(data) -> None:
-    """Escreve local + PostgreSQL + GitHub. Chamador já segura o lock."""
     data = _coerce_bankroll_shape(data)
 
     try:
@@ -527,11 +497,6 @@ def _persist_unlocked(data) -> None:
 
 
 def save_bankroll(data):
-    """
-    Salva snapshot completo. Incrementa seq.
-    ATENÇÃO: para fluxos leitura→modificação→escrita use atomic_update(),
-    que segura o lock durante toda a operação.
-    """
     with bankroll_lock():
         data = _coerce_bankroll_shape(data)
         data["seq"] = int(data.get("seq", 0)) + 1
@@ -540,16 +505,6 @@ def save_bankroll(data):
 
 
 def atomic_update(mutator: Callable[[Dict[str, Any]], Any]) -> Dict[str, Any]:
-    """
-    Leitura-modificação-escrita ATÔMICA do bankroll.
-
-    mutator(data) altera `data` in-place.
-      - retorno False  → aborta sem salvar (estado intocado)
-      - qualquer outro retorno → salva
-
-    Garante que nenhum outro escritor (thread/subprocesso do mesmo
-    container) intercale entre o load e o save.
-    """
     with bankroll_lock():
         data = _load_freshest_unlocked()
         result = mutator(data)
@@ -572,11 +527,6 @@ def get_open_trades():
 
 
 def record_trade(trade) -> bool:
-    """
-    Registra trade e debita o stake de forma atômica e IDEMPOTENTE.
-    Retorna False se um trade com a mesma chave única já existir
-    (proteção contra duplicação por corrida entre processos).
-    """
     outcome = {"recorded": False}
 
     def _mutator(data):
@@ -604,18 +554,31 @@ def record_trade(trade) -> bool:
 # ──────────────────────────────────────────────────────────────
 
 def normalize_city(city_slug):
+    """
+    Converte slug de cidade para nome de exibição.
+    CORRIGIDO: CITY_DISPLAY usa chaves com espaco ('new york');
+    a funcao recebia slug com hifen ('new-york') e nunca encontrava.
+    Agora tenta slug direto e depois converte para espaco.
+    """
     if not city_slug:
         return "Unknown"
+    # Tenta lookup direto (caso alguma chave esteja em slug format)
     normalized = CITY_DISPLAY.get(city_slug)
     if normalized:
         return normalized
-    return city_slug.replace("-", " ").replace("_", " ").title()
+    # Converte slug para formato com espaco (ex.: 'new-york' -> 'new york')
+    space_key = city_slug.replace("-", " ").replace("_", " ").lower()
+    normalized = CITY_DISPLAY.get(space_key)
+    if normalized:
+        return normalized
+    # Fallback: capitaliza
+    return space_key.title()
 
 
 def check_balance_invariant(data: Dict[str, Any], tolerance: float = 0.05) -> float:
     """
-    Divergência = balance_real - (start - stakes_abertos + pnl_fechados).
-    0 (dentro da tolerância) = consistente. Loga quando diverge.
+    Divergencia = balance_real - (start - stakes_abertos + pnl_fechados).
+    0 (dentro da tolerancia) = consistente. Loga quando diverge.
     """
     history = data.get("history", [])
     start = float(data.get("start_balance", 0))
