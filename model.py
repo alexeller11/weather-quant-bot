@@ -4,25 +4,17 @@ model.py — Probabilidade baseada em distribuição Normal
 
 CORRIGIDO: suporte ao novo tipo "range2" (bucket de 2°F/°C da Polymarket).
 
-Para range2: P(target_lo <= X <= target_hi)
-  = Φ((forecast - target_lo) / sigma) - Φ((forecast - target_hi) / sigma)
-
-Exemplo real: forecast=74.1°F, sigma=4°F, bucket="74-75°F"
-  P(74 <= X <= 75) = Φ(0.025) - Φ(-0.225) ≈ 0.51 - 0.41 = 10%
-  Se o mercado paga 0.06, edge = +4pp — trade válido.
-
 CORREÇÕES (auditoria):
 1. EXACT: a meia-largura do bucket agora é 0.5 na UNIDADE DO MERCADO,
-   convertida para °C antes de entrar na Normal. Antes era 0.5°C fixo —
-   para mercados em °F isso superestimava a largura do bucket em 80%
-   (0.5°F ≈ 0.278°C) e, portanto, a probabilidade do EXACT.
-2. RANGE2 sem limites explícitos: o fallback ±1 agora também é na
-   unidade do mercado convertida (antes era ±1°C fixo).
-3. O sigma calibrado por cidade agora recebe a CONDIÇÃO do mercado
-   (ABOVE/BELOW/EXACT/RANGE2). O calibrador guarda ajustes separados por
-   condição, mas era consultado sempre com o default "ABOVE".
-4. O ajuste ML recebe a hora UTC atual (a mesma semântica usada no
-   treino via settlement), eliminando o train/serve skew do hour=12 fixo.
+   convertida para °C antes de entrar na Normal.
+2. RANGE2 sem limites explícitos: fallback ±1 na unidade do mercado.
+3. O sigma calibrado por cidade recebe a CONDIÇÃO do mercado.
+4. O ajuste ML recebe a hora UTC atual (elimina train/serve skew).
+5. AUDITORIA SENIOR: SigmaCalibrator agora é SEMPRE aplicado, mesmo
+   quando sigma é passado explicitamente por forecast.py. Antes o
+   calibrador coletava dados mas seus ajustes eram write-only — nunca
+   lidos durante a predição. Agora: sigma de forecast.py serve como
+   baseline e o calibrador adiciona o ajuste aprendido por cidade.
 """
 
 import logging
@@ -54,7 +46,7 @@ def to_celsius(value: float, unit: str) -> float:
 def delta_to_celsius(delta: float, unit: str) -> float:
     """
     Converte uma DIFERENÇA/LARGURA de temperatura para °C.
-    Diferente de to_celsius: largura de 0.5°F = 0.5 × 5/9 ≈ 0.2778°C
+    Diferente de to_celsius: largura de 0.5°F = 0.5 x 5/9 = 0.2778°C
     (sem o offset de -32, que só se aplica a valores absolutos).
     """
     if str(unit).upper() == "F":
@@ -84,11 +76,17 @@ def calculate_probability(
 
     target_c = to_celsius(target_temp, unit)
 
+    # Determina sigma base (passado ou calculado internamente)
     if sigma is None or sigma <= 0:
-        base_sigma = get_base_sigma(day_offset)
-        sigma = _calibrator.get_adjusted_sigma(city, base_sigma, condition=condition)
-        if sigma <= 0:
-            sigma = base_sigma
+        sigma = get_base_sigma(day_offset)
+
+    # SigmaCalibrator SEMPRE aplicado: adiciona ajuste aprendido por cidade/condicao
+    # ao sigma base, independentemente de ele ter vindo de forecast.py ou do fallback.
+    # Correcao de auditoria: antes o calibrador so executava se sigma=None,
+    # tornando o aprendizado online write-only sem efeito na predicao.
+    sigma = _calibrator.get_adjusted_sigma(city, sigma, condition=condition)
+    if sigma <= 0:
+        sigma = get_base_sigma(day_offset)
 
     if condition == "ABOVE":
         z = (forecast_temp - target_c) / sigma
@@ -99,22 +97,17 @@ def calculate_probability(
         model_prob = 1.0 - stats.norm.cdf(z)
 
     elif condition == "EXACT":
-        # Bucket de ±0.5 na UNIDADE DO MERCADO, convertido para °C.
-        # Em °F: 0.5°F ≈ 0.2778°C; em °C: 0.5°C.
         half = delta_to_celsius(0.5, unit)
         z_high = (forecast_temp - (target_c - half)) / sigma
         z_low  = (forecast_temp - (target_c + half)) / sigma
         model_prob = stats.norm.cdf(z_high) - stats.norm.cdf(z_low)
 
     elif condition == "RANGE2":
-        # Bucket de 2°F ou 2°C — converte limites para Celsius.
-        # Fallback (sem limites explícitos): ±1 na unidade do mercado.
         fallback = delta_to_celsius(1.0, unit)
         lo_c = to_celsius(target_lo, unit) if target_lo is not None else target_c - fallback
         hi_c = to_celsius(target_hi, unit) if target_hi is not None else target_c + fallback
         if lo_c > hi_c:
             lo_c, hi_c = hi_c, lo_c
-        # P(lo <= X <= hi) com X ~ N(forecast, sigma)
         z_hi = (forecast_temp - lo_c) / sigma
         z_lo = (forecast_temp - hi_c) / sigma
         model_prob = stats.norm.cdf(z_hi) - stats.norm.cdf(z_lo)
@@ -124,10 +117,6 @@ def calculate_probability(
 
     model_prob = max(0.0, min(1.0, model_prob))
 
-    # Ajuste ML apenas quando há dados suficientes.
-    # hour_utc = hora atual (mesma semântica do treino no settlement,
-    # que usa a hora de abertura do trade — a previsão acontece no
-    # momento em que o trade está sendo considerado).
     hour_now = datetime.now(timezone.utc).hour
     adjusted_prob = _ml_adjuster.adjust_probability(
         model_prob=model_prob,
