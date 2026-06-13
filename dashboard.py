@@ -351,6 +351,7 @@ tr:hover td{background:rgba(0,212,255,.02)}
 .gnum{font-family:var(--display);font-size:38px;font-weight:900;color:#fff;text-align:center;line-height:1}
 .gsub{font-size:10px;color:var(--muted);text-align:center}
 .card,.kpi,.tcard{transition:border-color .25s,box-shadow .25s,transform .25s}
+.ch{position:relative}.ch canvas{position:absolute;top:0;left:0;width:100% !important;height:100% !important}
 </style>
 </head>
 <body>
@@ -386,8 +387,8 @@ tr:hover td{background:rgba(0,212,255,.02)}
     <div id=\"gwrap\"><canvas id=\"gcanvas\"></canvas><div class=\"gtip\" id=\"gtip\"></div></div>
   </div>
   <div class=\"card\" style=\"display:flex;flex-direction:column;gap:12px\">
-    <div><div class=\"ct\">&#128200; EQUITY CURVE</div><canvas id=\"eqC\" height=\"175\"></canvas></div>
-    <div><div class=\"ct\">&#128201; DRAWDOWN</div><canvas id=\"ddC\" height=\"95\"></canvas></div>
+    <div><div class=\"ct\">&#128200; EQUITY CURVE</div><div class=\"ch\" style=\"height:175px\"><canvas id=\"eqC\"></canvas></div></div>
+    <div><div class=\"ct\">&#128201; DRAWDOWN</div><div class=\"ch\" style=\"height:95px\"><canvas id=\"ddC\"></canvas></div></div>
   </div>
 </div>
 <div class=\"g32\">
@@ -420,25 +421,25 @@ tr:hover td{background:rgba(0,212,255,.02)}
   </div>
 </div>
 <div class=\"g3\">
-  <div class=\"card\"><div class=\"ct\">&#128176; PnL POR CIDADE</div><canvas id=\"cchart\" height=\"200\"></canvas></div>
-  <div class=\"card\"><div class=\"ct\">\u26a1 PnL POR TIPO</div><canvas id=\"tchart\" height=\"200\"></canvas></div>
-  <div class=\"card\"><div class=\"ct\">&#128300; CALIBRA\u00c7\u00c3O</div><canvas id=\"calC\" height=\"200\"></canvas></div>
+  <div class=\"card\"><div class=\"ct\">&#128176; PnL POR CIDADE</div><div class=\"ch\" style=\"height:200px\"><canvas id=\"cchart\"></canvas></div></div>
+  <div class=\"card\"><div class=\"ct\">\u26a1 PnL POR TIPO</div><div class=\"ch\" style=\"height:200px\"><canvas id=\"tchart\"></canvas></div></div>
+  <div class=\"card\"><div class=\"ct\">&#128300; CALIBRA\u00c7\u00c3O</div><div class=\"ch\" style=\"height:200px\"><canvas id=\"calC\"></canvas></div></div>
 </div>
 <div class=\"g3\">
-  <div class=\"card\"><div class=\"ct\">&#128202; ROLLING WIN RATE (10 trades)</div><canvas id=\"rwC\" height=\"160\"></canvas></div>
-  <div class=\"card\"><div class=\"ct\">\ud83c\udfaf DISTRIBUI\u00c7\u00c3O DE EDGE</div><canvas id=\"edC\" height=\"160\"></canvas></div>
-  <div class=\"card\"><div class=\"ct\">&#128197; TRADES POR DIA</div><canvas id=\"dnC\" height=\"160\"></canvas></div>
+  <div class=\"card\"><div class=\"ct\">&#128202; ROLLING WIN RATE (10 trades)</div><div class=\"ch\" style=\"height:160px\"><canvas id=\"rwC\"></canvas></div></div>
+  <div class=\"card\"><div class=\"ct\">\ud83c\udfaf DISTRIBUI\u00c7\u00c3O DE EDGE</div><div class=\"ch\" style=\"height:160px\"><canvas id=\"edC\"></canvas></div></div>
+  <div class=\"card\"><div class=\"ct\">&#128197; TRADES POR DIA</div><div class=\"ch\" style=\"height:160px\"><canvas id=\"dnC\"></canvas></div></div>
 </div>
 <div class=\"g2\">
   <div class=\"card\">
     <div class=\"ct\">&#127919; PERFORMANCE RADAR</div>
-    <div style=\"height:240px;display:flex;align-items:center;justify-content:center\">
-      <canvas id=\"rdC\" style=\"max-height:230px\"></canvas>
+    <div class=\"ch\" style=\"height:240px\">
+      <canvas id=\"rdC\"></canvas>
     </div>
   </div>
   <div class=\"card\">
     <div class=\"ct\">&#128308; SCATTER \u2014 PnL por Trade (tamanho = stake)</div>
-    <canvas id=\"scC\" height=\"220\"></canvas>
+    <div class=\"ch\" style=\"height:220px\"><canvas id=\"scC\"></canvas></div>
   </div>
 </div>
 <div class=\"tcard\">
