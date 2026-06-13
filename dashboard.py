@@ -351,7 +351,7 @@ tr:hover td{background:rgba(0,212,255,.02)}
 .gnum{font-family:var(--display);font-size:38px;font-weight:900;color:#fff;text-align:center;line-height:1}
 .gsub{font-size:10px;color:var(--muted);text-align:center}
 .card,.kpi,.tcard{transition:border-color .25s,box-shadow .25s,transform .25s}
-.ch{position:relative}.ch canvas{position:absolute;top:0;left:0;width:100% !important;height:100% !important}
+.ch{position:relative;overflow:hidden}.ch canvas{position:absolute;top:0;left:0}
 </style>
 </head>
 <body>
@@ -477,7 +477,17 @@ function render(){if(!D)return;
   _firstRender=false;
 }
 function $(id){return document.getElementById(id)}
-function mkC(id,cfg){if(ch[id])ch[id].destroy();ch[id]=new Chart($(id).getContext('2d'),cfg);return ch[id]}
+function mkC(id,cfg){
+  if(ch[id]){ch[id].destroy();delete ch[id]}
+  const canvas=$(id);
+  const par=canvas.parentElement;
+  const w=par.offsetWidth||300;
+  const h=par.offsetHeight||200;
+  canvas.width=w;canvas.height=h;
+  canvas.style.width=w+'px';canvas.style.height=h+'px';
+  ch[id]=new Chart(canvas.getContext('2d'),cfg);
+  return ch[id];
+}
 function sg(v){return v>=0?'+':''}
 function wbar(){const b=$('wbar');if(D.warning){b.style.display='block';b.textContent=D.warning}else b.style.display='none'}
 function ticker(){
@@ -526,18 +536,16 @@ function buildChips(){
 function setR(el,r){aR=r;document.querySelectorAll('.rbt').forEach(b=>b.className='rbt');el.className='rbt '+(r==='all'?'ra':r==='WIN'?'rw':'rl');tables()}
 const SC={x:{grid:{color:'rgba(0,180,255,.04)'},ticks:{color:'#2a4a6a',font:{size:9}}},y:{grid:{color:'rgba(0,180,255,.04)'},ticks:{color:'#2a4a6a',font:{size:9}}}};
 function equity(){
-  const eq=D.equity_curve;const ctx=$('eqC').getContext('2d');
-  const g=ctx.createLinearGradient(0,0,0,175);g.addColorStop(0,'rgba(0,212,255,.28)');g.addColorStop(1,'rgba(0,212,255,0)');
-  mkC('eqC',{type:'line',data:{labels:eq.map(p=>p.date),datasets:[{data:eq.map(p=>p.balance),borderColor:'#00d4ff',backgroundColor:g,fill:true,tension:.4,
+  const eq=D.equity_curve;
+  mkC('eqC',{type:'line',data:{labels:eq.map(p=>p.date),datasets:[{data:eq.map(p=>p.balance),borderColor:'#00d4ff',backgroundColor:'rgba(0,212,255,.15)',fill:true,tension:.4,
     pointRadius:eq.map((_,i)=>i===eq.length-1?5:2),pointBackgroundColor:eq.map(p=>p.result==='WIN'?'#00ff88':'#ff2d55'),pointBorderColor:'#010810',pointBorderWidth:2,borderWidth:2}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>' $'+c.parsed.y.toFixed(2)}}},
+    options:{responsive:false,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>' $'+c.parsed.y.toFixed(2)}}},
       scales:{x:{...SC.x,ticks:{...SC.x.ticks,maxTicksLimit:8,maxRotation:0}},y:{...SC.y,ticks:{...SC.y.ticks,callback:v=>'$'+v.toFixed(0)}}}}});
 }
 function drawdown(){
-  const dc=D.drawdown_curve||[];const ctx=$('ddC').getContext('2d');
-  const g=ctx.createLinearGradient(0,0,0,95);g.addColorStop(0,'rgba(255,45,85,.35)');g.addColorStop(1,'rgba(255,45,85,0)');
-  mkC('ddC',{type:'line',data:{labels:dc.map(p=>p.date),datasets:[{data:dc.map(p=>p.dd),borderColor:'#ff2d55',backgroundColor:g,fill:true,tension:.3,pointRadius:0,borderWidth:1.5}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+  const dc=D.drawdown_curve||[];
+  mkC('ddC',{type:'line',data:{labels:dc.map(p=>p.date),datasets:[{data:dc.map(p=>p.dd),borderColor:'#ff2d55',backgroundColor:'rgba(255,45,85,.2)',fill:true,tension:.3,pointRadius:0,borderWidth:1.5}]},
+    options:{responsive:false,maintainAspectRatio:false,plugins:{legend:{display:false}},
       scales:{x:{...SC.x,ticks:{...SC.x.ticks,maxTicksLimit:6,maxRotation:0}},y:{...SC.y,ticks:{...SC.y.ticks,callback:v=>v+'%'},reverse:true}}}});
 }
 function heatmap(){
@@ -588,7 +596,7 @@ function cityChart(){
   let entries=Object.entries(cs).filter(([c])=>aC==='all'||c===aC);entries.sort((a,b)=>b[1].pnl-a[1].pnl);
   const v=entries.map(e=>e[1].pnl);
   mkC('cchart',{type:'bar',data:{labels:entries.map(e=>e[0]),datasets:[{data:v,backgroundColor:v.map(x=>x>=0?'rgba(0,255,136,.6)':'rgba(255,45,85,.6)'),borderColor:v.map(x=>x>=0?'#00ff88':'#ff2d55'),borderWidth:1,borderRadius:3}]},
-    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` $${c.parsed.x.toFixed(2)}`}}},
+    options:{indexAxis:'y',responsive:false,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` $${c.parsed.x.toFixed(2)}`}}},
       scales:{x:{...SC.x,ticks:{...SC.x.ticks,callback:v=>'$'+v.toFixed(0)}},y:{grid:{display:false},ticks:{color:'#b8d4f0',font:{size:10}}}}}});
 }
 function typeChart(){
@@ -596,7 +604,7 @@ function typeChart(){
   const p=types.map(t=>ts[t].pnl||0);
   const wrs=types.map(t=>{const n=ts[t].wins+ts[t].losses;return n?Math.round(ts[t].wins/n*100):0});
   mkC('tchart',{type:'bar',data:{labels:types.map((t,i)=>`${t} (${wrs[i]}% WR)`),datasets:[{data:p,backgroundColor:p.map(v=>v>=0?'rgba(0,255,136,.6)':'rgba(255,45,85,.6)'),borderColor:p.map(v=>v>=0?'#00ff88':'#ff2d55'),borderWidth:1,borderRadius:4}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` $${c.parsed.y.toFixed(2)}`}}},
+    options:{responsive:false,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` $${c.parsed.y.toFixed(2)}`}}},
       scales:{x:{grid:{display:false},ticks:{color:'#b8d4f0',font:{size:10}}},y:{...SC.y,ticks:{...SC.y.ticks,callback:v=>'$'+v.toFixed(0)}}}}});
 }
 function calibration(){
@@ -604,7 +612,7 @@ function calibration(){
   mkC('calC',{type:'bar',data:{labels:cal.map(b=>b.label),datasets:[
     {label:'Modelo',data:cal.map(b=>b.predicted),backgroundColor:'rgba(0,212,255,.2)',borderColor:'#00d4ff',borderWidth:1,borderRadius:3},
     {label:'Real WR',data:cal.map(b=>b.actual),backgroundColor:'rgba(0,255,136,.5)',borderColor:'#00ff88',borderWidth:1,borderRadius:3}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{color:'#7ab4d0',font:{size:8},boxWidth:8}}},
+    options:{responsive:false,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{color:'#7ab4d0',font:{size:8},boxWidth:8}}},
       scales:{x:SC.x,y:{...SC.y,ticks:{...SC.y.ticks,callback:v=>v+'%'},min:0,max:100}}}});
 
 }
@@ -613,7 +621,7 @@ function rollingWR(){
   mkC('rwC',{type:'line',data:{labels:eq.map(p=>p.date),datasets:[
     {data:rw,borderColor:'#c77dff',backgroundColor:'rgba(199,125,255,.08)',fill:true,tension:.4,pointRadius:0,borderWidth:2,spanGaps:true},
     {data:eq.map(()=>52),borderColor:'rgba(255,184,0,.3)',borderDash:[4,4],borderWidth:1,pointRadius:0,fill:false}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+    options:{responsive:false,maintainAspectRatio:false,plugins:{legend:{display:false}},
       scales:{x:{...SC.x,ticks:{...SC.x.ticks,maxTicksLimit:6,maxRotation:0}},y:{...SC.y,ticks:{...SC.y.ticks,callback:v=>v+'%'},min:0,max:100}}}});
 }
 function edgeChart(){
@@ -621,12 +629,12 @@ function edgeChart(){
   const bk={};edges.forEach(e=>{const b=Math.floor(e/5)*5;bk[b]=(bk[b]||0)+1});
   const keys=Object.keys(bk).sort((a,b)=>+a-+b);
   mkC('edC',{type:'bar',data:{labels:keys.map(k=>k+'%'),datasets:[{data:keys.map(k=>bk[k]),backgroundColor:'rgba(199,125,255,.55)',borderColor:'#c77dff',borderWidth:1,borderRadius:3}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:SC.x,y:SC.y}}});
+    options:{responsive:false,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:SC.x,y:SC.y}}});
 }
 function density(){
   const td=D.trade_density||[];
   mkC('dnC',{type:'bar',data:{labels:td.map(d=>d.date.slice(5)),datasets:[{data:td.map(d=>d.count),backgroundColor:'rgba(0,212,255,.45)',borderColor:'#00d4ff',borderWidth:1,borderRadius:3}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{...SC.x,ticks:{...SC.x.ticks,maxRotation:45}},y:SC.y}}});
+    options:{responsive:false,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{...SC.x,ticks:{...SC.x.ticks,maxRotation:45}},y:SC.y}}});
 }
 function radar(){
   const r=D.radar||{};
@@ -647,7 +655,7 @@ function scatter(){
   mkC('scC',{type:'bubble',data:{datasets:[
     {label:'WIN',data:wins,backgroundColor:'rgba(0,255,136,.5)',borderColor:'#00ff88',borderWidth:1},
     {label:'LOSS',data:losses,backgroundColor:'rgba(255,45,85,.5)',borderColor:'#ff2d55',borderWidth:1}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},
+    options:{responsive:false,maintainAspectRatio:false,plugins:{legend:{display:false},
       tooltip:{callbacks:{label:c=>`${c.raw.city}: ${c.raw.y>=0?'+':''}$${c.raw.y.toFixed(2)} (${c.raw.date})`}}},
       scales:{x:{...SC.x,ticks:{...SC.x.ticks,callback:v=>dates[v]?dates[v].slice(5):''}},
         y:{...SC.y,ticks:{...SC.y.ticks,callback:v=>'$'+v.toFixed(0)}}}}});
