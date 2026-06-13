@@ -3,25 +3,21 @@
 #
 # CORREÇÕES DA AUDITORIA (v5.7):
 #
-# 1. TIMEZONE: as chamadas ao Open-Meteo usavam timezone=UTC.
-#    Com timezone=UTC o "temperature_2m_max" diário é o máximo do
-#    DIA UTC, não do dia LOCAL da cidade. A Polymarket resolve pelo
-#    dia local. Para Tóquio/Seul/Pequim/Hong Kong (UTC+8/+9) e costa
-#    oeste dos EUA (UTC-7/-8) isso desloca o dado em até um dia e
-#    mistura dois dias locais — exatamente o que gerou os "erros
-#    médios de 25.5°C (Beijing) e 11°C (Hong Kong)" anotados em
-#    station_data.py. Agora: timezone=auto (agregação no dia local).
+# 1. TIMEZONE: timezone=auto (agregação no dia local da cidade).
 #
-# 2. CITY_TZ + city_today(): o dia "hoje" passa a ser o dia local da
-#    cidade, usado por bot.py (day_offset), gamma_parser (slug da
-#    data) e settlement (prontidão de liquidação).
+# 2. CITY_TZ + city_today(): o dia "hoje" é o dia local da cidade.
 #
-# 3. compute_bias(): deduplicação por (market_date, forecast_day).
-#    Antes, vários trades no MESMO dia/cidade (ex.: 3 buckets EXACT
-#    de Toronto em 2026-06-07) contavam o mesmo erro 3×, enviesando
-#    a média (pseudo-replicação).
+# 3. compute_bias(): deduplicado por (market_date, forecast_day).
 #
-# MANTIDO: sigma base {1:4.0, 2:4.5, 3:5.0, ...} e ajustes por cidade.
+# AUDITORIA SENIOR:
+# 4. Ajustes hardcoded de sigma por cidade removidos de get_forecast.
+#    O SigmaCalibrator (agora sempre ativo em model.py) é a fonte
+#    correta para correcões por cidade via aprendizado online.
+#    Manter os dois causava double-stack do mesmo erro sistemático.
+#
+# 5. Clamping silencioso corrigido: se forecast_day estiver fora da
+#    janela disponível, retorna (None, None) em vez de usar a temperatura
+#    do último dia disponível sem avisar.
 # =========================================================
 
 import requests
@@ -30,7 +26,7 @@ from datetime import datetime, timezone, timedelta
 
 try:
     from zoneinfo import ZoneInfo
-except ImportError:  # Python < 3.9 (não esperado em produção)
+except ImportError:
     ZoneInfo = None
 
 # =========================================================
@@ -62,8 +58,6 @@ CITY_COORDS = {
     "mexico-city": (19.4326, -99.1332),
 }
 
-# Fuso IANA de cada cidade — os mercados da Polymarket são definidos
-# pelo dia LOCAL da cidade.
 CITY_TZ = {
     "new-york":    "America/New_York",
     "london":      "Europe/London",
@@ -126,11 +120,10 @@ def _city_raw_to_slug(city_raw, slug_normalize):
 
 def compute_bias(city_slug):
     """
-    Calcula bias médio do Open-Meteo para a cidade.
+    Calcula bias medio do Open-Meteo para a cidade.
     bias = mean(forecast_c - real_temp_c) nos trades fechados.
-    Cada (market_date, forecast_day) conta UMA vez — vários trades no
-    mesmo dia (vários buckets) não multiplicam a mesma amostra.
-    Retorna (bias_c, n_samples). Sem amostras suficientes: (0.0, 0).
+    Cada (market_date, forecast_day) conta UMA vez.
+    Retorna (bias_c, n_samples).
     """
     now = time.time()
 
@@ -179,7 +172,6 @@ def compute_bias(city_slug):
                 pass
 
         err = float(t["forecast_c"]) - float(t["real_temp_c"])
-        # Deduplicação: uma amostra por dia de mercado e horizonte
         sample_key = (str(t.get("market_date", "")), int(t.get("forecast_day", 1) or 1))
         samples[sample_key] = err
 
@@ -242,8 +234,11 @@ def get_forecast(city_slug, forecast_day=1):
     Use get_corrected_forecast() em bot.py.
 
     forecast_day: 1 = HOJE (dia local da cidade), 2 = amanhã, ...
-    Com timezone=auto, o índice 0 do array diário do Open-Meteo é o
-    dia local de hoje na cidade — alinhado com a convenção acima.
+
+    NOTA: sigma retornado e apenas o valor base por horizonte.
+    Ajustes por cidade sao responsabilidade do SigmaCalibrator
+    (aplicado em model.calculate_probability). Manter ajustes hardcoded
+    aqui E no calibrador causava double-stack do mesmo erro sistematico.
     """
     cache_key = (city_slug, forecast_day)
     now       = time.time()
@@ -267,7 +262,6 @@ def get_forecast(city_slug, forecast_day=1):
         "latitude":      lat,
         "longitude":     lon,
         "daily":         "temperature_2m_max",
-        # CORRIGIDO: agregação diária no fuso LOCAL da cidade
         "timezone":      "auto",
         "forecast_days": 7,
     }
@@ -289,28 +283,31 @@ def get_forecast(city_slug, forecast_day=1):
             return None, None
 
         temps = data["daily"]["temperature_2m_max"]
-        idx   = max(0, min(forecast_day - 1, len(temps) - 1))
-        if temps[idx] is None:
-            print(f"[forecast] valor ausente para {city_slug} d{forecast_day}")
+
+        # CORRIGIDO: antes usava max(0, min(idx, len-1)) que silenciosamente
+        # retornava a temperatura do ultimo dia disponivel quando forecast_day
+        # estava fora da janela, causando trades com dados fantasma.
+        idx = forecast_day - 1
+        if idx < 0 or idx >= len(temps) or temps[idx] is None:
+            print(
+                f"[forecast] {city_slug} d{forecast_day}: "
+                f"fora da janela disponivel ({len(temps)} dias)"
+            )
             return None, None
+
         forecast_c = float(temps[idx])
 
-        # Sigma base por horizonte (1 = hoje) + ajustes climáticos por cidade
+        # Sigma base por horizonte apenas.
+        # Ajustes por cidade sao feitos pelo SigmaCalibrator em model.py.
+        # REMOVIDO: blocos hardcoded (+0.40 Houston/Miami, +0.30 Denver/London,
+        # +0.50 Chicago) que causavam double-stack com o calibrador online.
         base_sigma_by_day = {1: 4.0, 2: 4.5, 3: 5.0, 4: 5.5, 5: 6.0}
         sigma = base_sigma_by_day.get(forecast_day, 6.0)
-
-        if city_slug in ["hong-kong", "houston", "austin", "miami"]:
-            sigma += 0.40
-        if city_slug in ["denver", "seattle", "london", "boston"]:
-            sigma += 0.30
-        if city_slug == "chicago":
-            sigma += 0.50
-
         sigma = round(sigma, 2)
 
         print(
             f"[forecast] {city_slug} "
-            f"forecast={forecast_c:.1f}C sigma={sigma:.2f}"
+            f"forecast={forecast_c:.1f}C sigma_base={sigma:.2f}"
         )
 
         result = (forecast_c, sigma)
