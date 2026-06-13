@@ -1,24 +1,2 @@
-# Estado do bot — não versionar, fonte da verdade é o PostgreSQL
-bankroll.json
-bankroll_backup_*.json
-bankroll_pre_migration_*.json
-validacao.json
-
-# Modelos ML locais — persistidos no PostgreSQL
-ml_adjuster.pkl
-sigma_calibration.json
-
-# Variáveis de ambiente — nunca versionar
-.env
-
-# Python
-__pycache__/
-*.py[cod]
-*.egg-info/
-.venv/
-venv/
-dist/
-build/
-
-# Logs
-*.log
+# OBSOLETO — este arquivo não tem efeito (falta o ponto no nome).
+# Use .gitignore na raiz do repositório.
