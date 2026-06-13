@@ -1,5 +1,5 @@
 {
-    "seq": 7,
+    "seq": 8,
     "balance": 447.2068,
     "history": [
         {
@@ -802,18 +802,18 @@
         {
             "ev": 1.0294,
             "fee": 0.0,
-            "pnl": 0,
+            "pnl": -3.92,
             "city": "Toronto",
             "edge": 0.4658,
             "side": "NO",
             "type": "EXACT",
             "unit": "C",
             "stake": 3.92,
-            "result": "OPEN",
+            "result": "LOSS",
             "shares": 9,
             "target": 27.0,
             "question": "Will the highest temperature in Toronto be 27°C on June 12?",
-            "exit_time": null,
+            "exit_time": "2026-06-13T04:56:04.613275+00:00",
             "market_id": "toronto|2026-06-12|EXACT|27|C_NO",
             "target_hi": null,
             "target_lo": null,
@@ -824,7 +824,7 @@
             "model_prob": 0.0992,
             "entry_price": 0.435,
             "market_date": "2026-06-12",
-            "real_temp_c": null,
+            "real_temp_c": 26.9,
             "sigma_total": 4.0,
             "forecast_day": 1,
             "market_price": 0.565,
@@ -864,7 +864,7 @@
             "gamma_market_id": "2501732"
         }
     ],
-    "saved_at": "2026-06-12T23:48:30.456939+00:00",
+    "saved_at": "2026-06-13T04:56:04.613309+00:00",
     "created_at": "2026-06-01T00:00:00+00:00",
     "override_note": "Correcao 08/06/2026 — restaura Madrid Jun-8 perdido por override reaplicado",
     "start_balance": 200.0,
