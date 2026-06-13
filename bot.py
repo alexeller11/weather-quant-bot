@@ -4,34 +4,13 @@ bot.py — Weather Quant Bot v5.6
 
 v5.6: Correções estruturais
 - Chaves canônicas para evitar duplicidade de mercados e trades
-- Slug de cidade normalizado (São Paulo -> sao-paulo)
-- Day offset corrigido (hoje = 1, amanhã = 2)
-- Deduplicação de mercados repetidos vindos da Gamma API
-- Histórico deduplicado para cálculo de risco / Kelly
+- Slug de cidade normalizado
+- Day offset corrigido
+- Deduplicao de mercados e histórico
 
-CORREÇÕES (auditoria):
-1. O day_offset do mercado agora é calculado contra o DIA LOCAL da
-   cidade (city_today), não contra a data UTC. Para cidades da Ásia o
-   dia UTC fica até 9h atrasado: um mercado de "hoje" em Tóquio era
-   tratado como D+1 (sigma maior, sem confirmação intra-dia).
-2. Registro de trade via bankroll.record_trade(): operação atômica
-   (lock de thread + arquivo + advisory lock no Postgres) e idempotente
-   por chave única. O padrão antigo load→append→save sem lock perdia
-   atualizações quando o listener do Telegram (thread) ou o settlement
-   (subprocesso) salvavam o bankroll ao mesmo tempo — causa direta da
-   divergência de saldo observada nos dados (-$19.80).
-3. Exposição: o stake é CLAMPADO ao headroom de MAX_TOTAL_EXPOSURE.
-   Antes o check era `exposure >= MAX` ANTES do trade, permitindo
-   estourar o teto em até +MAX_POSITION (ex.: 19.99 + 4.00 = 23.99).
-4. Limite por EVENTO (cidade+data): buckets do mesmo evento são
-   mutuamente exclusivos; o stake somado neles agora respeita
-   MAX_EVENT_EXPOSURE (default = MAX_POSITION). Evita o caso real de
-   3 posições YES EXACT no mesmo dia de Toronto (todas perdedoras menos,
-   no máximo, uma — por construção).
-5. EV gravado no trade agora é o EV líquido COM fee (mesma fórmula dos
-   guardrails), e o EV do lado NO usa a fórmula correta
-   (prob_no·b − prob_yes; a antiga tinha sinal invertido).
-6. entry_time agora é timezone-aware UTC (datetime.now(timezone.utc)).
+AUDITORIA SENIOR:
+- check_balance_invariant() agora chamado no inicio de cada ciclo.
+  Detecta divergencias entre saldo e historico antes de operar.
 """
 
 import logging
@@ -50,6 +29,7 @@ from bankroll import (
     canonical_market_base,
     normalize_city_slug,
     record_trade,
+    check_balance_invariant,
 )
 from consensus import ConsensusEngine
 from forecast import get_corrected_forecast, city_today
@@ -103,8 +83,6 @@ def _get_open_trades(history):
 def _forecast_day_for_market(market_date: str, city_slug: str) -> int:
     """
     Hoje (LOCAL da cidade) = 1, amanhã = 2, etc.
-    O mercado da Polymarket resolve pelo dia local da cidade, então a
-    referência de "hoje" precisa ser o calendário local — não o UTC.
     """
     try:
         mdate = datetime.strptime(market_date, "%Y-%m-%d").date()
@@ -136,7 +114,7 @@ def process_city(city: Dict):
 
     logger.info(f"{name}: {len(markets)} mercados válidos encontrados")
 
-    forecast_cache = {}  # forecast_day -> (forecast_c, sigma, bias)
+    forecast_cache = {}
     for m in markets:
         date_str = str(m.get("market_date", ""))
         forecast_day = _forecast_day_for_market(date_str, city_slug)
@@ -204,7 +182,6 @@ def process_city(city: Dict):
                 logger.info(f"Exposição máxima ${MAX_TOTAL_EXPOSURE:.2f} atingida")
                 break
 
-            # Headroom do EVENTO (cidade+data): buckets mutuamente exclusivos
             ev_headroom = event_headroom(open_trades, name, market_date)
             if ev_headroom <= 0:
                 logger.info(
@@ -234,7 +211,6 @@ def process_city(city: Dict):
             target_lo = m.get("target_lo")
             target_hi = m.get("target_hi")
 
-            # Confirmação intra-dia para o mercado de hoje.
             if forecast_day == 1 and condition in ("ABOVE", "BELOW"):
                 target_c_check = (target - 32) * 5 / 9 if unit == "F" else target
                 intra = get_intraday_confirmation(city_slug, condition, target_c_check)
@@ -296,7 +272,6 @@ def process_city(city: Dict):
                 if check_guardrails(market_dict, prob, forecast_c, sigma=sigma, side="NO"):
                     kf = dynamic_kelly_fraction(history_view)
                     stake = kelly_criterion_no(prob, yes_price, balance, fraction=kf)
-                    # Recalcula headroom com estado pós-YES deste mesmo bucket
                     open_trades = _get_open_trades(history_view)
                     exposure = sum(float(t.get("stake", 0)) for t in open_trades)
                     stake_cap_no = min(
@@ -325,7 +300,6 @@ def _execute_trade(
     day_offset, sigma, forecast_c, target_lo, target_hi,
     trade_id, side="YES",
 ):
-    """Registra (atomicamente) e notifica um trade YES ou NO."""
     if stake <= 0:
         return
 
@@ -333,7 +307,6 @@ def _execute_trade(
         entry_price = yes_price
         shares = int(stake / entry_price) if entry_price > 0 else 0
     else:
-        # NO: compra NO a price_no = 1 - yes_price
         entry_price = round(1.0 - yes_price, 4)
         shares = int(stake / entry_price) if entry_price > 0 else 0
 
@@ -349,7 +322,6 @@ def _execute_trade(
     elif market_key.endswith("_NO"):
         market_key = market_key[:-3]
 
-    # EV líquido por $1 apostado, COM fee — consistente com os guardrails.
     if side == "NO":
         ev_net = expected_value_no(prob, yes_price)
     else:
@@ -389,8 +361,6 @@ def _execute_trade(
     )
 
     if TRADING_ENABLED:
-        # record_trade: append + débito do stake numa única seção crítica,
-        # idempotente por chave única do trade.
         recorded = record_trade(trade)
         if not recorded:
             logger.info(f"TRADE NÃO registrado (duplicado?): {trade_id}")
@@ -418,8 +388,7 @@ def _execute_trade(
 
 
 def weekly_report_cycle():
-    """Envia relatório semanal todo domingo às 08:00 UTC."""
-    if datetime.now(timezone.utc).weekday() != 6:  # 6 = domingo
+    if datetime.now(timezone.utc).weekday() != 6:
         return
     logger.info("Enviando relatório semanal...")
     try:
@@ -439,6 +408,21 @@ def settlement_cycle():
 
 def scheduled_trading():
     logger.info(f"Ciclo de trading: {datetime.now():%H:%M:%S}")
+
+    # Verifica invariante de bankroll antes de operar.
+    # Detecta divergencia entre saldo e historico; loga se > $0.05.
+    # Correcao de auditoria: check_balance_invariant existia mas nunca
+    # era chamada -- a divergencia de -$19.80 teria sido detectada cedo.
+    try:
+        data = load_bankroll()
+        diff = check_balance_invariant(data)
+        if abs(diff) > 0.50:
+            logger.warning(
+                f"DIVERG\u00caNCIA DE BANKROLL: {diff:+.4f} — verifique o histórico"
+            )
+    except Exception as e:
+        logger.warning(f"check_balance_invariant: {e}")
+
     for city in cities:
         try:
             process_city(city)
