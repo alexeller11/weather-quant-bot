@@ -422,13 +422,13 @@ tr:hover td{background:rgba(0,212,255,.02)}
 </div>
 <div class=\"g2\">
   <div class=\"card\">
-    <div class=\"ct\">RADAR PERFORMANCE RADAR</div>
+    <div class=\"ct\">&#127919; PERFORMANCE RADAR</div>
     <div style=\"height:240px;display:flex;align-items:center;justify-content:center\">
       <canvas id=\"rdC\" style=\"max-height:230px\"></canvas>
     </div>
   </div>
   <div class=\"card\">
-    <div class=\"ct\">SCATTER SCATTER \u2014 PnL por Trade (tamanho = stake)</div>
+    <div class=\"ct\">&#128308; SCATTER \u2014 PnL por Trade (tamanho = stake)</div>
     <canvas id=\"scC\" height=\"220\"></canvas>
   </div>
 </div>
@@ -589,8 +589,9 @@ function calibration(){
   mkC('calC',{type:'bar',data:{labels:cal.map(b=>b.label),datasets:[
     {label:'Modelo',data:cal.map(b=>b.predicted),backgroundColor:'rgba(0,212,255,.2)',borderColor:'#00d4ff',borderWidth:1,borderRadius:3},
     {label:'Real WR',data:cal.map(b=>b.actual),backgroundColor:'rgba(0,255,136,.5)',borderColor:'#00ff88',borderWidth:1,borderRadius:3}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{color:'#2a4a6a',font:{size:8},boxWidth:8}}},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{color:'#7ab4d0',font:{size:8},boxWidth:8}}},
       scales:{x:SC.x,y:{...SC.y,ticks:{...SC.y.ticks,callback:v=>v+'%'},min:0,max:100}}}});
+
 }
 function rollingWR(){
   const eq=D.equity_curve||[];const rw=D.rolling_wr||[];
