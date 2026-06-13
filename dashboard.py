@@ -255,8 +255,8 @@ HTML = """<!DOCTYPE html>
 <title>WeatherQuant \u26a1 Mission Control</title>
 <link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">
 <link href=\"https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Orbitron:wght@400;700;900&display=swap\" rel=\"stylesheet\">
-<script src=\"https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js\"><\/script>
-<script src=\"https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js\"><\/script>
+<script src=\"https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js\"></script>
+<script src=\"https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js\"></script>
 <style>
 :root{
   --bg:#010810;--bg1:#020d1c;--bg2:#040f20;
@@ -342,117 +342,117 @@ tr:hover td{background:rgba(0,212,255,.02)}
 .gsub{font-size:10px;color:var(--muted);text-align:center}
 @keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 .card,.kpi,.tcard{animation:fadeUp .35s ease both}
-<\/style>
-<\/head>
+</style>
+</head>
 <body>
-<div id=\"wbar\" class=\"wbar\"><\/div>
+<div id=\"wbar\" class=\"wbar\"></div>
 <div class=\"wrapper\">
 <header>
-  <div class=\"logo\">\u26a1 WEATHER<em>QUANT<\/em><\/div>
+  <div class=\"logo\">\u26a1 WEATHER<em>QUANT</em></div>
   <div class=\"hdr-r\">
-    <div class=\"spill\"><div class=\"sdot\"><\/div>LIVE<\/div>
-    <span class=\"ts\" id=\"ts\">\u2014<\/span>
-    <button class=\"rbtn2\" onclick=\"fetchData()\">\u21bb SYNC<\/button>
-  <\/div>
-<\/header>
-<div class=\"ticker\"><div class=\"ticker-inner\" id=\"tkr\"><\/div><\/div>
+    <div class=\"spill\"><div class=\"sdot\"></div>LIVE</div>
+    <span class=\"ts\" id=\"ts\">\u2014</span>
+    <button class=\"rbtn2\" onclick=\"fetchData()\">\u21bb SYNC</button>
+  </div>
+</header>
+<div class=\"ticker\"><div class=\"ticker-inner\" id=\"tkr\"></div></div>
 <div class=\"ibar\">
-  <div class=\"ii\">Abertos: <strong id=\"iO\">\u2014<\/strong><\/div><div class=\"idiv\"><\/div>
-  <div class=\"ii\">Exposi\u00e7\u00e3o: <strong id=\"iE\">\u2014<\/strong><\/div><div class=\"idiv\"><\/div>
-  <div class=\"ii\">Edge m\u00e9dio: <strong id=\"iEd\">\u2014<\/strong><\/div><div class=\"idiv\"><\/div>
-  <div class=\"ii\">Brier: <strong id=\"iB\">\u2014<\/strong><\/div><div class=\"idiv\"><\/div>
-  <div class=\"ii\">WR \u00faltimos 10: <strong id=\"iW\">\u2014<\/strong><\/div>
-<\/div>
+  <div class=\"ii\">Abertos: <strong id=\"iO\">\u2014</strong></div><div class=\"idiv\"></div>
+  <div class=\"ii\">Exposi\u00e7\u00e3o: <strong id=\"iE\">\u2014</strong></div><div class=\"idiv\"></div>
+  <div class=\"ii\">Edge m\u00e9dio: <strong id=\"iEd\">\u2014</strong></div><div class=\"idiv\"></div>
+  <div class=\"ii\">Brier: <strong id=\"iB\">\u2014</strong></div><div class=\"idiv\"></div>
+  <div class=\"ii\">WR \u00faltimos 10: <strong id=\"iW\">\u2014</strong></div>
+</div>
 <div class=\"krow\">
-  <div class=\"kpi\" style=\"--acc:var(--cyan)\"><div class=\"kl\">Saldo<\/div><div class=\"kv\" id=\"kBal\">\u2014<\/div><div class=\"ks\" id=\"kBalS\">\u2014<\/div><\/div>
-  <div class=\"kpi\" style=\"--acc:var(--green)\"><div class=\"kl\">PnL Total<\/div><div class=\"kv\" id=\"kPnl\">\u2014<\/div><div class=\"ks\" id=\"kPnlS\">\u2014<\/div><\/div>
-  <div class=\"kpi\" style=\"--acc:var(--purple)\"><div class=\"kl\">Win Rate<\/div><div class=\"kv\" id=\"kWR\">\u2014<\/div><div class=\"ks\" id=\"kWRS\">\u2014<\/div><\/div>
-  <div class=\"kpi\" style=\"--acc:var(--amber)\"><div class=\"kl\">Profit Factor<\/div><div class=\"kv\" id=\"kPF\">\u2014<\/div><div class=\"ks\">&ge;1.5 = excelente<\/div><\/div>
-  <div class=\"kpi\" style=\"--acc:var(--red)\"><div class=\"kl\">Max Drawdown<\/div><div class=\"kv\" id=\"kMDD\">\u2014<\/div><div class=\"ks\">queda m\u00e1x do pico<\/div><\/div>
-  <div class=\"kpi\" style=\"--acc:#4dd0e1\"><div class=\"kl\">Sharpe Ratio<\/div><div class=\"kv\" id=\"kSh\">\u2014<\/div><div class=\"ks\">&gt;1 = bom<\/div><\/div>
-<\/div>
+  <div class=\"kpi\" style=\"--acc:var(--cyan)\"><div class=\"kl\">Saldo</div><div class=\"kv\" id=\"kBal\">\u2014</div><div class=\"ks\" id=\"kBalS\">\u2014</div></div>
+  <div class=\"kpi\" style=\"--acc:var(--green)\"><div class=\"kl\">PnL Total</div><div class=\"kv\" id=\"kPnl\">\u2014</div><div class=\"ks\" id=\"kPnlS\">\u2014</div></div>
+  <div class=\"kpi\" style=\"--acc:var(--purple)\"><div class=\"kl\">Win Rate</div><div class=\"kv\" id=\"kWR\">\u2014</div><div class=\"ks\" id=\"kWRS\">\u2014</div></div>
+  <div class=\"kpi\" style=\"--acc:var(--amber)\"><div class=\"kl\">Profit Factor</div><div class=\"kv\" id=\"kPF\">\u2014</div><div class=\"ks\">&ge;1.5 = excelente</div></div>
+  <div class=\"kpi\" style=\"--acc:var(--red)\"><div class=\"kl\">Max Drawdown</div><div class=\"kv\" id=\"kMDD\">\u2014</div><div class=\"ks\">queda m\u00e1x do pico</div></div>
+  <div class=\"kpi\" style=\"--acc:#4dd0e1\"><div class=\"kl\">Sharpe Ratio</div><div class=\"kv\" id=\"kSh\">\u2014</div><div class=\"ks\">&gt;1 = bom</div></div>
+</div>
 <div class=\"hero\">
   <div class=\"card\">
-    <div class=\"ct\">\ud83c\udf0d GLOBE \u2014 drag para girar \u00b7 hover para stats<\/div>
-    <div id=\"gwrap\"><canvas id=\"gcanvas\"><\/canvas><div class=\"gtip\" id=\"gtip\"><\/div><\/div>
-  <\/div>
+    <div class=\"ct\">&#127757; GLOBE \u2014 drag para girar \u00b7 hover para stats</div>
+    <div id=\"gwrap\"><canvas id=\"gcanvas\"></canvas><div class=\"gtip\" id=\"gtip\"></div></div>
+  </div>
   <div class=\"card\" style=\"display:flex;flex-direction:column;gap:12px\">
-    <div><div class=\"ct\">\ud83d\udcc8 EQUITY CURVE<\/div><canvas id=\"eqC\" height=\"175\"><\/canvas><\/div>
-    <div><div class=\"ct\">\ud83d\udcc9 DRAWDOWN<\/div><canvas id=\"ddC\" height=\"95\"><\/canvas><\/div>
-  <\/div>
-<\/div>
+    <div><div class=\"ct\">&#128200; EQUITY CURVE</div><canvas id=\"eqC\" height=\"175\"></canvas></div>
+    <div><div class=\"ct\">&#128201; DRAWDOWN</div><canvas id=\"ddC\" height=\"95\"></canvas></div>
+  </div>
+</div>
 <div class=\"g32\">
   <div class=\"card\">
-    <div class=\"ct\">\ud83c\udf21 HEATMAP \u2014 Cidade \u00d7 Data &nbsp;
-      <span style=\"color:var(--green);font-size:9px\">\u25a0 Win<\/span>&nbsp;
-      <span style=\"color:var(--red);font-size:9px\">\u25a0 Loss<\/span>&nbsp;
-      <span style=\"color:var(--amber);font-size:9px\">\u25a0 Aberto<\/span>
-    <\/div>
-    <div class=\"hmwrap\"><canvas id=\"hmcanvas\"><\/canvas><\/div>
-  <\/div>
+    <div class=\"ct\">&#127777; HEATMAP \u2014 Cidade \u00d7 Data &nbsp;
+      <span style=\"color:var(--green);font-size:9px\">\u25a0 Win</span>&nbsp;
+      <span style=\"color:var(--red);font-size:9px\">\u25a0 Loss</span>&nbsp;
+      <span style=\"color:var(--amber);font-size:9px\">\u25a0 Aberto</span>
+    </div>
+    <div class=\"hmwrap\"><canvas id=\"hmcanvas\"></canvas></div>
+  </div>
   <div class=\"card\">
-    <div class=\"ct\">\ud83c\udfaf WIN RATE GAUGE<\/div>
+    <div class=\"ct\">&#127919; WIN RATE GAUGE</div>
     <div class=\"gw\">
-      <canvas id=\"gchart\" width=\"200\" height=\"110\"><\/canvas>
-      <div class=\"gnum\" id=\"gnum\">\u2014<\/div>
-      <div class=\"gsub\" id=\"gsub\">\u2014<\/div>
-    <\/div>
-  <\/div>
-<\/div>
+      <canvas id=\"gchart\" width=\"200\" height=\"110\"></canvas>
+      <div class=\"gnum\" id=\"gnum\">\u2014</div>
+      <div class=\"gsub\" id=\"gsub\">\u2014</div>
+    </div>
+  </div>
+</div>
 <div class=\"fbar\">
-  <span class=\"fl\">Cidade<\/span>
-  <div class=\"chips\" id=\"chips\"><\/div>
-  <span class=\"fl\">Resultado<\/span>
+  <span class=\"fl\">Cidade</span>
+  <div class=\"chips\" id=\"chips\"></div>
+  <span class=\"fl\">Resultado</span>
   <div style=\"display:flex;gap:4px\">
-    <button class=\"rbt ra\" onclick=\"setR(this,'all')\">Todos<\/button>
-    <button class=\"rbt\" onclick=\"setR(this,'OPEN')\">Abertos<\/button>
-    <button class=\"rbt\" onclick=\"setR(this,'WIN')\">Win<\/button>
-    <button class=\"rbt\" onclick=\"setR(this,'LOSS')\">Loss<\/button>
-  <\/div>
-<\/div>
+    <button class=\"rbt ra\" onclick=\"setR(this,'all')\">Todos</button>
+    <button class=\"rbt\" onclick=\"setR(this,'OPEN')\">Abertos</button>
+    <button class=\"rbt\" onclick=\"setR(this,'WIN')\">Win</button>
+    <button class=\"rbt\" onclick=\"setR(this,'LOSS')\">Loss</button>
+  </div>
+</div>
 <div class=\"g3\">
-  <div class=\"card\"><div class=\"ct\">\ud83d\udcb0 PnL POR CIDADE<\/div><canvas id=\"cchart\" height=\"200\"><\/canvas><\/div>
-  <div class=\"card\"><div class=\"ct\">\u26a1 PnL POR TIPO<\/div><canvas id=\"tchart\" height=\"200\"><\/canvas><\/div>
-  <div class=\"card\"><div class=\"ct\">\ud83d\udd2c CALIBRA\u00c7\u00c3O<\/div><canvas id=\"calC\" height=\"200\"><\/canvas><\/div>
-<\/div>
+  <div class=\"card\"><div class=\"ct\">&#128176; PnL POR CIDADE</div><canvas id=\"cchart\" height=\"200\"></canvas></div>
+  <div class=\"card\"><div class=\"ct\">\u26a1 PnL POR TIPO</div><canvas id=\"tchart\" height=\"200\"></canvas></div>
+  <div class=\"card\"><div class=\"ct\">&#128300; CALIBRA\u00c7\u00c3O</div><canvas id=\"calC\" height=\"200\"></canvas></div>
+</div>
 <div class=\"g3\">
-  <div class=\"card\"><div class=\"ct\">\ud83d\udcca ROLLING WIN RATE (10 trades)<\/div><canvas id=\"rwC\" height=\"160\"><\/canvas><\/div>
-  <div class=\"card\"><div class=\"ct\">\ud83c\udfaf DISTRIBUI\u00c7\u00c3O DE EDGE<\/div><canvas id=\"edC\" height=\"160\"><\/canvas><\/div>
-  <div class=\"card\"><div class=\"ct\">\ud83d\udcc5 TRADES POR DIA<\/div><canvas id=\"dnC\" height=\"160\"><\/canvas><\/div>
-<\/div>
+  <div class=\"card\"><div class=\"ct\">&#128202; ROLLING WIN RATE (10 trades)</div><canvas id=\"rwC\" height=\"160\"></canvas></div>
+  <div class=\"card\"><div class=\"ct\">\ud83c\udfaf DISTRIBUI\u00c7\u00c3O DE EDGE</div><canvas id=\"edC\" height=\"160\"></canvas></div>
+  <div class=\"card\"><div class=\"ct\">&#128197; TRADES POR DIA</div><canvas id=\"dnC\" height=\"160\"></canvas></div>
+</div>
 <div class=\"g2\">
   <div class=\"card\">
-    <div class=\"ct\">\ud83d\udd78 PERFORMANCE RADAR<\/div>
+    <div class=\"ct\">RADAR PERFORMANCE RADAR</div>
     <div style=\"height:240px;display:flex;align-items:center;justify-content:center\">
-      <canvas id=\"rdC\" style=\"max-height:230px\"><\/canvas>
-    <\/div>
-  <\/div>
+      <canvas id=\"rdC\" style=\"max-height:230px\"></canvas>
+    </div>
+  </div>
   <div class=\"card\">
-    <div class=\"ct\">\ud83d\udca5 SCATTER \u2014 PnL por Trade (tamanho = stake)<\/div>
-    <canvas id=\"scC\" height=\"220\"><\/canvas>
-  <\/div>
-<\/div>
+    <div class=\"ct\">SCATTER SCATTER \u2014 PnL por Trade (tamanho = stake)</div>
+    <canvas id=\"scC\" height=\"220\"></canvas>
+  </div>
+</div>
 <div class=\"tcard\">
   <div class=\"thead2\">
-    <div class=\"ct\" style=\"margin:0\">\u23f3 POSI\u00c7\u00d5ES ABERTAS<\/div>
-    <span id=\"oC\" style=\"color:var(--amber);font-size:10px\"><\/span>
-  <\/div>
+    <div class=\"ct\" style=\"margin:0\">\u23f3 POSI\u00c7\u00d5ES ABERTAS</div>
+    <span id=\"oC\" style=\"color:var(--amber);font-size:10px\"></span>
+  </div>
   <div class=\"twrap\"><table><thead><tr>
-    <th>Cidade<\/th><th>Data<\/th><th>Side<\/th><th>Tipo<\/th><th>Stake<\/th>
-    <th>Prob<\/th><th>Entry<\/th><th>Edge<\/th><th>Pergunta<\/th>
-  <\/tr><\/thead><tbody id=\"oBody\"><\/tbody><\/table><\/div>
-<\/div>
+    <th>Cidade</th><th>Data</th><th>Side</th><th>Tipo</th><th>Stake</th>
+    <th>Prob</th><th>Entry</th><th>Edge</th><th>Pergunta</th>
+  </tr></thead><tbody id=\"oBody\"></tbody></table></div>
+</div>
 <div class=\"tcard\">
   <div class=\"thead2\">
-    <div class=\"ct\" style=\"margin:0\">\ud83d\udccb TRADES FECHADOS<\/div>
-    <span id=\"cC\" style=\"color:var(--muted);font-size:10px\"><\/span>
-  <\/div>
+    <div class=\"ct\" style=\"margin:0\">&#128203; TRADES FECHADOS</div>
+    <span id=\"cC\" style=\"color:var(--muted);font-size:10px\"></span>
+  </div>
   <div class=\"twrap\"><table><thead><tr>
-    <th><\/th><th>Cidade<\/th><th>Data<\/th><th>Side<\/th><th>Target<\/th>
-    <th>Stake<\/th><th>PnL<\/th><th>Prob<\/th><th>Entry<\/th><th>Temp Real<\/th>
-  <\/tr><\/thead><tbody id=\"cBody\"><\/tbody><\/table><\/div>
-<\/div>
-<\/div>
+    <th></th><th>Cidade</th><th>Data</th><th>Side</th><th>Target</th>
+    <th>Stake</th><th>PnL</th><th>Prob</th><th>Entry</th><th>Temp Real</th>
+  </tr></thead><tbody id=\"cBody\"></tbody></table></div>
+</div>
+</div>
 <script>
 let D=null,aC='all',aR='all',ch={};
 async function fetchData(){try{const r=await fetch('/api/stats');if(!r.ok)throw new Error(r.status);D=await r.json();render()}catch(e){console.error(e)}}
@@ -471,9 +471,9 @@ function wbar(){const b=$('wbar');if(D.warning){b.style.display='block';b.textCo
 function ticker(){
   const items=(D.closed_trades||[]).slice(0,10).map(t=>{
     const c=t.result==='WIN'?'tw':'tl';const s=t.result==='WIN'?'\u25b2':'\u25bc';
-    return`<span style=\"display:inline-flex;align-items:center;gap:5px\"><span class=\"${c}\">${s} ${t.city}<\/span><span>${t.type} ${t.target}\u00b0${t.unit}<\/span><span class=\"${c}\">${sg(t.pnl)}$${Math.abs(t.pnl).toFixed(2)}<\/span><\/span>`;
+    return`<span style=\"display:inline-flex;align-items:center;gap:5px\"><span class=\"${c}\">${s} ${t.city}</span><span>${t.type} ${t.target}\u00b0${t.unit}</span><span class=\"${c}\">${sg(t.pnl)}$${Math.abs(t.pnl).toFixed(2)}</span></span>`;
   });
-  const all=items.join('<span style=\"margin:0 16px;color:var(--border)\">|<\/span>');
+  const all=items.join('<span style=\"margin:0 16px;color:var(--border)\">|</span>');
   $('tkr').innerHTML=all+all;
 }
 function kpis(){
@@ -643,11 +643,11 @@ function tables(){
     const s=t.side||'YES';const pa=t.model_prob!=null?(s==='NO'?Math.round((1-t.model_prob)*100):Math.round(t.model_prob*100)):null;
     const sc=s==='NO'?'var(--amber)':'var(--cyan)';const ep=Math.round((t.entry_price||t.market_price||0)*100);
     const e=((t.edge||0)*100).toFixed(1);
-    return`<tr><td><span class=\"ctag\">${t.city||'\u2014'}<\/span><\/td><td>${t.market_date||'\u2014'}<\/td><td><b style=\"color:${sc}\">${s}<\/b><\/td><td style=\"color:var(--amber)\">${t.type||'\u2014'}<\/td><td>$${(t.stake||0).toFixed(2)}<\/td>
-    <td><div class=\"pb\"><div class=\"pbg\"><div class=\"pbf\" style=\"width:${pa||0}%;background:${sc}\"><\/div><\/div>${pa!=null?pa+'%':'\u2014'}<\/div><\/td>
-    <td>${ep}%<\/td><td class=\"${parseFloat(e)>=0?'bw':'bl'}\">${parseFloat(e)>=0?'+':''}${e}%<\/td>
-    <td style=\"color:var(--muted);font-size:10px\">${(t.question||'').substring(0,46)}\u2026<\/td><\/tr>`;
-  }).join(''):'<tr><td colspan=\"9\" class=\"empty2\">Nenhuma posi\u00e7\u00e3o aberta<\/td><\/tr>';
+    return`<tr><td><span class=\"ctag\">${t.city||'\u2014'}</span></td><td>${t.market_date||'\u2014'}</td><td><b style=\"color:${sc}\">${s}</b></td><td style=\"color:var(--amber)\">${t.type||'\u2014'}</td><td>$${(t.stake||0).toFixed(2)}</td>
+    <td><div class=\"pb\"><div class=\"pbg\"><div class=\"pbf\" style=\"width:${pa||0}%;background:${sc}\"></div></div>${pa!=null?pa+'%':'\u2014'}</div></td>
+    <td>${ep}%</td><td class=\"${parseFloat(e)>=0?'bw':'bl'}\">${parseFloat(e)>=0?'+':''}${e}%</td>
+    <td style=\"color:var(--muted);font-size:10px\">${(t.question||'').substring(0,46)}\u2026</td></tr>`;
+  }).join(''):'<tr><td colspan=\"9\" class=\"empty2\">Nenhuma posi\u00e7\u00e3o aberta</td></tr>';
   const closed=(D.closed_trades||[]).filter(t=>{
     if(aC!=='all'&&t.city!==aC)return false;
     if(aR==='all'||aR==='OPEN')return true;return t.result===aR;
@@ -657,13 +657,13 @@ function tables(){
     const iw=t.result==='WIN';const pnl=t.pnl||0;const s=t.side||'YES';
     const pa=t.model_prob!=null?(s==='NO'?Math.round((1-t.model_prob)*100):Math.round(t.model_prob*100)):null;
     const sc=s==='NO'?'var(--amber)':'var(--cyan)';const ep=Math.round((t.entry_price||t.market_price||0)*100);
-    return`<tr><td style=\"font-size:15px;${iw?'color:var(--green);text-shadow:0 0 6px rgba(0,255,136,.5)':'color:var(--red)'}\">${iw?'\u2713':'\u2717'}<\/td>
-    <td><span class=\"ctag\">${t.city||'\u2014'}<\/span><\/td><td>${t.market_date||'\u2014'}<\/td><td><b style=\"color:${sc}\">${s}<\/b><\/td>
-    <td style=\"color:var(--muted)\">${t.type||''} ${t.target||''}\u00b0${t.unit||'C'}<\/td><td>$${(t.stake||0).toFixed(2)}<\/td>
-    <td style=\"font-weight:700;${pnl>=0?'color:var(--green);text-shadow:0 0 5px rgba(0,255,136,.4)':'color:var(--red)'}\">${pnl>=0?'+':''}$${Math.abs(pnl).toFixed(2)}<\/td>
-    <td>${pa!=null?pa+'%':'\u2014'}<\/td><td>${ep}%<\/td>
-    <td style=\"color:var(--cyan)\">${t.real_temp_c!=null?t.real_temp_c.toFixed(1)+'\u00b0C':'\u2014'}<\/td><\/tr>`;
-  }).join(''):'<tr><td colspan=\"10\" class=\"empty2\">Nenhum trade fechado<\/td><\/tr>';
+    return`<tr><td style=\"font-size:15px;${iw?'color:var(--green);text-shadow:0 0 6px rgba(0,255,136,.5)':'color:var(--red)'}\">${iw?'\u2713':'\u2717'}</td>
+    <td><span class=\"ctag\">${t.city||'\u2014'}</span></td><td>${t.market_date||'\u2014'}</td><td><b style=\"color:${sc}\">${s}</b></td>
+    <td style=\"color:var(--muted)\">${t.type||''} ${t.target||''}\u00b0${t.unit||'C'}</td><td>$${(t.stake||0).toFixed(2)}</td>
+    <td style=\"font-weight:700;${pnl>=0?'color:var(--green);text-shadow:0 0 5px rgba(0,255,136,.4)':'color:var(--red)'}\">${pnl>=0?'+':''}$${Math.abs(pnl).toFixed(2)}</td>
+    <td>${pa!=null?pa+'%':'\u2014'}</td><td>${ep}%</td>
+    <td style=\"color:var(--cyan)\">${t.real_temp_c!=null?t.real_temp_c.toFixed(1)+'\u00b0C':'\u2014'}</td></tr>`;
+  }).join(''):'<tr><td colspan=\"10\" class=\"empty2\">Nenhum trade fechado</td></tr>';
 }
 const CC={'New York':[40.71,-74.01],'London':[51.51,-0.13],'Paris':[48.86,2.35],'Hong Kong':[22.32,114.17],'Tokyo':[35.68,139.65],'Seoul':[37.57,126.98],'Beijing':[39.90,116.41],'S\u00e3o Paulo':[-23.55,-46.63],'Milan':[45.46,9.19],'Los Angeles':[34.05,-118.24],'Houston':[29.76,-95.37],'Austin':[30.27,-97.74],'Denver':[39.74,-104.99],'Seattle':[47.61,-122.33],'Chicago':[41.88,-87.63],'Phoenix':[33.45,-112.07],'Miami':[25.76,-80.19],'Atlanta':[33.75,-84.39],'Boston':[42.36,-71.06],'Toronto':[43.65,-79.38],'Madrid':[40.42,-3.70],'Mexico City':[19.43,-99.13]};
 let gS,gCam,gR,gG,gGr,gDr=false,gPr={x:0,y:0},gAR=true,gMk={},gRc,gMv,gPh=0;
@@ -704,12 +704,12 @@ function ghover(e,cv){
     const city=hits[0].object.userData.city;const s=(D.city_stats||{})[city]||{};
     const wr=s.wins+s.losses>0?Math.round(s.wins\/(s.wins+s.losses)*100):null;
     tip.style.display='block';tip.style.left=(e.clientX-cv.getBoundingClientRect().left+14)+'px';tip.style.top=(e.clientY-cv.getBoundingClientRect().top-10)+'px';
-    tip.innerHTML=`<strong>${city}<\/strong>
-      <div class=\"gs\"><span>Wins<\/span><span style=\"color:var(--green)\">${s.wins||0}<\/span><\/div>
-      <div class=\"gs\"><span>Losses<\/span><span style=\"color:var(--red)\">${s.losses||0}<\/span><\/div>
-      ${s.open?`<div class=\"gs\"><span>Abertos<\/span><span style=\"color:var(--amber)\">${s.open}<\/span><\/div>`:''}
-      <div class=\"gs\"><span>PnL<\/span><span style=\"color:${(s.pnl||0)>=0?'var(--green)':'var(--red)'}\">${(s.pnl||0)>=0?'+':''}$${Math.abs(s.pnl||0).toFixed(2)}<\/span><\/div>
-      ${wr!==null?`<div class=\"gs\"><span>Win Rate<\/span><span style=\"color:var(--cyan)\">${wr}%<\/span><\/div>`:''}`;
+    tip.innerHTML=`<strong>${city}</strong>
+      <div class=\"gs\"><span>Wins</span><span style=\"color:var(--green)\">${s.wins||0}</span></div>
+      <div class=\"gs\"><span>Losses</span><span style=\"color:var(--red)\">${s.losses||0}</span></div>
+      ${s.open?`<div class=\"gs\"><span>Abertos</span><span style=\"color:var(--amber)\">${s.open}</span></div>`:''}
+      <div class=\"gs\"><span>PnL</span><span style=\"color:${(s.pnl||0)>=0?'var(--green)':'var(--red)'}\">${(s.pnl||0)>=0?'+':''}$${Math.abs(s.pnl||0).toFixed(2)}</span></div>
+      ${wr!==null?`<div class=\"gs\"><span>Win Rate</span><span style=\"color:var(--cyan)\">${wr}%</span></div>`:''}`;
   }else tip.style.display='none';
 }
 function ganimate(){requestAnimationFrame(ganimate);if(gAR){gG.rotation.y+=.0017;gGr.rotation.copy(gG.rotation);Object.values(gMk).forEach(m=>{if(m.pivot)m.pivot.rotation.y+=.0017})}
@@ -738,9 +738,9 @@ function globe(){
   });
 }
 window.addEventListener('load',()=>{if(D)globe();else initGlobe()});
-<\/script>
-<\/body>
-<\/html>""";
+</script>
+</body>
+</html>""";
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -765,7 +765,7 @@ class Handler(BaseHTTPRequestHandler):
                 err = json.dumps({"error": str(e)}).encode()
                 self.send_response(500); self.send_header('Content-Type','application/json'); self.end_headers(); self.wfile.write(err)
         elif self.path in ('/', '/index.html'):
-            body = HTML.encode('utf-8')
+            body = HTML.encode('utf-8', errors='replace')
             self.send_response(200); self.send_header('Content-Type','text/html; charset=utf-8')
             self.send_header('Content-Length', len(body)); self.end_headers(); self.wfile.write(body)
         else:
