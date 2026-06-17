@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-risk.py — Kelly Criterion e guardrails v5.4
+risk.py — Kelly Criterion e guardrails v5.5
 
 v5.4: Suporte a apostas NO (vender YES)
 
@@ -14,6 +14,16 @@ AUDITORIA SENIOR:
    day_offset e aplica zscore check identico ao lado YES. Antes era
    possivel entrar NO quando o forecast estava exatamente no target,
    onde a incerteza e maxima e o edge pode ser espurio.
+
+AJUSTE v5.5 (2026-06-17):
+5. MIN_PRICE_YES_FOR_NO: 0.55 → 0.45
+   Mercados EXACT atuais têm distribuição espalhada (35-45% por bucket),
+   nenhum passa 0.55. Baixar para 0.45 abre Madrid, Milan, Mexico City
+   mantendo proteção contra mercados onde YES já decidiu (>45%).
+6. Suporte a NO para RANGE2: adicionado.
+   A lógica é idêntica ao EXACT — apostamos que a temperatura NÃO cai
+   no bucket. O zscore check garante que o forecast está suficientemente
+   distante do bucket antes de entrar.
 """
 
 import os
@@ -46,7 +56,12 @@ MIN_EDGE_RANGE2 = 0.02
 # Parâmetros para apostas NO
 MIN_EDGE_NO          = 0.15
 MAX_PROB_FOR_NO      = 0.35
-MIN_PRICE_YES_FOR_NO = 0.55
+
+# AJUSTE v5.5: 0.55 → 0.45
+# Mercados EXACT atuais têm distribuição espalhada; nenhum bucket
+# individual passa 0.55. Com 0.45 abrimos mercados válidos mantendo
+# proteção contra YES já decidido.
+MIN_PRICE_YES_FOR_NO = float(os.getenv("MIN_PRICE_YES_FOR_NO", "0.45"))
 
 # Fee de liquidação — deve ser idêntica à usada em settlement.py.
 FEE_RATE = 0.02
@@ -245,11 +260,14 @@ def _check_no_guardrails(
     """
     Guardrails para apostas NO.
 
-    AUDITORIA SENIOR: adicionado zscore check identico ao lado YES.
-    Antes era possivel entrar NO quando forecast estava exatamente no
-    target (maxima incerteza), onde o edge de probabilidade e espurio.
+    AJUSTE v5.5: RANGE2 agora suportado.
+    A lógica é idêntica ao EXACT: apostamos que a temperatura NÃO cai
+    no bucket. O zscore check verifica que o forecast está distante o
+    suficiente do centro do bucket para justificar a aposta.
+
+    AUDITORIA SENIOR: zscore check identico ao lado YES.
     """
-    if condition not in ("ABOVE", "BELOW", "EXACT"):
+    if condition not in ("ABOVE", "BELOW", "EXACT", "RANGE2"):
         logger.info(f"NO nao suportado para {condition}")
         return False
 
@@ -278,15 +296,17 @@ def _check_no_guardrails(
         )
         return False
 
-    # Zscore check: exige que o forecast esteja suficientemente distante do
-    # target. Mesmo check do lado YES. Previne entrada NO quando a incerteza
-    # e maxima (forecast proxima do target) e o edge pode ser espurio.
+    # Zscore check: exige que o forecast esteja suficientemente distante
+    # do target. Para RANGE2, target_c é o centro do bucket.
     if forecast_temp is not None and target_c is not None:
         eff_sigma = sigma if (sigma and sigma > 0) else {1: 4.0, 2: 4.5, 3: 5.0}.get(day_offset, 5.0)
         eff_sigma = min(eff_sigma, SIGMA_CAP_ABOVE_BELOW)
         z_score = abs(forecast_temp - target_c) / eff_sigma
         if z_score < MIN_TARGET_ZSCORE:
-            logger.info(f"NO bloqueado: zscore {z_score:.2f} < {MIN_TARGET_ZSCORE} (forecast muito proximo do target)")
+            logger.info(
+                f"NO bloqueado: zscore {z_score:.2f} < {MIN_TARGET_ZSCORE} "
+                f"(forecast muito proximo do target)"
+            )
             return False
 
     logger.info(
