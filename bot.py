@@ -36,6 +36,7 @@ from forecast import get_corrected_forecast, city_today
 from gamma_parser import fetch_markets
 from model import calculate_probability
 from notificador import iniciar_listener, notificar_entrada_trade
+from paper_execution import simulate_paper_buy
 from risk import (
     check_guardrails,
     dynamic_kelly_fraction,
@@ -52,6 +53,7 @@ from settlement import settle_all
 from station_data import city_is_reliable, get_intraday_confirmation
 from config import (
     TRADING_ENABLED,
+    PAPER_EXECUTION_ENABLED,
     MAX_OPEN_TRADES,
     MAX_TOTAL_EXPOSURE,
     MAX_POSITION,
@@ -317,11 +319,29 @@ def _execute_trade(
     if stake <= 0:
         return
 
-    if side == "YES":
-        entry_price = yes_price
+    execution = None
+    if PAPER_EXECUTION_ENABLED:
+        execution = simulate_paper_buy(m, side, stake)
+        if not execution.ok:
+            logger.info(
+                f"PAPER EXEC bloqueado [{side}]: {name} {condition} {target}°{unit} | "
+                f"{execution.reason}"
+            )
+            return
+        entry_price = round(execution.avg_price, 4)
+        shares = round(execution.shares, 4)
+        stake = round(execution.filled_cost, 4)
+        logger.info(
+            f"PAPER EXEC [{side}]: token={execution.token_id[:10]}... "
+            f"avg={entry_price:.4f} best_ask={execution.best_ask:.4f} "
+            f"slip={execution.slippage:.4f} shares={shares:.4f}"
+        )
     else:
-        entry_price = round(1.0 - yes_price, 4)
-    shares = int(stake / entry_price) if entry_price > 0 else 0
+        if side == "YES":
+            entry_price = yes_price
+        else:
+            entry_price = round(1.0 - yes_price, 4)
+        shares = int(stake / entry_price) if entry_price > 0 else 0
     if shares <= 0:
         logger.info(
             f"Stake ${stake:.2f} insuficiente para comprar 1 share "
@@ -329,7 +349,7 @@ def _execute_trade(
         )
         return
 
-    real_cost = round(shares * entry_price, 2)
+    real_cost = round(float(shares) * entry_price, 4)
     stake = real_cost
 
     if stake <= 0:
@@ -342,15 +362,22 @@ def _execute_trade(
         market_key = market_key[:-3]
 
     if side == "NO":
-        ev_net = expected_value_no(prob, yes_price)
+        ev_net = expected_value(1.0 - prob, entry_price)
     else:
-        ev_net = expected_value(prob, yes_price)
+        ev_net = expected_value(prob, entry_price)
+
+    if side == "NO":
+        edge = (1.0 - prob) - entry_price
+    else:
+        edge = prob - entry_price
 
     trade = dict(
         market_id      = trade_id,
         market_key     = market_key,
         gamma_market_id = str(m.get("gamma_market_id", "")),
         gamma_event_id = str(m.get("gamma_event_id", "")),
+        yes_token_id    = str(m.get("yes_token_id", "")),
+        no_token_id     = str(m.get("no_token_id", "")),
         city           = name,
         question       = m.get("question", ""),
         market_date    = date_str,
@@ -378,6 +405,8 @@ def _execute_trade(
         forecast_day   = day_offset,
         real_temp_c    = None,
     )
+    if execution is not None:
+        trade.update(execution.as_trade_fields())
 
     if TRADING_ENABLED:
         recorded = record_trade(trade)
