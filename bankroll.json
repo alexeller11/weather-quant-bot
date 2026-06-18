@@ -1,6 +1,6 @@
 {
-    "seq": 15,
-    "balance": 484.6868,
+    "seq": 16,
+    "balance": 491.5468,
     "history": [
         {
             "pnl": -3.92,
@@ -929,19 +929,19 @@
         },
         {
             "ev": 0.7536,
-            "fee": 0.0,
-            "pnl": 0,
+            "fee": 0.14,
+            "pnl": 3.11,
             "city": "Denver",
             "edge": 0.4223,
             "side": "NO",
             "type": "RANGE2",
             "unit": "F",
             "stake": 3.75,
-            "result": "OPEN",
+            "result": "WIN",
             "shares": 7,
             "target": 92.5,
             "question": "Will the highest temperature in Denver be between 92-93°F on June 17?",
-            "exit_time": null,
+            "exit_time": "2026-06-18T06:38:44.813685+00:00",
             "market_id": "denver|2026-06-17|RANGE2|92-93|F_NO",
             "target_hi": 93.0,
             "target_lo": 92.0,
@@ -952,7 +952,7 @@
             "model_prob": 0.0427,
             "entry_price": 0.535,
             "market_date": "2026-06-17",
-            "real_temp_c": null,
+            "real_temp_c": 34.0,
             "sigma_total": 4.0,
             "forecast_day": 1,
             "market_price": 0.465,
@@ -960,7 +960,7 @@
             "gamma_market_id": "2559492"
         }
     ],
-    "saved_at": "2026-06-18T05:36:32.374576+00:00",
+    "saved_at": "2026-06-18T06:38:44.813704+00:00",
     "created_at": "2026-06-01T00:00:00+00:00",
     "override_note": "Correcao 08/06/2026 — restaura Madrid Jun-8 perdido por override reaplicado",
     "start_balance": 200.0,
