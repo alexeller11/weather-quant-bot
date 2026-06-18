@@ -30,7 +30,11 @@ from datetime import datetime, timezone
 from typing import Optional, Dict
 
 import numpy as np
-from sklearn.linear_model import SGDClassifier
+
+try:
+    from sklearn.linear_model import SGDClassifier
+except Exception:
+    SGDClassifier = None
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +42,15 @@ MODEL_FILE   = "ml_adjuster.pkl"
 _DB_KEY_PFX  = "ml_model_v3_"
 _DB_KEY_PERF = "ml_performance"
 _MODEL_CACHE_TTL = 3600  # segundos; recarrega do DB apos 1h
+
+
+class _FallbackSGDClassifier:
+    """Modelo neutro quando scikit-learn nao esta disponivel."""
+    def partial_fit(self, *args, **kwargs):
+        return self
+
+    def predict_proba(self, X):
+        return np.array([[0.5, 0.5] for _ in range(len(X))])
 
 
 # ── PostgreSQL helpers ─────────────────────────────────────────────
@@ -96,6 +109,8 @@ def _kv_set(conn, key, value: dict):
 # ── modelo por cidade ─────────────────────────────────────────────────
 
 def _new_model() -> SGDClassifier:
+    if SGDClassifier is None:
+        return _FallbackSGDClassifier()
     m = SGDClassifier(loss="log_loss", random_state=42, max_iter=1000)
     X = np.array([
         [0.7, 1 / 3.0,  6 / 24.0, 2.0 / 5.0, 1.0 / 5.0,  0.0,        0.0],

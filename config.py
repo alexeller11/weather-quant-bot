@@ -40,6 +40,10 @@ MIN_EDGE_EXACT        = float(os.getenv("MIN_EDGE_EXACT", "0.15"))
 MIN_EV                = float(os.getenv("MIN_EV", "0.05"))
 EDGE_THRESHOLD        = MIN_EDGE
 MAX_FORECAST_DAY      = int(os.getenv("MAX_FORECAST_DAY", "3"))
+MAX_DAILY_TRADES      = int(os.getenv("MAX_DAILY_TRADES", "8"))
+MAX_DAILY_LOSS        = float(os.getenv("MAX_DAILY_LOSS", "12.00"))
+MAX_WEEKLY_LOSS       = float(os.getenv("MAX_WEEKLY_LOSS", "30.00"))
+MAX_DRAWDOWN_PCT      = float(os.getenv("MAX_DRAWDOWN_PCT", "25.0"))
 SIGMA_CAP_ABOVE_BELOW = float(os.getenv("SIGMA_CAP_ABOVE_BELOW", "6.0"))
 SIGMA_CAP_EXACT       = float(os.getenv("SIGMA_CAP_EXACT", "6.0"))
 SIGMA_MAX_ABOVE_BELOW = SIGMA_CAP_ABOVE_BELOW
@@ -58,6 +62,9 @@ MIN_PRICE_RANGE2      = float(os.getenv("MIN_PRICE_RANGE2", "0.04"))
 
 MAX_PRICE             = float(os.getenv("MAX_PRICE", "0.88"))
 START_BALANCE         = float(os.getenv("START_BALANCE", "100.00"))
+MIN_MARKET_LIQUIDITY  = float(os.getenv("MIN_MARKET_LIQUIDITY", "100.00"))
+MIN_MARKET_VOLUME     = float(os.getenv("MIN_MARKET_VOLUME", "250.00"))
+MAX_IMPLIED_SPREAD    = float(os.getenv("MAX_IMPLIED_SPREAD", "0.08"))
 
 CITY_DISPLAY = {
     "new york":    "New York",   "london":      "London",

@@ -28,6 +28,7 @@ AJUSTE v5.5 (2026-06-17):
 
 import os
 import logging
+from datetime import datetime, timedelta, timezone
 from config import (
     KELLY_FRACTION,
     MAX_KELLY_FRACTION_CAP,
@@ -46,6 +47,10 @@ from config import (
     MAX_PRICE,
     MAX_OPEN_TRADES,
     MAX_TOTAL_EXPOSURE,
+    MAX_DAILY_TRADES,
+    MAX_DAILY_LOSS,
+    MAX_WEEKLY_LOSS,
+    MAX_DRAWDOWN_PCT,
 )
 
 logger = logging.getLogger(__name__)
@@ -370,3 +375,78 @@ def event_open_stake(open_trades: list, city: str, market_date: str) -> float:
 def event_headroom(open_trades: list, city: str, market_date: str) -> float:
     used = event_open_stake(open_trades, city, market_date)
     return max(0.0, MAX_EVENT_EXPOSURE - used)
+
+
+def _parse_dt(raw: str):
+    try:
+        dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except Exception:
+        return None
+
+
+def _closed_trades(history: list) -> list:
+    return [t for t in history or [] if t.get("result") in ("WIN", "LOSS")]
+
+
+def _pnl_since(history: list, start_dt: datetime) -> float:
+    total = 0.0
+    for trade in _closed_trades(history):
+        exit_dt = _parse_dt(trade.get("exit_time") or "")
+        if exit_dt is not None and exit_dt >= start_dt:
+            total += float(trade.get("pnl") or 0)
+    return round(total, 4)
+
+
+def _trades_opened_since(history: list, start_dt: datetime) -> int:
+    count = 0
+    for trade in history or []:
+        entry_dt = _parse_dt(trade.get("entry_time") or "")
+        if entry_dt is not None and entry_dt >= start_dt:
+            count += 1
+    return count
+
+
+def _max_drawdown_pct(history: list, start_balance: float) -> float:
+    running = float(start_balance or 0)
+    peak = running
+    max_dd = 0.0
+    for trade in sorted(_closed_trades(history), key=lambda t: t.get("exit_time") or ""):
+        running += float(trade.get("pnl") or 0)
+        peak = max(peak, running)
+        if peak > 0:
+            max_dd = max(max_dd, (peak - running) / peak * 100)
+    return round(max_dd, 4)
+
+
+def risk_limits_ok(history: list, balance: float, start_balance: float) -> tuple:
+    """
+    Circuit breaker de portfolio para novas entradas. Settlement continua
+    permitido para reduzir risco e manter o estado sincronizado.
+    """
+    now = datetime.now(timezone.utc)
+    day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_start = day_start - timedelta(days=day_start.weekday())
+
+    daily_count = _trades_opened_since(history, day_start)
+    if daily_count >= MAX_DAILY_TRADES:
+        return False, f"limite diario de trades atingido ({daily_count}/{MAX_DAILY_TRADES})"
+
+    daily_pnl = _pnl_since(history, day_start)
+    if daily_pnl <= -abs(MAX_DAILY_LOSS):
+        return False, f"stop diario atingido (PnL ${daily_pnl:.2f})"
+
+    weekly_pnl = _pnl_since(history, week_start)
+    if weekly_pnl <= -abs(MAX_WEEKLY_LOSS):
+        return False, f"stop semanal atingido (PnL ${weekly_pnl:.2f})"
+
+    drawdown = _max_drawdown_pct(history, start_balance)
+    if drawdown >= MAX_DRAWDOWN_PCT:
+        return False, f"drawdown maximo atingido ({drawdown:.1f}% >= {MAX_DRAWDOWN_PCT:.1f}%)"
+
+    if balance <= 0:
+        return False, "saldo disponivel zerado"
+
+    return True, "ok"

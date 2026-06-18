@@ -218,6 +218,18 @@ class TestComputeSettlement(unittest.TestCase):
         r = _compute_settlement(self._trade("BELOW", 25.0), 27.0)
         self.assertEqual(r["result"], "LOSS")
 
+    def test_above_boundary_inclusive(self):
+        """Polymarket 'or higher' inclui o alvo."""
+        from settlement import _compute_settlement
+        r = _compute_settlement(self._trade("ABOVE", 25.0), 25.0)
+        self.assertEqual(r["result"], "WIN")
+
+    def test_below_boundary_inclusive(self):
+        """Polymarket 'or below' inclui o alvo."""
+        from settlement import _compute_settlement
+        r = _compute_settlement(self._trade("BELOW", 25.0), 25.0)
+        self.assertEqual(r["result"], "WIN")
+
     def test_range2_win_inside(self):
         from settlement import _compute_settlement
         r = _compute_settlement(
@@ -317,6 +329,26 @@ class TestParseQuestion(unittest.TestCase):
     def test_unknown_format_returns_none(self):
         r = self.parse("invalid format xyz")
         self.assertIsNone(r)
+
+
+class TestRiskCircuitBreakers(unittest.TestCase):
+    def test_daily_loss_blocks_new_entries(self):
+        from datetime import datetime, timezone
+        from config import MAX_DAILY_LOSS
+        from risk import risk_limits_ok
+        history = [{
+            "result": "LOSS",
+            "pnl": -(MAX_DAILY_LOSS + 1),
+            "exit_time": datetime.now(timezone.utc).isoformat(),
+        }]
+        ok, reason = risk_limits_ok(history, balance=100.0, start_balance=100.0)
+        self.assertFalse(ok)
+        self.assertIn("diario", reason)
+
+    def test_positive_balance_without_losses_allows_entries(self):
+        from risk import risk_limits_ok
+        ok, reason = risk_limits_ok([], balance=100.0, start_balance=100.0)
+        self.assertTrue(ok, reason)
 
 
 if __name__ == "__main__":

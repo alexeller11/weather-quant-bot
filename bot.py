@@ -45,6 +45,7 @@ from risk import (
     expected_value_no,
     exposure_headroom,
     event_headroom,
+    risk_limits_ok,
 )
 from settlement import settle_all
 from station_data import city_is_reliable, get_intraday_confirmation
@@ -132,6 +133,12 @@ def process_city(city: Dict):
     history = data.get("history", [])
     history_view = dedupe_history_by_market(history)
     balance = float(data.get("balance", 0))
+    start_balance = float(data.get("start_balance", balance))
+
+    ok, reason = risk_limits_ok(history_view, balance, start_balance)
+    if not ok:
+        logger.warning(f"{name}: novas entradas bloqueadas por risco — {reason}")
+        return
 
     seen_market_keys = set()
 
@@ -171,6 +178,10 @@ def process_city(city: Dict):
                 continue
 
             open_trades = _get_open_trades(history_view)
+            ok, reason = risk_limits_ok(history_view, balance, start_balance)
+            if not ok:
+                logger.warning(f"{name}: bloqueado por risco — {reason}")
+                break
             open_count = len(open_trades)
             if open_count >= MAX_OPEN_TRADES:
                 logger.info(f"Limite de {MAX_OPEN_TRADES} trades abertos atingido")
@@ -305,10 +316,15 @@ def _execute_trade(
 
     if side == "YES":
         entry_price = yes_price
-        shares = int(stake / entry_price) if entry_price > 0 else 0
     else:
         entry_price = round(1.0 - yes_price, 4)
-        shares = int(stake / entry_price) if entry_price > 0 else 0
+    shares = int(stake / entry_price) if entry_price > 0 else 0
+    if shares <= 0:
+        logger.info(
+            f"Stake ${stake:.2f} insuficiente para comprar 1 share "
+            f"a {entry_price:.3f} ({side})"
+        )
+        return
 
     real_cost = round(shares * entry_price, 2)
     stake = real_cost

@@ -18,9 +18,8 @@ CORREÇÕES (auditoria):
 """
 
 import logging
+import math
 from datetime import datetime, timezone
-
-from scipy import stats
 
 from sigma_calibrator import SigmaCalibrator
 from ml_adjuster import MLProbabilityAdjuster
@@ -29,6 +28,11 @@ logger = logging.getLogger(__name__)
 
 _calibrator  = SigmaCalibrator()
 _ml_adjuster = MLProbabilityAdjuster()
+
+
+def normal_cdf(x: float) -> float:
+    """CDF da Normal padrao sem depender de scipy em runtime."""
+    return 0.5 * (1.0 + math.erf(float(x) / math.sqrt(2.0)))
 
 
 def get_base_sigma(day_offset: int) -> float:
@@ -90,17 +94,17 @@ def calculate_probability(
 
     if condition == "ABOVE":
         z = (forecast_temp - target_c) / sigma
-        model_prob = stats.norm.cdf(z)
+        model_prob = normal_cdf(z)
 
     elif condition == "BELOW":
         z = (forecast_temp - target_c) / sigma
-        model_prob = 1.0 - stats.norm.cdf(z)
+        model_prob = 1.0 - normal_cdf(z)
 
     elif condition == "EXACT":
         half = delta_to_celsius(0.5, unit)
         z_high = (forecast_temp - (target_c - half)) / sigma
         z_low  = (forecast_temp - (target_c + half)) / sigma
-        model_prob = stats.norm.cdf(z_high) - stats.norm.cdf(z_low)
+        model_prob = normal_cdf(z_high) - normal_cdf(z_low)
 
     elif condition == "RANGE2":
         fallback = delta_to_celsius(1.0, unit)
@@ -110,7 +114,7 @@ def calculate_probability(
             lo_c, hi_c = hi_c, lo_c
         z_hi = (forecast_temp - lo_c) / sigma
         z_lo = (forecast_temp - hi_c) / sigma
-        model_prob = stats.norm.cdf(z_hi) - stats.norm.cdf(z_lo)
+        model_prob = normal_cdf(z_hi) - normal_cdf(z_lo)
 
     else:
         return 0.0
