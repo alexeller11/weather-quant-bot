@@ -42,7 +42,7 @@ class ConsensusEngine:
             return None
         try:
             r = requests.get(
-                "http://api.weatherapi.com/v1/forecast.json",
+                "https://api.weatherapi.com/v1/forecast.json",
                 params={
                     "key":  self.weatherapi_key,
                     "q":    f"{lat},{lon}",

@@ -167,9 +167,9 @@ def _compute_settlement(trade: Dict, actual_temp_c: float) -> Dict:
     half_range2 = delta_to_celsius(1.0, unit)
 
     if condition == "ABOVE":
-        won = actual_temp_c > target_c
+        won = actual_temp_c >= target_c
     elif condition == "BELOW":
-        won = actual_temp_c < target_c
+        won = actual_temp_c <= target_c
     elif condition == "RANGE2":
         if lo_c is not None and hi_c is not None:
             if lo_c > hi_c:

@@ -34,6 +34,7 @@ import requests
 
 from bankroll import canonical_market_base, normalize_city_slug
 from forecast import city_today
+from config import MIN_MARKET_LIQUIDITY, MIN_MARKET_VOLUME, MAX_IMPLIED_SPREAD
 
 
 BASE_URL = "https://gamma-api.polymarket.com"
@@ -162,7 +163,40 @@ def parse_question(question):
     return None
 
 
-def market_is_healthy(yes_price, no_price):
+def _as_float(value, default=None):
+    try:
+        if value in (None, ""):
+            return default
+        return float(value)
+    except Exception:
+        return default
+
+
+def _first_numeric(mapping, keys):
+    for key in keys:
+        value = _as_float(mapping.get(key))
+        if value is not None:
+            return value
+    return None
+
+
+def _market_quality(market):
+    market = market or {}
+    liquidity = _first_numeric(market, (
+        "liquidityNum", "liquidity", "liquidityClob", "liquidityAmm",
+    ))
+    volume = _first_numeric(market, (
+        "volume24hr", "volume24hrClob", "volumeNum", "volume", "volumeClob",
+    ))
+    best_bid = _first_numeric(market, ("bestBid", "best_bid", "bid"))
+    best_ask = _first_numeric(market, ("bestAsk", "best_ask", "ask"))
+    spread = None
+    if best_bid is not None and best_ask is not None:
+        spread = max(0.0, best_ask - best_bid)
+    return liquidity, volume, spread
+
+
+def market_is_healthy(yes_price, no_price, market=None):
     """
     Piso de 0.03 para aceitar buckets de 2°F que legitimamente têm
     preços baixos. O filtro real de entrada é MIN_PRICE em risk.py.
@@ -181,7 +215,15 @@ def market_is_healthy(yes_price, no_price):
         return False
 
     # Tolerância de spread de 15pp
-    if abs((yes_price + no_price) - 1.0) > 0.15:
+    if abs((yes_price + no_price) - 1.0) > MAX_IMPLIED_SPREAD:
+        return False
+
+    liquidity, volume, quoted_spread = _market_quality(market)
+    if liquidity is not None and liquidity < MIN_MARKET_LIQUIDITY:
+        return False
+    if volume is not None and volume < MIN_MARKET_VOLUME:
+        return False
+    if quoted_spread is not None and quoted_spread > MAX_IMPLIED_SPREAD:
         return False
 
     return True
@@ -285,7 +327,7 @@ def fetch_markets(city):
                     yes_price = float(prices[0])
                     no_price  = float(prices[1])
 
-                    if not market_is_healthy(yes_price, no_price):
+                    if not market_is_healthy(yes_price, no_price, market=market):
                         print(f"  Market unhealthy (yes={yes_price:.3f} no={no_price:.3f})")
                         continue
 
@@ -306,6 +348,7 @@ def fetch_markets(city):
                         continue
                     seen_market_keys.add(market_key)
 
+                    liquidity, volume, book_spread = _market_quality(market)
                     entry = {
                         "market_id":      market_key,
                         "market_key":     market_key,
@@ -320,6 +363,9 @@ def fetch_markets(city):
                         "unit":           parsed["unit"],
                         "yes_price":      yes_price,
                         "no_price":       no_price,
+                        "liquidity":      liquidity,
+                        "volume":         volume,
+                        "book_spread":    book_spread,
                     }
                     if parsed["condition"] == "range2":
                         entry["target_lo"] = parsed["target_lo"]
