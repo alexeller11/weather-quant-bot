@@ -1,6 +1,6 @@
 {
-    "seq": 23,
-    "balance": 476.0168,
+    "seq": 24,
+    "balance": 483.8568,
     "history": [
         {
             "pnl": -3.92,
@@ -993,19 +993,19 @@
         },
         {
             "ev": 1.0505,
-            "fee": 0.0,
-            "pnl": 0,
+            "fee": 0.16,
+            "pnl": 4.2,
             "city": "New York",
             "edge": 0.497,
             "side": "NO",
             "type": "RANGE2",
             "unit": "F",
             "stake": 3.64,
-            "result": "OPEN",
+            "result": "WIN",
             "shares": 8,
             "target": 82.5,
             "question": "Will the highest temperature in New York City be between 82-83°F on June 19?",
-            "exit_time": null,
+            "exit_time": "2026-06-20T04:57:47.785877+00:00",
             "market_id": "new-york|2026-06-19|RANGE2|82-83|F_NO",
             "target_hi": 83.0,
             "target_lo": 82.0,
@@ -1016,7 +1016,7 @@
             "model_prob": 0.048,
             "entry_price": 0.455,
             "market_date": "2026-06-19",
-            "real_temp_c": null,
+            "real_temp_c": 29.2,
             "sigma_total": 4.0,
             "forecast_day": 1,
             "market_price": 0.545,
@@ -1152,7 +1152,7 @@
             "gamma_market_id": "2590605"
         }
     ],
-    "saved_at": "2026-06-19T23:49:19.075253+00:00",
+    "saved_at": "2026-06-20T04:57:47.785941+00:00",
     "created_at": "2026-06-01T00:00:00+00:00",
     "override_note": "Correcao 08/06/2026 — restaura Madrid Jun-8 perdido por override reaplicado",
     "start_balance": 200.0,
