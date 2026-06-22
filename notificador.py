@@ -25,8 +25,11 @@ import os
 import requests
 import json
 import time
+import logging
 from datetime import datetime, timezone
 from threading import Thread
+
+logger = logging.getLogger(__name__)
 
 from config import (
     TELEGRAM_TOKEN,
@@ -45,7 +48,7 @@ TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
 def enviar_mensagem(texto, parse_mode="HTML"):
     if not TELEGRAM_TOKEN or not CHAT_ID:
-        print("Telegram: token ou chat_id não configurados")
+        logger.warning("Telegram: token ou chat_id não configurados")
         return False
     try:
         r = requests.post(
@@ -55,7 +58,7 @@ def enviar_mensagem(texto, parse_mode="HTML"):
         )
         return r.status_code == 200
     except Exception as e:
-        print(f"Telegram erro: {e}")
+        logger.error("Telegram erro: %s", e)
         return False
 
 
@@ -430,7 +433,7 @@ def processar_comando(texto):
         )
 
     else:
-        print(f"[Groq] Processando: {texto[:50]}...")
+        logger.info("[Groq] Processando: %s", texto[:50])
         resposta = _perguntar_groq(texto)
         enviar_mensagem(resposta)
 
@@ -455,7 +458,7 @@ def _chat_autorizado(msg: dict) -> bool:
 def iniciar_listener():
     def listen():
         offset = 0
-        print("Listener Telegram iniciado...")
+        logger.info("Listener Telegram iniciado...")
         while True:
             try:
                 r = requests.get(
@@ -474,13 +477,13 @@ def iniciar_listener():
                                 continue
                             if not _chat_autorizado(msg):
                                 quem = msg.get("chat", {}).get("id", "?")
-                                print(f"Telegram: mensagem de chat NÃO autorizado ({quem}) — ignorada")
+                                logger.warning("Telegram: mensagem de chat NÃO autorizado (%s) — ignorada", quem)
                                 continue
-                            print(f"Telegram: {texto[:60]}")
+                            logger.info("Telegram: %s", texto[:60])
                             processar_comando(texto)
                 time.sleep(1)
             except Exception as e:
-                print(f"Listener erro: {e}")
+                logger.error("Listener erro: %s", e)
                 time.sleep(5)
 
     Thread(target=listen, daemon=True).start()

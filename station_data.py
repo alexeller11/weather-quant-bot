@@ -19,7 +19,8 @@ import requests
 import time
 from datetime import datetime, timezone
 
-from forecast import CITY_COORDS, city_now, city_today
+from config import CITY_COORDS
+from forecast import city_now, city_today
 
 _INTRADAY_CACHE = {}
 _INTRADAY_TTL   = 1800

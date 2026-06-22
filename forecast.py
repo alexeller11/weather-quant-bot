@@ -20,68 +20,19 @@
 #    do último dia disponível sem avisar.
 # =========================================================
 
+import logging
 import requests
 import time
 from datetime import datetime, timezone, timedelta
+
+from config import CITY_COORDS, CITY_TZ, CITY_SLUG_NORMALIZE
+
+logger = logging.getLogger(__name__)
 
 try:
     from zoneinfo import ZoneInfo
 except ImportError:
     ZoneInfo = None
-
-# =========================================================
-# COORDS
-# =========================================================
-
-CITY_COORDS = {
-    "new-york":    (40.7128, -74.0060),
-    "london":      (51.5072, -0.1276),
-    "paris":       (48.8566, 2.3522),
-    "hong-kong":   (22.3193, 114.1694),
-    "tokyo":       (35.6762, 139.6503),
-    "seoul":       (37.5665, 126.9780),
-    "beijing":     (39.9042, 116.4074),
-    "sao-paulo":   (-23.5505, -46.6333),
-    "milan":       (45.4642, 9.1900),
-    "los-angeles": (34.0522, -118.2437),
-    "houston":     (29.7604, -95.3698),
-    "austin":      (30.2672, -97.7431),
-    "denver":      (39.7392, -104.9903),
-    "seattle":     (47.6062, -122.3321),
-    "chicago":     (41.8781, -87.6298),
-    "phoenix":     (33.4484, -112.0740),
-    "miami":       (25.7617, -80.1918),
-    "atlanta":     (33.7490, -84.3880),
-    "boston":      (42.3601, -71.0589),
-    "toronto":     (43.6532, -79.3832),
-    "madrid":      (40.4168, -3.7038),
-    "mexico-city": (19.4326, -99.1332),
-}
-
-CITY_TZ = {
-    "new-york":    "America/New_York",
-    "london":      "Europe/London",
-    "paris":       "Europe/Paris",
-    "hong-kong":   "Asia/Hong_Kong",
-    "tokyo":       "Asia/Tokyo",
-    "seoul":       "Asia/Seoul",
-    "beijing":     "Asia/Shanghai",
-    "sao-paulo":   "America/Sao_Paulo",
-    "milan":       "Europe/Rome",
-    "los-angeles": "America/Los_Angeles",
-    "houston":     "America/Chicago",
-    "austin":      "America/Chicago",
-    "denver":      "America/Denver",
-    "seattle":     "America/Los_Angeles",
-    "chicago":     "America/Chicago",
-    "phoenix":     "America/Phoenix",
-    "miami":       "America/New_York",
-    "atlanta":     "America/New_York",
-    "boston":      "America/New_York",
-    "toronto":     "America/Toronto",
-    "madrid":      "Europe/Madrid",
-    "mexico-city": "America/Mexico_City",
-}
 
 
 def city_now(city_slug):
@@ -135,9 +86,8 @@ def compute_bias(city_slug):
 
     try:
         from bankroll import load_bankroll
-        from config import CITY_SLUG_NORMALIZE
     except Exception as e:
-        print(f"[bias] erro ao importar bankroll: {e}")
+        logger.warning(f"[bias] erro ao importar bankroll: {e}")
         return 0.0, 0
 
     cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=BIAS_WINDOW_DAYS)
@@ -145,7 +95,7 @@ def compute_bias(city_slug):
     try:
         history = load_bankroll().get("history", [])
     except Exception as e:
-        print(f"[bias] erro ao carregar bankroll: {e}")
+        logger.warning(f"[bias] erro ao carregar bankroll: {e}")
         return 0.0, 0
 
     samples = {}
@@ -184,7 +134,7 @@ def compute_bias(city_slug):
     bias_c = sum(errors) / len(errors)
     _BIAS_CACHE[city_slug] = (round(bias_c, 3), len(errors), now)
 
-    print(
+    logger.info(
         f"[bias] {city_slug}: bias={bias_c:+.2f}°C "
         f"({len(errors)} amostras, últimos {BIAS_WINDOW_DAYS}d)"
     )
@@ -206,7 +156,7 @@ def get_corrected_forecast(city_slug, forecast_day):
     corrected = round(float(forecast_c) - bias_c, 2)
 
     if bias_c != 0.0:
-        print(
+        logger.info(
             f"[bias] {city_slug} d{forecast_day}: "
             f"{forecast_c:.1f}°C → {corrected:.1f}°C "
             f"(bias={bias_c:+.2f}°C, n={n_samples})"
@@ -252,7 +202,7 @@ def get_forecast(city_slug, forecast_day=1):
             del _CACHE_TIME[cache_key]
 
     if city_slug not in CITY_COORDS:
-        print(f"[forecast] cidade desconhecida: {city_slug}")
+        logger.warning(f"[forecast] cidade desconhecida: {city_slug}")
         return None, None
 
     lat, lon = CITY_COORDS[city_slug]
@@ -270,7 +220,7 @@ def get_forecast(city_slug, forecast_day=1):
         r = requests.get(url, params=params, timeout=20)
 
         if r.status_code != 200:
-            print(f"[forecast] erro status={r.status_code}")
+            logger.warning(f"[forecast] erro status={r.status_code}")
             return None, None
 
         data = r.json()
@@ -279,7 +229,7 @@ def get_forecast(city_slug, forecast_day=1):
             "daily" not in data
             or "temperature_2m_max" not in data["daily"]
         ):
-            print("[forecast] resposta inválida")
+            logger.warning("[forecast] resposta inválida")
             return None, None
 
         temps = data["daily"]["temperature_2m_max"]
@@ -289,7 +239,7 @@ def get_forecast(city_slug, forecast_day=1):
         # estava fora da janela, causando trades com dados fantasma.
         idx = forecast_day - 1
         if idx < 0 or idx >= len(temps) or temps[idx] is None:
-            print(
+            logger.warning(
                 f"[forecast] {city_slug} d{forecast_day}: "
                 f"fora da janela disponivel ({len(temps)} dias)"
             )
@@ -305,7 +255,7 @@ def get_forecast(city_slug, forecast_day=1):
         sigma = base_sigma_by_day.get(forecast_day, 6.0)
         sigma = round(sigma, 2)
 
-        print(
+        logger.debug(
             f"[forecast] {city_slug} "
             f"forecast={forecast_c:.1f}C sigma_base={sigma:.2f}"
         )
@@ -317,5 +267,5 @@ def get_forecast(city_slug, forecast_day=1):
         return result
 
     except Exception as e:
-        print(f"[forecast] erro: {e}")
+        logger.warning(f"[forecast] erro: {e}")
         return None, None

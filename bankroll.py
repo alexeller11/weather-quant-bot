@@ -17,6 +17,7 @@ AUDITORIA SENIOR:
 """
 
 import json
+import logging
 import os
 import re
 import threading
@@ -26,6 +27,8 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Iterable, List, Optional
 
 from config import START_BALANCE, CITY_DISPLAY, CITY_SLUG_NORMALIZE
+
+logger = logging.getLogger(__name__)
 
 BANKROLL_FILE = "bankroll.json"
 OVERRIDE_FILE = "bankroll_override.json"
@@ -301,7 +304,7 @@ def _get_db():
         conn = psycopg2.connect(url, sslmode="require")
         return conn
     except Exception as e:
-        print(f"  [db] conexão falhou: {e}")
+        logger.warning(f"  [db] conexão falhou: {e}")
         return None
 
 
@@ -395,7 +398,7 @@ def _read_local() -> Optional[Dict[str, Any]]:
         with open(BANKROLL_FILE, "r", encoding="utf-8") as f:
             return _coerce_bankroll_shape(json.load(f))
     except Exception as e:
-        print(f"  [local] bankroll.json ilegível: {e}")
+        logger.warning(f"  [local] bankroll.json ilegível: {e}")
         return None
 
 
@@ -417,7 +420,7 @@ def _load_freshest_unlocked() -> Dict[str, Any]:
             if raw:
                 db_data = _coerce_bankroll_shape(raw)
         except Exception as e:
-            print(f"  [db] load falhou: {e}")
+            logger.warning(f"  [db] load falhou: {e}")
         finally:
             try:
                 conn.close()
@@ -428,8 +431,8 @@ def _load_freshest_unlocked() -> Dict[str, Any]:
 
     if db_data is not None and local_data is not None:
         if int(local_data.get("seq", 0)) > int(db_data.get("seq", 0)):
-            print(
-                f"  [sync] local seq={local_data.get('seq')} > "
+            logger.info(
+                f"[sync] local seq={local_data.get('seq')} > "
                 f"db seq={db_data.get('seq')} — usando local (anti-rollback)"
             )
             return local_data
@@ -452,19 +455,19 @@ def load_bankroll():
                 data = _coerce_bankroll_shape(data)
                 current = _load_freshest_unlocked()
                 data["seq"] = int(current.get("seq", 0)) + 1
-                print(f"  [override] aplicando bankroll_override.json — saldo ${data.get('balance',0):.2f}")
+                logger.info(f"  [override] aplicando bankroll_override.json — saldo ${data.get('balance',0):.2f}")
                 _persist_unlocked(data)
                 os.remove(OVERRIDE_FILE)
-                print("  [override] concluído e arquivo removido")
+                logger.info("  [override] concluído e arquivo removido")
                 return data
             except Exception as e:
-                print(f"  [override] erro: {e}")
+                logger.warning(f"  [override] erro: {e}")
 
         data = _load_freshest_unlocked()
         try:
             _write_local(data)
         except Exception as e:
-            print(f"  [local] cache falhou: {e}")
+            logger.warning(f"  [local] cache falhou: {e}")
         return data
 
 
@@ -474,15 +477,15 @@ def _persist_unlocked(data) -> None:
     try:
         _write_local(data)
     except Exception as e:
-        print(f"  [local] save falhou: {e}")
+        logger.warning(f"  [local] save falhou: {e}")
 
     conn = _get_db()
     if conn:
         try:
             _save_to_db(conn, data)
-            print(f"  [db] bankroll salvo — saldo: ${data.get('balance', 0):.2f} seq={data.get('seq')}")
+            logger.info(f"  [db] bankroll salvo — saldo: ${data.get('balance', 0):.2f} seq={data.get('seq')}")
         except Exception as e:
-            print(f"  [db] save falhou: {e}")
+            logger.warning(f"  [db] save falhou: {e}")
         finally:
             try:
                 conn.close()
@@ -493,7 +496,7 @@ def _persist_unlocked(data) -> None:
         from github_sync import commit_bankroll
         commit_bankroll(data)
     except Exception as e:
-        print(f"  [github] indisponível: {e}")
+        logger.info(f"  [github] indisponível: {e}")
 
 
 def save_bankroll(data):
@@ -535,7 +538,7 @@ def record_trade(trade) -> bool:
         if new_key:
             for existing in history:
                 if trade_unique_key(existing) == new_key:
-                    print(f"  [bankroll] trade duplicado ignorado: {new_key}")
+                    logger.info(f"  [bankroll] trade duplicado ignorado: {new_key}")
                     return False
         stake = float(trade.get("stake", 0))
         if stake < 0:
@@ -594,8 +597,8 @@ def check_balance_invariant(data: Dict[str, Any], tolerance: float = 0.05) -> fl
     expected = start - open_stakes + closed_pnl
     diff = round(balance - expected, 4)
     if abs(diff) > tolerance:
-        print(
-            f"  [invariante] DIVERGÊNCIA DE BANKROLL: saldo=${balance:.4f} "
+        logger.warning(
+            f"[invariante] DIVERGÊNCIA DE BANKROLL: saldo=${balance:.4f} "
             f"esperado=${expected:.4f} (diff {diff:+.4f})"
         )
     return diff
@@ -616,17 +619,17 @@ def force_close_open_trades(market_date_str):
                 trade["pnl"] = round(-stake, 2)
                 trade["fee"] = 0.0
                 trade["exit_time"] = datetime.now(timezone.utc).isoformat()
-                print(f"  Fechando LOSS: {trade.get('city')} {mdate} ${stake:.2f}")
+                logger.info(f"Fechando LOSS: {trade.get('city')} {mdate} ${stake:.2f}")
                 fechados += 1
         closed["n"] = fechados
         if fechados == 0:
-            print("  Nenhum trade encontrado para fechar.")
+            logger.info("Nenhum trade encontrado para fechar.")
             return False
         return True
 
     data = atomic_update(_mutator)
     if closed["n"] > 0:
-        print(f"  {closed['n']} trades fechados. Saldo: ${data['balance']:.2f}")
+        logger.info(f"{closed['n']} trades fechados. Saldo: ${data['balance']:.2f}")
     return closed["n"]
 
 
@@ -645,4 +648,4 @@ def reset_bankroll(starting_balance=None):
         return True
 
     atomic_update(_mutator)
-    print(f"Bankroll resetado. Saldo inicial: ${balance:.2f}")
+    logger.info(f"Bankroll resetado. Saldo inicial: ${balance:.2f}")

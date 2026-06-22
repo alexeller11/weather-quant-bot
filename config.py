@@ -22,6 +22,9 @@ AJUSTES v5.1 baseados nos logs reais de 2026-06-01:
 
 import os
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 TRADING_ENABLED       = int(os.getenv("TRADING_ENABLED", "0"))
 
@@ -66,80 +69,152 @@ MIN_MARKET_LIQUIDITY  = float(os.getenv("MIN_MARKET_LIQUIDITY", "100.00"))
 MIN_MARKET_VOLUME     = float(os.getenv("MIN_MARKET_VOLUME", "250.00"))
 MAX_IMPLIED_SPREAD    = float(os.getenv("MAX_IMPLIED_SPREAD", "0.08"))
 
-CITY_DISPLAY = {
-    "new york":    "New York",   "london":      "London",
-    "paris":       "Paris",      "hong kong":   "Hong Kong",
-    "tokyo":       "Tokyo",      "seoul":       "Seoul",
-    "beijing":     "Beijing",    "sao paulo":   "São Paulo",
-    "milan":       "Milan",      "los angeles": "Los Angeles",
-    "houston":     "Houston",    "austin":      "Austin",
-    "denver":      "Denver",     "seattle":     "Seattle",
-    "chicago":     "Chicago",    "phoenix":     "Phoenix",
-    "miami":       "Miami",      "atlanta":     "Atlanta",
-    "boston":      "Boston",     "toronto":     "Toronto",
-    "madrid":      "Madrid",     "mexico city": "Mexico City",
-}
 
-CITY_SLUG_NORMALIZE = {
-    "new-york": "new york", "new york city": "new york", "nyc": "new york",
-    "london": "london", "paris": "paris",
-    "hong-kong": "hong kong", "hong kong": "hong kong",
-    "tokyo": "tokyo", "seoul": "seoul", "beijing": "beijing",
-    "sao-paulo": "sao paulo", "são paulo": "sao paulo",
-    "milan": "milan", "los-angeles": "los angeles", "los angeles": "los angeles",
-    "houston": "houston", "austin": "austin", "denver": "denver",
-    "seattle": "seattle", "chicago": "chicago", "phoenix": "phoenix",
-    "miami": "miami", "atlanta": "atlanta", "boston": "boston",
-    "toronto": "toronto", "madrid": "madrid",
-    "mexico-city": "mexico city", "mexico city": "mexico city",
-}
+# ──────────────────────────────────────────────────────────────
+# CIDADES — fonte única: cities.json
+# build_city_maps() DERIVA todos os dicts/listas a partir do JSON.
+# ──────────────────────────────────────────────────────────────
 
-CITY_SLUGS = [
-    "new-york", "london", "paris", "hong-kong", "tokyo", "seoul",
-    "beijing", "sao-paulo", "milan", "los-angeles", "houston", "austin",
-    "denver", "seattle", "chicago", "phoenix", "miami", "atlanta",
-    "boston", "toronto", "madrid", "mexico-city",
-]
-
-_CITIES_FALLBACK = [
-    {"name": "New York",    "lat": 40.7128,  "lon": -74.0060},
-    {"name": "London",      "lat": 51.5074,  "lon": -0.1278},
-    {"name": "Paris",       "lat": 48.8566,  "lon":  2.3522},
-    {"name": "Hong Kong",   "lat": 22.3193,  "lon": 114.1694},
-    {"name": "Tokyo",       "lat": 35.6762,  "lon": 139.6503},
-    {"name": "Seoul",       "lat": 37.5665,  "lon": 126.9780},
-    {"name": "Beijing",     "lat": 39.9042,  "lon": 116.4074},
-    {"name": "São Paulo",   "lat": -23.5505, "lon": -46.6333},
-    {"name": "Milan",       "lat": 45.4642,  "lon":   9.1900},
-    {"name": "Los Angeles", "lat": 34.0522,  "lon": -118.2437},
-    {"name": "Houston",     "lat": 29.7604,  "lon": -95.3698},
-    {"name": "Austin",      "lat": 30.2672,  "lon": -97.7431},
-    {"name": "Denver",      "lat": 39.7392,  "lon": -104.9903},
-    {"name": "Seattle",     "lat": 47.6062,  "lon": -122.3321},
-    {"name": "Chicago",     "lat": 41.8781,  "lon": -87.6298},
-    {"name": "Phoenix",     "lat": 33.4484,  "lon": -112.0740},
-    {"name": "Miami",       "lat": 25.7617,  "lon": -80.1918},
-    {"name": "Atlanta",     "lat": 33.7490,  "lon": -84.3880},
-    {"name": "Boston",      "lat": 42.3601,  "lon": -71.0589},
-    {"name": "Toronto",     "lat": 43.6532,  "lon": -79.3832},
-    {"name": "Madrid",      "lat": 40.4168,  "lon":  -3.7038},
-    {"name": "Mexico City", "lat": 19.4326,  "lon": -99.1332},
-]
-
-
-def load_cities():
+def _load_cities_json():
+    """Carrega cities.json; retorna [] se não existir."""
     cities_path = os.path.join(os.path.dirname(__file__), "cities.json")
     try:
-        with open(cities_path, "r") as f:
+        with open(cities_path, "r", encoding="utf-8") as f:
             return json.load(f)
     except FileNotFoundError:
-        return _CITIES_FALLBACK
+        logger.warning("cities.json não encontrado — usando fallback")
+        return []
     except Exception as e:
-        print(f"ERRO ao carregar cidades: {e}")
+        logger.error("ERRO ao carregar cities.json: %s", e)
+        return []
+
+
+def build_city_maps(cities_list):
+    """
+    A partir da lista de dicts de cities.json, constrói:
+      CITY_DISPLAY        — slug (com espaço) → nome de exibição
+      CITY_SLUG_NORMALIZE — todas as variantes (slug, aliases, display) → slug canônico
+      CITY_SLUGS          — lista de slugs (com hífen)
+      CITY_COORDS         — slug (com hífen) → (lat, lon)
+      CITY_TZ              — slug (com hífen) → timezone IANA
+      CITY_SLUG_ALIASES    — slug (com hífen) → lista de aliases
+    """
+    city_display = {}
+    city_slug_normalize = {}
+    city_slugs = []
+    city_coords = {}
+    city_tz = {}
+    city_slug_aliases = {}
+
+    for c in cities_list:
+        slug = c["slug"]
+        display = c["display"]
+        lat = c["lat"]
+        lon = c["lon"]
+        tz = c["tz"]
+        aliases = c.get("aliases", [])
+
+        # Chave de CITY_DISPLAY: slug com espaço (ex.: 'new york')
+        space_key = slug.replace("-", " ")
+        city_display[space_key] = display
+
+        # CITY_SLUG_NORMALIZE: mapeia TUDO → slug canônico (com hífen)
+        city_slug_normalize[slug] = slug
+        city_slug_normalize[space_key] = slug
+        city_slug_normalize[display.lower()] = slug
+        for alias in aliases:
+            city_slug_normalize[alias] = slug
+            city_slug_normalize[alias.replace("-", " ")] = slug
+
+        city_slugs.append(slug)
+        city_coords[slug] = (lat, lon)
+        city_tz[slug] = tz
+        city_slug_aliases[slug] = aliases
+
+    return city_display, city_slug_normalize, city_slugs, city_coords, city_tz, city_slug_aliases
+
+
+_CITIES_RAW = _load_cities_json()
+
+if _CITIES_RAW:
+    (CITY_DISPLAY,
+     CITY_SLUG_NORMALIZE,
+     CITY_SLUGS,
+     CITY_COORDS,
+     CITY_TZ,
+     CITY_SLUG_ALIASES) = build_city_maps(_CITIES_RAW)
+    CITIES = _CITIES_RAW
+else:
+    # Fallback hardcoded — mantido para robustez caso cities.json seja removido
+    CITY_DISPLAY = {
+        "new york":    "New York",   "london":      "London",
+        "paris":       "Paris",      "hong kong":   "Hong Kong",
+        "tokyo":       "Tokyo",      "seoul":       "Seoul",
+        "beijing":     "Beijing",    "sao paulo":   "São Paulo",
+        "milan":       "Milan",      "los angeles": "Los Angeles",
+        "houston":     "Houston",    "austin":      "Austin",
+        "denver":      "Denver",     "seattle":     "Seattle",
+        "chicago":     "Chicago",    "phoenix":     "Phoenix",
+        "miami":       "Miami",      "atlanta":     "Atlanta",
+        "boston":      "Boston",     "toronto":     "Toronto",
+        "madrid":      "Madrid",     "mexico city": "Mexico City",
+    }
+
+    CITY_SLUG_NORMALIZE = {
+        "new-york": "new york", "new york city": "new york", "nyc": "new york",
+        "london": "london", "paris": "paris",
+        "hong-kong": "hong kong", "hong kong": "hong kong",
+        "tokyo": "tokyo", "seoul": "seoul", "beijing": "beijing",
+        "sao-paulo": "sao paulo", "são paulo": "sao paulo",
+        "milan": "milan", "los-angeles": "los angeles", "los angeles": "los angeles",
+        "houston": "houston", "austin": "austin", "denver": "denver",
+        "seattle": "seattle", "chicago": "chicago", "phoenix": "phoenix",
+        "miami": "miami", "atlanta": "atlanta", "boston": "boston",
+        "toronto": "toronto", "madrid": "madrid",
+        "mexico-city": "mexico city", "mexico city": "mexico city",
+    }
+
+    CITY_SLUGS = [
+        "new-york", "london", "paris", "hong-kong", "tokyo", "seoul",
+        "beijing", "sao-paulo", "milan", "los-angeles", "houston", "austin",
+        "denver", "seattle", "chicago", "phoenix", "miami", "atlanta",
+        "boston", "toronto", "madrid", "mexico-city",
+    ]
+
+    _CITIES_FALLBACK = [
+        {"name": "New York",    "lat": 40.7128,  "lon": -74.0060},
+        {"name": "London",      "lat": 51.5074,  "lon": -0.1278},
+        {"name": "Paris",       "lat": 48.8566,  "lon":  2.3522},
+        {"name": "Hong Kong",   "lat": 22.3193,  "lon": 114.1694},
+        {"name": "Tokyo",       "lat": 35.6762,  "lon": 139.6503},
+        {"name": "Seoul",       "lat": 37.5665,  "lon": 126.9780},
+        {"name": "Beijing",     "lat": 39.9042,  "lon": 116.4074},
+        {"name": "São Paulo",   "lat": -23.5505, "lon": -46.6333},
+        {"name": "Milan",       "lat": 45.4642,  "lon":   9.1900},
+        {"name": "Los Angeles", "lat": 34.0522,  "lon": -118.2437},
+        {"name": "Houston",     "lat": 29.7604,  "lon": -95.3698},
+        {"name": "Austin",      "lat": 30.2672,  "lon": -97.7431},
+        {"name": "Denver",      "lat": 39.7392,  "lon": -104.9903},
+        {"name": "Seattle",     "lat": 47.6062,  "lon": -122.3321},
+        {"name": "Chicago",     "lat": 41.8781,  "lon": -87.6298},
+        {"name": "Phoenix",     "lat": 33.4484,  "lon": -112.0740},
+        {"name": "Miami",       "lat": 25.7617,  "lon": -80.1918},
+        {"name": "Atlanta",     "lat": 33.7490,  "lon": -84.3880},
+        {"name": "Boston",      "lat": 42.3601,  "lon": -71.0589},
+        {"name": "Toronto",     "lat": 43.6532,  "lon": -79.3832},
+        {"name": "Madrid",      "lat": 40.4168,  "lon":  -3.7038},
+        {"name": "Mexico City", "lat": 19.4326,  "lon": -99.1332},
+    ]
+
+    def load_cities():
         return _CITIES_FALLBACK
 
+    CITIES = load_cities()
 
-CITIES = load_cities()
+    CITY_COORDS = {}
+    CITY_TZ = {}
+    CITY_SLUG_ALIASES = {}
+
 
 TELEGRAM_TOKEN  = os.getenv("TELEGRAM_TOKEN", "")
 CHAT_ID         = os.getenv("CHAT_ID", "")
