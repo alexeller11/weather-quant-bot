@@ -202,6 +202,15 @@ def gerar_relatorio_semanal(enviar_telegram=True):
     emoji_semana = "🟢" if pnl_week >= 0 else "🔴"
     emoji_geral = "🟢" if pnl_all >= 0 else "🔴"
 
+    # CORREÇÃO: antes havia um ternário inline no meio da concatenação de
+    # f-strings adjacentes (... if sharpe_week else "" ...). Como o `if/else`
+    # tem menor precedência que a concatenação implícita de string literals,
+    # quando sharpe_week era None a expressão inteira era substituída por ""
+    # — sumindo com as seções "Brier score", "Sharpe" e "Histórico completo".
+    # Agora cada linha métrica é construída isoladamente.
+    sharpe_line = f"Sharpe: {sharpe_week:.3f}\n" if sharpe_week is not None else "Sharpe: N/A\n"
+    pf_line = f"Profit Factor: {pf_week:.2f}x\n\n" if pf_week is not None else "Profit Factor: N/A\n\n"
+
     relatorio = (
         f"<b>📊 RELATÓRIO SEMANAL — {now_str}</b>\n"
         f"{'─'*32}\n\n"
@@ -213,8 +222,8 @@ def gerar_relatorio_semanal(enviar_telegram=True):
 
         f"<b>Modelo</b>\n"
         f"Brier score: <b>{cal_str}</b>\n"
-        f"Sharpe: {sharpe_week:.3f}\n" if sharpe_week else ""
-        f"Profit Factor: {pf_week:.2f}x\n\n" if pf_week else ""
+        f"{sharpe_line}"
+        f"{pf_line}"
 
         f"<b>Histórico completo</b>\n"
         f"{emoji_geral} PnL total: <b>${pnl_all:+.2f}</b> ({retorno_pct:+.1f}%)\n"

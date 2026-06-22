@@ -8,6 +8,7 @@ bankroll_override*.json
 bankroll_override*.bak
 bankroll_override*.bak2
 validacao.json
+bankroll.lock
 
 # Backups automáticos
 *.bak

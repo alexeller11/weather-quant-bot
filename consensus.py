@@ -5,8 +5,13 @@ consensus.py — Motor de Consenso Multi-Fonte
 MELHORIAS v2:
 - WeatherAPI ativa quando WEATHERAPI_KEY configurada
 - Open-Meteo como fonte primária sempre
-- Threshold adaptativo: mais rigoroso para EXACT (1.5°C) que ABOVE/BELOW (3°C)
+- Threshold adaptativo: mais rigoroso para EXACT (2.5°C) que ABOVE/BELOW (3°C)
 - Log detalhado de divergência por cidade para diagnóstico
+
+AJUSTE v2.1 (2026-06-17):
+- EXACT: 1.5°C → 2.5°C (mercados atuais têm divergência natural maior)
+- RANGE2: 2.0°C → 3.5°C (buckets de 2°F precisam de margem maior)
+- ABOVE/BELOW: mantido em 3.0°C
 """
 
 import os
@@ -66,14 +71,19 @@ class ConsensusEngine:
         """
         Verifica consenso entre Open-Meteo e WeatherAPI.
 
-        threshold adaptativo:
-          EXACT   → 1.5°C  (mais exigente — bucket de 1°C)
-          ABOVE/BELOW → 3.0°C
-          RANGE2  → 2.0°C
+        threshold adaptativo (v2.1):
+          EXACT   → 2.5°C  (ajustado de 1.5 — divergência natural maior em verão)
+          RANGE2  → 3.5°C  (ajustado de 2.0 — buckets de 2°F precisam de margem)
+          ABOVE/BELOW → 3.0°C  (mantido)
         """
         if threshold is None:
             cond = condition.upper()
-            threshold = 1.5 if cond == "EXACT" else (2.0 if cond == "RANGE2" else 3.0)
+            if cond == "EXACT":
+                threshold = 2.5
+            elif cond == "RANGE2":
+                threshold = 3.5
+            else:
+                threshold = 3.0
 
         result = {
             "consensus":      True,   # default: passa se WeatherAPI indisponível

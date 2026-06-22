@@ -1,6 +1,45 @@
 # Weather Quant Bot — Changelog de Correções
 
-## Arquivos modificados
+## 2026-06-22 — Auditoria completa (branch feature/correcoes-auditoria)
+
+### Correções de segurança
+- **#1** `git rm --cached bankroll.json` — saldo e histórico vazavam no repositório público
+
+### Remoção de código morto
+- **#4** Deletados scripts órfãos e arquivos mortos: `corrigir_bankroll.py`, `fix_db.py`, `patch_dashboard.py`, `dashboard.py.bak`, `bankroll.json.bak`, `env.example`, `gitignore`, `arquivos.txt`
+
+### Correções de dados
+- **#2** Trade duplicado de Seattle removido do bankroll, saldo ajustado −$0.42
+
+### Correções de lógica
+- **#3** Precedência de ternário em `weekly_report.py` — f-string com ternário não-entre-parentheses causava resultado errado
+- **risk.py v5.5** — `MIN_PRICE_YES_FOR_NO` env var, suporte a lado NO em RANGE2
+- **consensus.py v2.1** — thresholds EXACT 2.5°C, RANGE2 3.5°C
+- **NOTA (bug conhecido, não corrigido)**: RANGE2 zscore usa `target` (midpoint do bucket) em vez de `target_lo`, tornando o zscore conservativo (superestima proximidade). Decisão: correção segura mas adiada; o bot não está pronto para capital real (Brier 0.2192, edge realizado −17.6%).
+
+### Padronização print() → logger
+- **#7** Todos os `print()` em módulos de produção convertidos para `logging`:
+  - `github_sync.py` (14 prints)
+  - `gamma_parser.py` (10 prints)
+  - `forecast.py` (14 prints)
+  - `bankroll.py` (6 prints, incluindo 2 multiline)
+  - `notificador.py` (7 prints; 2 prints do bloco `__main__` CLI preservados)
+
+### Unificação de cidades em `cities.json`
+- **#6** Criado `cities.json` — **fonte única de verdade** para as 22 cidades:
+  - Cada entrada: `slug`, `display`, `lat`, `lon`, `tz`, `aliases`
+- `config.py`: `build_city_maps()` deriva `CITY_DISPLAY`, `CITY_SLUG_NORMALIZE`, `CITY_SLUGS`, `CITY_COORDS`, `CITY_TZ`, `CITY_SLUG_ALIASES` a partir do JSON
+- `forecast.py`: `CITY_COORDS` e `CITY_TZ` removidos (importados de `config`)
+- `gamma_parser.py`: `CITY_SLUG_ALIASES` removido (importado de `config`)
+- `station_data.py`: import de `CITY_COORDS` movido de `forecast` para `config`
+- **Bug indireto corrigido**: `CITY_SLUG_NORMALIZE` agora mapeia para slugs com hífen (consistente com `normalize_city_slug()`), não mais para formato com espaço
+
+### Validação
+- `test_core.py`: **42/42** testes passando
+- `py_compile`: todos os `.py` compilam sem erro
+- Sanity check: 22 slugs, 22 coords, 22 timezones, 34 entradas de normalize — todas consistentes
+
+---
 
 ## 2026-05-24 — Emergency model/risk reset
 
@@ -105,11 +144,11 @@ coordenadas definidas, o que fazia `get_real_temperature` retornar `None`.
 
 ---
 
-## Arquivos não modificados
-- `bankroll.py` — sem alterações
-- `model.py` — sem alterações
-- `risk.py` — sem alterações
-- `gamma_parser.py` — sem alterações
+## Arquivos não modificados (em 2026-05-24)
+- `bankroll.py` — sem alterações na época
+- `model.py` — sem alterações na época
+- `risk.py` — sem alterações na época
+- `gamma_parser.py` — sem alterações na época
 
 ---
 
