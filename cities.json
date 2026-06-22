@@ -1,0 +1,228 @@
+[
+  {
+    "slug": "new-york",
+    "display": "New York",
+    "lat": 40.7128,
+    "lon": -74.006,
+    "tz": "America/New_York",
+    "aliases": [
+      "nyc",
+      "new-york",
+      "new-york-city"
+    ]
+  },
+  {
+    "slug": "london",
+    "display": "London",
+    "lat": 51.5074,
+    "lon": -0.1278,
+    "tz": "Europe/London",
+    "aliases": [
+      "london"
+    ]
+  },
+  {
+    "slug": "paris",
+    "display": "Paris",
+    "lat": 48.8566,
+    "lon": 2.3522,
+    "tz": "Europe/Paris",
+    "aliases": [
+      "paris"
+    ]
+  },
+  {
+    "slug": "hong-kong",
+    "display": "Hong Kong",
+    "lat": 22.3193,
+    "lon": 114.1694,
+    "tz": "Asia/Hong_Kong",
+    "aliases": [
+      "hong-kong",
+      "hongkong"
+    ]
+  },
+  {
+    "slug": "tokyo",
+    "display": "Tokyo",
+    "lat": 35.6762,
+    "lon": 139.6503,
+    "tz": "Asia/Tokyo",
+    "aliases": [
+      "tokyo"
+    ]
+  },
+  {
+    "slug": "seoul",
+    "display": "Seoul",
+    "lat": 37.5665,
+    "lon": 126.978,
+    "tz": "Asia/Seoul",
+    "aliases": [
+      "seoul"
+    ]
+  },
+  {
+    "slug": "beijing",
+    "display": "Beijing",
+    "lat": 39.9042,
+    "lon": 116.4074,
+    "tz": "Asia/Shanghai",
+    "aliases": [
+      "beijing"
+    ]
+  },
+  {
+    "slug": "sao-paulo",
+    "display": "São Paulo",
+    "lat": -23.5505,
+    "lon": -46.6333,
+    "tz": "America/Sao_Paulo",
+    "aliases": [
+      "sao-paulo",
+      "são-paulo"
+    ]
+  },
+  {
+    "slug": "milan",
+    "display": "Milan",
+    "lat": 45.4642,
+    "lon": 9.19,
+    "tz": "Europe/Rome",
+    "aliases": [
+      "milan"
+    ]
+  },
+  {
+    "slug": "los-angeles",
+    "display": "Los Angeles",
+    "lat": 34.0522,
+    "lon": -118.2437,
+    "tz": "America/Los_Angeles",
+    "aliases": [
+      "los-angeles",
+      "la"
+    ]
+  },
+  {
+    "slug": "houston",
+    "display": "Houston",
+    "lat": 29.7604,
+    "lon": -95.3698,
+    "tz": "America/Chicago",
+    "aliases": [
+      "houston"
+    ]
+  },
+  {
+    "slug": "austin",
+    "display": "Austin",
+    "lat": 30.2672,
+    "lon": -97.7431,
+    "tz": "America/Chicago",
+    "aliases": [
+      "austin"
+    ]
+  },
+  {
+    "slug": "denver",
+    "display": "Denver",
+    "lat": 39.7392,
+    "lon": -104.9903,
+    "tz": "America/Denver",
+    "aliases": [
+      "denver"
+    ]
+  },
+  {
+    "slug": "seattle",
+    "display": "Seattle",
+    "lat": 47.6062,
+    "lon": -122.3321,
+    "tz": "America/Los_Angeles",
+    "aliases": [
+      "seattle"
+    ]
+  },
+  {
+    "slug": "chicago",
+    "display": "Chicago",
+    "lat": 41.8781,
+    "lon": -87.6298,
+    "tz": "America/Chicago",
+    "aliases": [
+      "chicago"
+    ]
+  },
+  {
+    "slug": "phoenix",
+    "display": "Phoenix",
+    "lat": 33.4484,
+    "lon": -112.074,
+    "tz": "America/Phoenix",
+    "aliases": [
+      "phoenix"
+    ]
+  },
+  {
+    "slug": "miami",
+    "display": "Miami",
+    "lat": 25.7617,
+    "lon": -80.1918,
+    "tz": "America/New_York",
+    "aliases": [
+      "miami"
+    ]
+  },
+  {
+    "slug": "atlanta",
+    "display": "Atlanta",
+    "lat": 33.749,
+    "lon": -84.388,
+    "tz": "America/New_York",
+    "aliases": [
+      "atlanta"
+    ]
+  },
+  {
+    "slug": "boston",
+    "display": "Boston",
+    "lat": 42.3601,
+    "lon": -71.0589,
+    "tz": "America/New_York",
+    "aliases": [
+      "boston"
+    ]
+  },
+  {
+    "slug": "toronto",
+    "display": "Toronto",
+    "lat": 43.6532,
+    "lon": -79.3832,
+    "tz": "America/Toronto",
+    "aliases": [
+      "toronto"
+    ]
+  },
+  {
+    "slug": "madrid",
+    "display": "Madrid",
+    "lat": 40.4168,
+    "lon": -3.7038,
+    "tz": "Europe/Madrid",
+    "aliases": [
+      "madrid"
+    ]
+  },
+  {
+    "slug": "mexico-city",
+    "display": "Mexico City",
+    "lat": 19.4326,
+    "lon": -99.1332,
+    "tz": "America/Mexico_City",
+    "aliases": [
+      "mexico-city",
+      "mexico city"
+    ]
+  }
+]

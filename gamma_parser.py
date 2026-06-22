@@ -26,6 +26,7 @@ CORREÇÕES DA AUDITORIA (v5.7):
 """
 
 import json
+import logging
 import re
 import time
 from datetime import datetime, timedelta
@@ -33,37 +34,15 @@ from datetime import datetime, timedelta
 import requests
 
 from bankroll import canonical_market_base, normalize_city_slug
+from config import CITY_SLUG_ALIASES
 from forecast import city_today
 from config import MIN_MARKET_LIQUIDITY, MIN_MARKET_VOLUME, MAX_IMPLIED_SPREAD
+
+logger = logging.getLogger(__name__)
 
 
 BASE_URL = "https://gamma-api.polymarket.com"
 HEADERS  = {"User-Agent": "Mozilla/5.0"}
-
-CITY_SLUG_ALIASES = {
-    "new-york":    ["nyc", "new-york", "new-york-city"],
-    "hong-kong":   ["hong-kong", "hongkong"],
-    "los-angeles": ["los-angeles", "la"],
-    "sao-paulo":   ["sao-paulo", "são-paulo"],
-    "mexico-city": ["mexico-city", "mexico city"],
-    "toronto":     ["toronto"],
-    "madrid":      ["madrid"],
-    "london":      ["london"],
-    "paris":       ["paris"],
-    "tokyo":       ["tokyo"],
-    "seoul":       ["seoul"],
-    "milan":       ["milan"],
-    "beijing":     ["beijing"],
-    "houston":     ["houston"],
-    "austin":      ["austin"],
-    "denver":      ["denver"],
-    "seattle":     ["seattle"],
-    "chicago":     ["chicago"],
-    "phoenix":     ["phoenix"],
-    "miami":       ["miami"],
-    "atlanta":     ["atlanta"],
-    "boston":      ["boston"],
-}
 
 
 def _get_city_slugs(city):
@@ -84,11 +63,11 @@ def safe_request(url, retries=2, timeout=8):
             if r.status_code == 200:
                 return r.json()
             if r.status_code == 429:
-                print(f"Rate limit (429) para {url}")
+                logger.warning(f"Rate limit (429) para {url}")
                 continue
-            print(f"HTTP {r.status_code} para {url}")
+            logger.warning(f"HTTP {r.status_code} para {url}")
         except Exception as e:
-            print(f"Request error (tentativa {attempt+1}): {e}")
+            logger.warning(f"Request error (tentativa {attempt+1}): {e}")
         if attempt < retries - 1:
             time.sleep(min(2 ** attempt, 4))
     return None
@@ -159,7 +138,7 @@ def parse_question(question):
         target = float(m.group(1))
         return {"condition": "exact", "target": target, "unit": unit}
 
-    print(f"  Ignorado (formato não reconhecido): {question}")
+    logger.info(f"  Ignorado (formato não reconhecido): {question}")
     return None
 
 
@@ -286,7 +265,7 @@ def fetch_markets(city):
         events = []
         seen_events = set()
         for slug in _slug_variants(city_slug, d):
-            print(f"  Slug: {slug}")
+            logger.debug(f"  Slug: {slug}")
             data = safe_request(f"{BASE_URL}/events?slug={slug}")
             if data and isinstance(data, list) and len(data) > 0:
                 for event in data:
@@ -299,11 +278,11 @@ def fetch_markets(city):
         if not events:
             event = _search_fallback(city_slug, d)
             if event:
-                print(f"  Encontrado via busca: {event.get('slug','')}")
+                logger.info(f"  Encontrado via busca: {event.get('slug','')}")
                 events.append(event)
 
         if not events:
-            print(f"  Sem evento para {city_slug} {d.strftime('%B %d')}")
+            logger.info(f"  Sem evento para {city_slug} {d.strftime('%B %d')}")
             continue
 
         for event in events:
@@ -328,7 +307,7 @@ def fetch_markets(city):
                     no_price  = float(prices[1])
 
                     if not market_is_healthy(yes_price, no_price, market=market):
-                        print(f"  Market unhealthy (yes={yes_price:.3f} no={no_price:.3f})")
+                        logger.info(f"  Market unhealthy (yes={yes_price:.3f} no={no_price:.3f})")
                         continue
 
                     parsed = parse_question(question)
@@ -372,10 +351,10 @@ def fetch_markets(city):
                         entry["target_hi"] = parsed["target_hi"]
 
                     all_markets.append(entry)
-                    print(f"  OK: {parsed['condition']} {parsed['target']}°{parsed['unit']} @ {yes_price:.3f}")
+                    logger.info(f"  OK: {parsed['condition']} {parsed['target']}°{parsed['unit']} @ {yes_price:.3f}")
 
                 except Exception as e:
-                    print(f"  Erro ao parsear market: {e}")
+                    logger.warning(f"  Erro ao parsear market: {e}")
 
         time.sleep(0.8)
 

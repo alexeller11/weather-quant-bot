@@ -7,11 +7,14 @@ variables are available after process start.
 
 # Deploy marker: sync guard active.
 
+import logging
 import os
 import json
 import base64
 import requests
 from datetime import datetime, timezone
+
+logger = logging.getLogger(__name__)
 
 BANKROLL_FILE = "bankroll.json"
 _API = "https://api.github.com"
@@ -99,7 +102,7 @@ def commit_bankroll(bankroll_data):
             if remote:
                 sha, remote_content = remote
                 if remote_content == conteudo:
-                    print("  [github] bankroll sem alteracoes")
+                    logger.info("[github] bankroll sem alteracoes")
                     return True
                 payload["sha"] = sha
             elif "sha" in payload:
@@ -113,18 +116,18 @@ def commit_bankroll(bankroll_data):
             )
 
             if r.status_code in (200, 201):
-                print(f"  [github] bankroll salvo: ${saldo:.2f}")
+                logger.info(f"[github] bankroll salvo: ${saldo:.2f}")
                 return True
 
             if r.status_code == 409 and tentativa == 0:
-                print("  [github] conflito de SHA, tentando novamente...")
+                logger.info("[github] conflito de SHA, tentando novamente...")
                 continue
 
-            print(f"  [github] erro {r.status_code}: {r.text[:200]}")
+            logger.warning(f"[github] erro {r.status_code}: {r.text[:200]}")
             return False
 
     except Exception as e:
-        print(f"  [github] excecao: {e}")
+        logger.warning(f"[github] excecao: {e}")
         return False
 
 
@@ -163,5 +166,5 @@ def commit_validacao(validacao_data):
         return r2.status_code in (200, 201)
 
     except Exception as e:
-        print(f"  [github] validacao erro: {e}")
+        logger.warning(f"[github] validacao erro: {e}")
         return False
