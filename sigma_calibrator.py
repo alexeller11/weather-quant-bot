@@ -195,12 +195,24 @@ class SigmaCalibrator:
         city_key = city.strip().lower()
         cond_key = condition.upper()
 
-        adjustment = (
+        cond_data = (
             self.calibration_data
             .get(city_key, {})
             .get(cond_key, {})
-            .get("sigma_adjustment", 0.0)
         )
+        raw_adjustment = cond_data.get("sigma_adjustment", 0.0)
+
+        # Shrinkage: amostras poucas → ajuste pouco confiável.
+        # n < 5  : adj = 0  (insuficiente)
+        # 5–19   : adj * (n-5)/15  (rampa linear)
+        # n >= 20: adj completo
+        n = len(cond_data.get("errors", []))
+        if n < 5:
+            adjustment = 0.0
+        elif n < 20:
+            adjustment = raw_adjustment * (n - 5) / 15.0
+        else:
+            adjustment = raw_adjustment
 
         sigma = base_sigma + adjustment
         sigma = max(SIGMA_MIN, min(SIGMA_MAX, sigma))

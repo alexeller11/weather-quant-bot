@@ -351,5 +351,205 @@ class TestRiskCircuitBreakers(unittest.TestCase):
         self.assertTrue(ok, reason)
 
 
+class TestNearestEdgeDistance(unittest.TestCase):
+    """Testa _nearest_edge_distance em risk.py — distância à borda mais próxima."""
+
+    def setUp(self):
+        from risk import _nearest_edge_distance
+        self.ned = _nearest_edge_distance
+
+    def test_above_returns_distance_to_target(self):
+        """ABOVE: distância absoluta ao target."""
+        dist = self.ned(30.0, "ABOVE", 25.0, "C")
+        self.assertAlmostEqual(dist, 5.0)
+
+    def test_below_returns_distance_to_target(self):
+        """BELOW: distância absoluta ao target."""
+        dist = self.ned(20.0, "BELOW", 25.0, "C")
+        self.assertAlmostEqual(dist, 5.0)
+
+    def test_range2_inside_bucket_near_lo(self):
+        """RANGE2: forecast dentro do bucket — mais perto da borda lo."""
+        dist = self.ned(24.5, "RANGE2", 25.0, "C", target_lo_raw=24.0, target_hi_raw=26.0)
+        self.assertAlmostEqual(dist, 0.5)  # 24.5 - 24.0
+
+    def test_range2_inside_bucket_near_hi(self):
+        """RANGE2: forecast dentro do bucket — mais perto da borda hi."""
+        dist = self.ned(25.5, "RANGE2", 25.0, "C", target_lo_raw=24.0, target_hi_raw=26.0)
+        self.assertAlmostEqual(dist, 0.5)  # 26.0 - 25.5
+
+    def test_range2_outside_bucket_below(self):
+        """RANGE2: forecast fora do bucket, abaixo."""
+        dist = self.ned(22.0, "RANGE2", 25.0, "C", target_lo_raw=24.0, target_hi_raw=26.0)
+        self.assertAlmostEqual(dist, 2.0)  # 24.0 - 22.0
+
+    def test_range2_outside_bucket_above(self):
+        """RANGE2: forecast fora do bucket, acima."""
+        dist = self.ned(28.0, "RANGE2", 25.0, "C", target_lo_raw=24.0, target_hi_raw=26.0)
+        self.assertAlmostEqual(dist, 2.0)  # 28.0 - 26.0
+
+    def test_range2_fahrenheit_converts_edges(self):
+        """RANGE2 em °F: bordas convertidas para °C antes da distância."""
+        # bucket 48-49°F → 8.89–9.44°C; forecast 47°F → 8.33°C
+        # distância = 8.89 - 8.33 ≈ 0.556°C
+        # forecast_temp já em °C (caller converte antes de chamar)
+        forecast_c = (47.0 - 32) * 5 / 9      # 8.333
+        target_c = (48.5 - 32) * 5 / 9        # 9.167 (midpoint já em °C)
+        dist = self.ned(forecast_c, "RANGE2", target_c, "F",
+                        target_lo_raw=48.0, target_hi_raw=49.0)
+        expected_lo_c = (48.0 - 32) * 5 / 9   # 8.889
+        self.assertAlmostEqual(dist, abs(expected_lo_c - forecast_c), places=3)
+
+    def test_exact_near_edge(self):
+        """EXACT: distância à borda target-0.5."""
+        dist = self.ned(24.6, "EXACT", 25.0, "C")
+        self.assertAlmostEqual(dist, 0.1)  # 24.6 - (25.0 - 0.5) = 24.6 - 24.5
+
+    def test_exact_outside_above(self):
+        """EXACT: forecast fora acima do bucket."""
+        dist = self.ned(26.2, "EXACT", 25.0, "C")
+        self.assertAlmostEqual(dist, 0.7)  # 26.2 - 25.5
+
+
+class TestTradingCooldown(unittest.TestCase):
+    """Testa trading_cooldown em risk.py."""
+
+    def _make_history(self, n_losses, last_exit_minutes_ago=60):
+        """Gera history com n consecutive losses, último há last_exit_minutes_ago."""
+        from datetime import datetime, timezone, timedelta
+        history = []
+        last_time = datetime.now(timezone.utc) - timedelta(minutes=last_exit_minutes_ago)
+        for i in range(n_losses):
+            history.append({
+                "result": "LOSS",
+                "exit_time": (last_time + timedelta(minutes=i)).isoformat(),
+            })
+        return history
+
+    def test_no_cooldown_under_3_losses(self):
+        from risk import trading_cooldown
+        active, reason = trading_cooldown(self._make_history(2, 30))
+        self.assertFalse(active)
+
+    def test_cooldown_active_after_3_losses(self):
+        from risk import trading_cooldown
+        active, reason = trading_cooldown(self._make_history(3, 10))
+        self.assertTrue(active)
+        self.assertIn("3", reason)
+
+    def test_cooldown_expired_after_4h(self):
+        """3 losses há mais de 4h: cooldown expirou."""
+        from risk import trading_cooldown
+        active, reason = trading_cooldown(self._make_history(3, 250))  # >4h
+        self.assertFalse(active)
+
+    def test_cooldown_5_losses_longer(self):
+        """5 losses: cooldown de 12h."""
+        from risk import trading_cooldown
+        active, reason = trading_cooldown(self._make_history(5, 10))
+        self.assertTrue(active)
+        self.assertIn("5", reason)
+
+    def test_wins_break_consecutive_count(self):
+        """Um WIN recente zera o contador de losses consecutivos."""
+        from risk import trading_cooldown
+        from datetime import datetime, timezone
+        # Cria 4 losses como base, depois coloca WIN no final (mais recente)
+        history = self._make_history(4, 10)
+        # WIN após os losses quebra a sequência
+        history.append({"result": "WIN", "exit_time": datetime.now(timezone.utc).isoformat()})
+        active, reason = trading_cooldown(history)
+        self.assertFalse(active)
+
+    def test_empty_history_no_cooldown(self):
+        from risk import trading_cooldown
+        active, reason = trading_cooldown([])
+        self.assertFalse(active)
+
+
+class TestSigmaShrinkage(unittest.TestCase):
+    """Testa shrinkage em SigmaCalibrator.get_adjusted_sigma()."""
+
+    def setUp(self):
+        from sigma_calibrator import SigmaCalibrator
+        self.cal = SigmaCalibrator()
+
+    def test_no_adjustment_without_data(self):
+        """Sem dados: sigma = base_sigma (adjustment = 0)."""
+        sigma = self.cal.get_adjusted_sigma("unknown-city", 4.0, "ABOVE")
+        self.assertEqual(sigma, 4.0)
+
+    def test_shrinkage_under_5_samples(self):
+        """n < 5: adjustment inteiramente suprimido (0)."""
+        city = "test-shrink"
+        cond = "ABOVE"
+        self.cal.calibration_data[city] = {
+            cond: {
+                "errors": [{"error": 3.0, "timestamp": "2026-01-01"}] * 3,
+                "sigma_adjustment": 1.0,
+            }
+        }
+        sigma = self.cal.get_adjusted_sigma(city, 4.0, cond)
+        # n=3 < 5 → adjustment=0 → sigma=4.0
+        self.assertEqual(sigma, 4.0)
+
+    def test_shrinkage_ramp_5_to_19(self):
+        """5 ≤ n < 20: rampa linear adjustment * (n-5)/15."""
+        city = "test-ramp"
+        cond = "ABOVE"
+        n = 10
+        self.cal.calibration_data[city] = {
+            cond: {
+                "errors": [{"error": 3.0, "timestamp": "2026-01-01"}] * n,
+                "sigma_adjustment": 1.5,
+            }
+        }
+        sigma = self.cal.get_adjusted_sigma(city, 4.0, cond)
+        # (10-5)/15 = 5/15 = 1/3; adjustment = 1.5 * 1/3 = 0.5
+        expected = 4.0 + 0.5
+        self.assertAlmostEqual(sigma, expected, places=3)
+
+    def test_full_adjustment_20_plus(self):
+        """n ≥ 20: adjustment aplicado integralmente."""
+        city = "test-full"
+        cond = "ABOVE"
+        self.cal.calibration_data[city] = {
+            cond: {
+                "errors": [{"error": 3.0, "timestamp": "2026-01-01"}] * 25,
+                "sigma_adjustment": 1.5,
+            }
+        }
+        sigma = self.cal.get_adjusted_sigma(city, 4.0, cond)
+        self.assertAlmostEqual(sigma, 5.5, places=3)
+
+
+class TestSettlementCityLookup(unittest.TestCase):
+    """Testa _get_city_coordinates com slug/display/aliases."""
+
+    def test_lookup_by_slug(self):
+        from settlement import _get_city_coordinates
+        lat, lon = _get_city_coordinates("new-york")
+        self.assertIsNotNone(lat)
+        self.assertAlmostEqual(lat, 40.7128, places=2)
+
+    def test_lookup_by_display(self):
+        from settlement import _get_city_coordinates
+        lat, lon = _get_city_coordinates("New York")
+        self.assertIsNotNone(lat)
+        self.assertAlmostEqual(lat, 40.7128, places=2)
+
+    def test_lookup_by_alias(self):
+        from settlement import _get_city_coordinates
+        lat, lon = _get_city_coordinates("nyc")
+        self.assertIsNotNone(lat)
+        self.assertAlmostEqual(lat, 40.7128, places=2)
+
+    def test_unknown_city_returns_none(self):
+        from settlement import _get_city_coordinates
+        lat, lon = _get_city_coordinates("nonexistent-city-xyz")
+        self.assertIsNone(lat)
+        self.assertIsNone(lon)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

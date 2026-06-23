@@ -1,5 +1,58 @@
 # Weather Quant Bot — Changelog de Correções
 
+## 2026-06-23 — Hardening v2 (branch feature/correcoes-auditoria-v2)
+
+### P1-1: RANGE2/EXACT zscore — distância à borda mais próxima (bug crítico)
+- **Antes**: RANGE2 e EXACT usavam `|forecast - target_midpoint|` para o zscore,
+  superestimando a proximidade quando o forecast estava perto da borda do bucket.
+  Conservativo (bloqueava trades válidos), mas inconsistente com ABOVE/BELOW.
+- **Depois**: Novo helper `_nearest_edge_distance()` calcula a distância em °C
+  à borda mais próxima do bucket para TODAS as condições:
+  - ABOVE/BELOW → distância ao target (inalterado)
+  - RANGE2 → `min(|forecast - lo|, |forecast - hi|)`
+  - EXACT → `min(|forecast - (target ± 0.5 unidade)|)`
+- `check_guardrails()` e `_check_no_guardrails()` unificados — ambos chamam
+  `_nearest_edge_distance()` no zscore check.
+- `bot.py`: `market_dict` agora inclui `target_lo` e `target_hi`.
+
+### P1-2: Cooldown após consecutive losses
+- Novo `trading_cooldown(history)` em `risk.py`:
+  - 3 losses seguidos → pausa de 4h (configurável via `COOLDOWN_3LOSSES_H`)
+  - 5 losses seguidos → pausa de 12h (configurável via `COOLDOWN_5LOSSES_H`)
+  - Settlement continua permitido (reduz exposição durante streaks)
+- Integrado em `bot.py:scheduled_trading()` antes do loop de cidades.
+
+### P1-3: Zscore check para RANGE2/EXACT no lado NO
+- `_check_no_guardrails()` agora usa `_nearest_edge_distance()` em vez de
+  `|forecast - target_c|`, consistente com o lado YES.
+
+### P2-1: Sigma shrinkage para cidades com poucas amostras
+- `SigmaCalibrator.get_adjusted_sigma()` agora aplica shrinkage bayesiano:
+  - `n < 5` → adjustment = 0 (amostras insuficientes)
+  - `5 ≤ n < 20` → `adjustment × (n - 5) / 15` (rampa linear)
+  - `n ≥ 20` → adjustment completo
+- Evita que cidades com 1-2 observações dominem o sigma com ajustes ruidosos.
+
+### P2-2: settlement.py — lookup de cidade por slug/display/aliases
+- `_get_city_coordinates()` agora busca por `slug`, `display` e `aliases`
+  (case-insensitive) em vez de `city["name"]` (chave que não existe no
+  `cities.json` atual).
+- Fallback compat: se o JSON tiver a chave `name` legada, ainda funciona.
+
+### Bug extra: `return False` duplicado em `_check_no_guardrails`
+- Linha duplicada após o zscore check NO removida — unreachable code.
+
+### Validação
+- `test_core.py`: **69/69** testes passando (27 novos)
+  - `TestNearestEdgeDistance` (8 testes) — acima/abaixo, RANGE2, EXACT, °F
+  - `TestTradingCooldown` (6 testes) — 3 losses, 5 losses, expirado, WIN quebra, vazio
+  - `TestSigmaShrinkage` (4 testes) — n<5, rampa, n≥20, sem dados
+  - `TestSettlementCityLookup` (4 testes) — slug, display, alias, desconhecida
+  - +5 testes anteriores existentes
+- `py_compile`: todos os `.py` modificados compilam sem erro
+
+---
+
 ## 2026-06-22 — Auditoria completa (branch feature/correcoes-auditoria)
 
 ### Correções de segurança

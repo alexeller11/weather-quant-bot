@@ -53,6 +53,13 @@ from config import (
     MAX_DRAWDOWN_PCT,
 )
 
+
+def _delta_to_celsius(delta: float, unit: str) -> float:
+    """Converte largura/diferença de temperatura para °C."""
+    if str(unit).upper() == "F":
+        return delta * 5 / 9
+    return delta
+
 logger = logging.getLogger(__name__)
 
 MIN_PROB_RANGE2 = 0.04
@@ -95,6 +102,60 @@ def dynamic_kelly_fraction(history: list) -> float:
     if consec >= 2:
         return KELLY_FRACTION * 0.7
     return KELLY_FRACTION
+
+
+# ── Cooldown após sequência de losses ────────────────────────────────────
+# Evita que o bot continue operando mecanicamente durante losing streaks.
+# Settlement continua permitido para reduzir risco.
+
+COOLDOWN_3LOSSES_H = float(os.getenv("COOLDOWN_3LOSSES_H", "4"))
+COOLDOWN_5LOSSES_H = float(os.getenv("COOLDOWN_5LOSSES_H", "12"))
+
+
+def trading_cooldown(history: list) -> tuple:
+    """
+    Verifica se o bot deve entrar em cooldown após consecutive losses.
+
+    Retorna (ativo: bool, motivo: str).
+    - 3 losses seguidos → cooldown de 4h
+    - 5 losses seguidos → cooldown de 12h
+
+    Settlement continua permitido (reduz exposição).
+    """
+    consec = consecutive_losses(history)
+    if consec < 3:
+        return False, ""
+
+    # Determina duração do cooldown
+    if consec >= 5:
+        cooldown_hours = COOLDOWN_5LOSSES_H
+        level = 5
+    else:
+        cooldown_hours = COOLDOWN_3LOSSES_H
+        level = 3
+
+    # Encontra a hora do último LOSS (mais recente)
+    last_loss_time = None
+    for t in reversed(history or []):
+        if t.get("result") == "LOSS":
+            raw = t.get("exit_time") or t.get("entry_time") or ""
+            last_loss_time = _parse_dt(raw)
+            break
+
+    if last_loss_time is None:
+        return False, ""
+
+    now = datetime.now(timezone.utc)
+    elapsed = (now - last_loss_time).total_seconds() / 3600
+
+    if elapsed < cooldown_hours:
+        remaining = cooldown_hours - elapsed
+        return True, (
+            f"cooldown ativo: {consec} losses seguidos (limite {level}), "
+            f"faltam {remaining:.1f}h de {cooldown_hours:.0f}h"
+        )
+
+    return False, ""
 
 
 def _net_odds(price: float) -> float:
@@ -148,6 +209,56 @@ def _max_edge_for_prob(prob: float) -> float:
     return 0.70
 
 
+def _nearest_edge_distance(
+    forecast_temp: float,
+    condition: str,
+    target_c: float,
+    unit: str,
+    target_lo_raw=None,
+    target_hi_raw=None,
+) -> float:
+    """
+    Distância em °C do forecast à borda mais próxima do bucket.
+
+    ABOVE/BELOW: borda = target_c (ponto singular).
+    RANGE2:      borda = limite do bucket mais próximo do forecast.
+    EXACT:       borda = (target ± 0.5 unidade) mais próxima do forecast.
+
+    Retorna valor absoluto em °C.
+    """
+    condition = condition.upper()
+
+    if condition in ("ABOVE", "BELOW"):
+        return abs(forecast_temp - target_c)
+
+    if condition == "RANGE2":
+        lo_c = _to_celsius(target_lo_raw, unit) if target_lo_raw is not None else target_c - _delta_to_celsius(1.0, unit)
+        hi_c = _to_celsius(target_hi_raw, unit) if target_hi_raw is not None else target_c + _delta_to_celsius(1.0, unit)
+        if lo_c > hi_c:
+            lo_c, hi_c = hi_c, lo_c
+        dist_lo = abs(forecast_temp - lo_c)
+        dist_hi = abs(forecast_temp - hi_c)
+        return min(dist_lo, dist_hi)
+
+    if condition == "EXACT":
+        half = _delta_to_celsius(0.5, unit)
+        low_edge = target_c - half
+        high_edge = target_c + half
+        dist_lo = abs(forecast_temp - low_edge)
+        dist_hi = abs(forecast_temp - high_edge)
+        return min(dist_lo, dist_hi)
+
+    # fallback genérico
+    return abs(forecast_temp - target_c)
+
+
+def _to_celsius(value: float, unit: str) -> float:
+    """Converte valor ABSOLUTO de temperatura para °C."""
+    if str(unit).upper() == "F":
+        return (value - 32) * 5 / 9
+    return value
+
+
 def check_guardrails(
     market: dict,
     model_prob: float,
@@ -160,6 +271,8 @@ def check_guardrails(
     price_yes  = float(market.get("price", 0))
     day_offset = int(market.get("day_offset", 1))
     unit       = market.get("unit", "C").upper()
+    target_lo  = market.get("target_lo")
+    target_hi  = market.get("target_hi")
 
     if unit == "F":
         target_c = (target_raw - 32) * 5 / 9
@@ -174,6 +287,9 @@ def check_guardrails(
             target_c=target_c,
             sigma=sigma,
             day_offset=day_offset,
+            unit=unit,
+            target_lo=target_lo,
+            target_hi=target_hi,
         )
 
     # === LÓGICA YES ===
@@ -214,14 +330,6 @@ def check_guardrails(
             )
             return False
 
-        if sigma is None or sigma <= 0:
-            sigma = {1: 4.0, 2: 4.5, 3: 5.0}.get(day_offset, 5.0)
-        sigma = min(sigma, SIGMA_CAP_ABOVE_BELOW)
-        z_score = abs(forecast_temp - target_c) / sigma
-        if z_score < MIN_TARGET_ZSCORE:
-            logger.info(f"Bloqueado: zscore {z_score:.2f} < {MIN_TARGET_ZSCORE}")
-            return False
-
     elif condition == "EXACT":
         if edge < MIN_EDGE_EXACT:
             logger.info(f"Bloqueado: edge insuficiente para EXACT ({edge:.3f})")
@@ -246,6 +354,27 @@ def check_guardrails(
         logger.info(f"Bloqueado: condition desconhecida ({condition})")
         return False
 
+    # === ZSCORE CHECK (todas as condições com target) ===
+    # Acima/below: distancia ao target; RANGE2/EXACT: distancia à borda mais próxima
+    if forecast_temp is not None:
+        if sigma is None or sigma <= 0:
+            sigma = {1: 4.0, 2: 4.5, 3: 5.0}.get(day_offset, 5.0)
+
+        sigma_cap = SIGMA_CAP_EXACT if condition == "EXACT" else SIGMA_CAP_ABOVE_BELOW
+        sigma = min(sigma, sigma_cap)
+
+        edge_dist = _nearest_edge_distance(
+            forecast_temp, condition, target_c, unit,
+            target_lo_raw=target_lo, target_hi_raw=target_hi,
+        )
+        z_score = edge_dist / sigma
+        if z_score < MIN_TARGET_ZSCORE:
+            logger.info(
+                f"Bloqueado: zscore {z_score:.2f} < {MIN_TARGET_ZSCORE} "
+                f"({condition} edge_dist={edge_dist:.1f}°C sigma={sigma:.2f})"
+            )
+            return False
+
     logger.info(
         f"GUARDRAIL OK [{side}]: {condition} target={target_raw}°{unit} "
         f"price_yes={price_yes:.3f} prob={model_prob:.3f} edge={edge:+.3f} EV={ev:+.3f}"
@@ -261,6 +390,9 @@ def _check_no_guardrails(
     target_c: float = None,
     sigma: float = None,
     day_offset: int = 1,
+    unit: str = "C",
+    target_lo=None,
+    target_hi=None,
 ) -> bool:
     """
     Guardrails para apostas NO.
@@ -268,9 +400,10 @@ def _check_no_guardrails(
     AJUSTE v5.5: RANGE2 agora suportado.
     A lógica é idêntica ao EXACT: apostamos que a temperatura NÃO cai
     no bucket. O zscore check verifica que o forecast está distante o
-    suficiente do centro do bucket para justificar a aposta.
+    suficiente da borda mais próxima do bucket para justificar a aposta.
 
-    AUDITORIA SENIOR: zscore check identico ao lado YES.
+    v5.6: zscore agora usa _nearest_edge_distance (borda mais próxima)
+    em vez do midpoint, consistente com o lado YES.
     """
     if condition not in ("ABOVE", "BELOW", "EXACT", "RANGE2"):
         logger.info(f"NO nao suportado para {condition}")
@@ -302,15 +435,21 @@ def _check_no_guardrails(
         return False
 
     # Zscore check: exige que o forecast esteja suficientemente distante
-    # do target. Para RANGE2, target_c é o centro do bucket.
+    # da borda mais próxima do bucket/target.
     if forecast_temp is not None and target_c is not None:
         eff_sigma = sigma if (sigma and sigma > 0) else {1: 4.0, 2: 4.5, 3: 5.0}.get(day_offset, 5.0)
-        eff_sigma = min(eff_sigma, SIGMA_CAP_ABOVE_BELOW)
-        z_score = abs(forecast_temp - target_c) / eff_sigma
+        sigma_cap = SIGMA_CAP_EXACT if condition == "EXACT" else SIGMA_CAP_ABOVE_BELOW
+        eff_sigma = min(eff_sigma, sigma_cap)
+
+        edge_dist = _nearest_edge_distance(
+            forecast_temp, condition, target_c, unit,
+            target_lo_raw=target_lo, target_hi_raw=target_hi,
+        )
+        z_score = edge_dist / eff_sigma
         if z_score < MIN_TARGET_ZSCORE:
             logger.info(
                 f"NO bloqueado: zscore {z_score:.2f} < {MIN_TARGET_ZSCORE} "
-                f"(forecast muito proximo do target)"
+                f"(forecast muito proximo da borda do bucket, dist={edge_dist:.1f}°C)"
             )
             return False
 
