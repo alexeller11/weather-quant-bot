@@ -92,12 +92,31 @@ def get_actual_temperature(lat: float, lon: float, date: str) -> Optional[float]
 
 
 def _get_city_coordinates(city_name: str) -> tuple:
+    """
+    Busca coordenadas em cities.json pelo slug, display ou aliases
+    (match case-insensitive).  O JSON antigo usava a chave "name",
+    mas o formato atual usa "slug" + "display" + "aliases".
+    """
+    name_lower = city_name.strip().lower()
+
+    def _match(city: dict) -> bool:
+        if city.get("slug", "").lower() == name_lower:
+            return True
+        if city.get("display", "").lower() == name_lower:
+            return True
+        if name_lower in [a.lower() for a in city.get("aliases", [])]:
+            return True
+        # Fallback compat: se existir chave "name" legada
+        if city.get("name", "").lower() == name_lower:
+            return True
+        return False
+
     try:
         cities_path = os.path.join(os.path.dirname(__file__), "cities.json")
-        with open(cities_path, "r") as f:
+        with open(cities_path, "r", encoding="utf-8") as f:
             cities = json.load(f)
         for city in cities:
-            if city["name"].lower() == city_name.lower():
+            if _match(city):
                 return city["lat"], city["lon"]
     except Exception as e:
         logger.warning(f"cities.json: {e}")
@@ -105,7 +124,7 @@ def _get_city_coordinates(city_name: str) -> tuple:
     try:
         from config import CITIES
         for city in CITIES:
-            if city["name"].lower() == city_name.lower():
+            if _match(city):
                 return city["lat"], city["lon"]
     except Exception:
         pass

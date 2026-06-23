@@ -46,6 +46,7 @@ from risk import (
     exposure_headroom,
     event_headroom,
     risk_limits_ok,
+    trading_cooldown,
 )
 from settlement import settle_all
 from station_data import city_is_reliable, get_intraday_confirmation
@@ -259,6 +260,8 @@ def process_city(city: Dict):
                 "price":       yes_price,
                 "day_offset":  forecast_day,
                 "unit":        unit,
+                "target_lo":   target_lo,
+                "target_hi":  target_hi,
             }
 
             # --- AVALIAR YES ---
@@ -438,6 +441,17 @@ def scheduled_trading():
             )
     except Exception as e:
         logger.warning(f"check_balance_invariant: {e}")
+
+    # Cooldown após consecutive losses — pausa novas entradas (settlement continua)
+    try:
+        data = load_bankroll()
+        history_view = dedupe_history_by_market(data.get("history", []))
+        on_cooldown, reason = trading_cooldown(history_view)
+        if on_cooldown:
+            logger.warning(f"COOLDOWN: {reason} — pulando ciclo de trading")
+            return
+    except Exception as e:
+        logger.warning(f"trading_cooldown check: {e}")
 
     for city in cities:
         try:
