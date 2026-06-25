@@ -44,6 +44,7 @@ from config import (
     PROB_DEADZONE_MAX,
     MIN_PRICE,
     MIN_PRICE_RANGE2,
+    MAX_PRICE_RANGE2,
     MAX_PRICE,
     MAX_OPEN_TRADES,
     MAX_TOTAL_EXPOSURE,
@@ -51,6 +52,11 @@ from config import (
     MAX_DAILY_LOSS,
     MAX_WEEKLY_LOSS,
     MAX_DRAWDOWN_PCT,
+    MIN_PROB_RANGE2,
+    MIN_EDGE_RANGE2,
+    MIN_EDGE_NO,
+    MAX_PROB_FOR_NO,
+    FEE_RATE,
 )
 
 
@@ -62,12 +68,8 @@ def _delta_to_celsius(delta: float, unit: str) -> float:
 
 logger = logging.getLogger(__name__)
 
-MIN_PROB_RANGE2 = 0.04
-MIN_EDGE_RANGE2 = 0.02
-
-# Parâmetros para apostas NO
-MIN_EDGE_NO          = 0.15
-MAX_PROB_FOR_NO      = 0.35
+# Parâmetros para RANGE2 e NO importados de config.py (env-configurable).
+# Ver config.py para valores-default e env vars.
 
 # AJUSTE v5.5: 0.55 → 0.45
 # Mercados EXACT atuais têm distribuição espalhada; nenhum bucket
@@ -75,8 +77,7 @@ MAX_PROB_FOR_NO      = 0.35
 # proteção contra YES já decidido.
 MIN_PRICE_YES_FOR_NO = float(os.getenv("MIN_PRICE_YES_FOR_NO", "0.45"))
 
-# Fee de liquidação — deve ser idêntica à usada em settlement.py.
-FEE_RATE = 0.02
+# FEE_RATE importado de config.py (env-configurable, shared com settlement.py).
 
 # Limite de stake por EVENTO (cidade + data).
 MAX_EVENT_EXPOSURE = float(os.getenv("MAX_EVENT_EXPOSURE", str(MAX_POSITION)))
@@ -342,8 +343,8 @@ def check_guardrails(
         if edge < MIN_EDGE_RANGE2:
             logger.info(f"Bloqueado: edge insuficiente para RANGE2 ({edge:.3f})")
             return False
-        if price_yes > 0.70:
-            logger.info(f"Bloqueado: RANGE2 preço alto demais ({price_yes:.3f})")
+        if price_yes > MAX_PRICE_RANGE2:
+            logger.info(f"Bloqueado: RANGE2 preço alto demais ({price_yes:.3f} > {MAX_PRICE_RANGE2})")
             return False
 
     elif condition == "RANGE":

@@ -13,9 +13,10 @@ AUDITORIA SENIOR:
 import logging
 import json
 import os
+import time
 import warnings
 import requests
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional, Tuple
 
 from sigma_calibrator import SigmaCalibrator
@@ -30,7 +31,7 @@ from bankroll import (
     normalize_city_slug,
 )
 from forecast import city_today
-from risk import FEE_RATE
+from config import FEE_RATE, MAX_OPEN_TRADE_DAYS, SETTLE_TEMP_RETRIES
 
 logger = logging.getLogger("settlement")
 
@@ -43,7 +44,22 @@ def get_actual_temperature(lat: float, lon: float, date: str) -> Optional[float]
     Máxima do DIA LOCAL `date` na coordenada.
     1) archive-api (ERA5) com timezone=auto;
     2) fallback: forecast-api com past_days=5.
+
+    Retries com backoff exponencial (SETTLE_TEMP_RETRIES tentativas).
     """
+    for attempt in range(SETTLE_TEMP_RETRIES):
+        result = _fetch_actual_temperature(lat, lon, date)
+        if result is not None:
+            return result
+        if attempt < SETTLE_TEMP_RETRIES - 1:
+            backoff = min(2 ** (attempt + 1), 8)
+            logger.info(f"Retry temperatura ({attempt+1}/{SETTLE_TEMP_RETRIES}) em {backoff}s")
+            time.sleep(backoff)
+    return None
+
+
+def _fetch_actual_temperature(lat: float, lon: float, date: str) -> Optional[float]:
+    """Single attempt to fetch actual temperature."""
     try:
         url = "https://archive-api.open-meteo.com/v1/archive"
         params = {
@@ -274,6 +290,60 @@ def settle_all():
 
     if not ready:
         logger.info(f"Settlement: {len(open_trades)} abertos, nenhum pronto.")
+
+    # 1b) VOID automático: trades OPEN há mais de MAX_OPEN_TRADE_DAYS dias
+    #     (temperatura provavelmente indisponível para sempre).
+    now_date = datetime.now(timezone.utc).date()
+    stale_limit = now_date - timedelta(days=MAX_OPEN_TRADE_DAYS)
+    stale_trades = []
+    for t in ready:
+        mdate_str = t.get("market_date", "")
+        try:
+            mdate = datetime.strptime(mdate_str, "%Y-%m-%d").date()
+            if mdate < stale_limit:
+                stale_trades.append(t)
+        except Exception:
+            pass
+
+    if stale_trades:
+        voided_keys = set()
+        for t in stale_trades:
+            voided_keys.add((t.get("city", "").lower(), t.get("market_date", "")))
+
+        def _void_mutator(data):
+            hist = data.get("history", [])
+            changed = False
+            for i, tr in enumerate(hist):
+                if tr.get("result") != "OPEN":
+                    continue
+                key = ((tr.get("city", "") or "").lower(), tr.get("market_date", ""))
+                if key not in voided_keys:
+                    continue
+                stake = float(tr.get("stake", 0))
+                tr["result"] = "VOID"
+                tr["pnl"] = 0.0
+                tr["fee"] = 0.0
+                tr["exit_time"] = datetime.now(timezone.utc).isoformat()
+                # Devolve o stake ao balance (já havia sido debitado)
+                data["balance"] = round(float(data.get("balance", 0)) + stake, 4)
+                hist[i] = tr
+                changed = True
+                logger.warning(
+                    f"VOID automático: {tr.get('city')} {tr.get('market_date')} "
+                    f"stake=${stake:.2f} — OPEN há >{MAX_OPEN_TRADE_DAYS} dias"
+                )
+            if changed:
+                data["history"] = hist
+            return changed
+
+        atomic_update(_void_mutator)
+        logger.warning(f"Settlement: {len(stale_trades)} trades VOID (OPEN >{MAX_OPEN_TRADE_DAYS} dias)")
+
+        # Remove stale trades from ready list (already voided)
+        stale_keys = set((t.get("city","").lower(), t.get("market_date","")) for t in stale_trades)
+        ready = [t for t in ready if (t.get("city","").lower(), t.get("market_date","")) not in stale_keys]
+
+    if not ready:
         return
 
     logger.info(f"Settlement: liquidando {len(ready)} de {len(open_trades)} abertos")
