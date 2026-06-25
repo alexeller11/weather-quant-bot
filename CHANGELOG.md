@@ -1,5 +1,59 @@
 # Weather Quant Bot — Changelog de Correções
 
+## 2026-06-25 — Fase 1 Estabilização (branch feature/correcoes-auditoria-v2)
+
+### C1: notificador.py `_build_context()` — parâmetros stale corrigidos
+- Bloco "SOBRE O BOT" agora lê valores reais de `config.py` em vez de hardcoded:
+  - `prob >= 80%` → `{MIN_PROB_ABOVE_BELOW*100:.0f}%` (72%)
+  - `market_price >= 0.30` → `{MIN_PRICE:.2f}` (0.15)
+  - `Cap $2` → `${MAX_POSITION:.0f}` ($4)
+  - `exposição $8` → `${MAX_TOTAL_EXPOSURE:.0f}` ($20)
+  - `4 abertos` → `{MAX_OPEN_TRADES}` (5)
+  - `v4` → `v5.1`
+  - Removido "Edge máximo 40pp" (não existe cap simples; por condição)
+  - Removido "Saldo $200" (dinâmico; agora mostra `START_BALANCE`)
+  - Adicionado mentions de cooldown (3 losses/4h, 5 losses/12h)
+
+### C2: bankroll.py — Windows file lock (msvcrt fallback)
+- `_process_lock()` agora suporta 3 plataformas:
+  - Linux/macOS: `fcntl.flock()` (inalterado)
+  - Windows: `msvcrt.locking()` com `LK_NBLCK`/`LK_UNLCK`
+  - Fallback: WARNING logado uma vez + thread-lock only
+- Resolve situação onde múltiplos processos no Windows podiam corromper bankroll
+
+### C3: settlement.py — VOID automático para trades OPEN >7 dias
+- `settle_all()` agora detecta trades OPEN com `market_date` há >`MAX_OPEN_TRADE_DAYS` dias
+- Esses trades são marcados como `VOID` (pnl=0, stake devolvido ao balance)
+- `MAX_OPEN_TRADE_DAYS` configurável via env var (default 7)
+- Previne OPENs eternos quando a API de temperatura nunca retorna dados
+
+### C4: settlement.py — retry em `get_actual_temperature()`
+- Lógica de fetch extraída para `_fetch_actual_temperature()`
+- `get_actual_temperature()` agora faz `SETTLE_TEMP_RETRIES` tentativas (default 3)
+- Backoff exponencial: 2s, 4s, 8s entre tentativas
+- `SETTLE_TEMP_RETRIES` configurável via env var
+
+### C5: Constantes hardcoded → env-configurable (centralizado em config.py)
+- **config.py**: 13 novas env-configurable vars adicionadas:
+  - `MIN_PROB_RANGE2`, `MIN_EDGE_RANGE2`, `MIN_EDGE_NO`, `MAX_PROB_FOR_NO`
+  - `FEE_RATE`, `MAX_PRICE_RANGE2`, `SIGMA_MIN`, `SIGMA_MAX`
+  - `BIAS_WINDOW_DAYS`, `BIAS_MIN_SAMPLES`, `FORECAST_CACHE_TTL`
+  - `MAX_OPEN_TRADE_DAYS`, `SETTLE_TEMP_RETRIES`
+- **risk.py**: 6 constantes locais removidas, importadas de config
+- **sigma_calibrator.py**: `SIGMA_MIN`/`SIGMA_MAX` importados de config
+- **forecast.py**: `BIAS_WINDOW_DAYS`, `BIAS_MIN_SAMPLES`, `CACHE_TTL_SECONDS` importados de config
+- **settlement.py**: `FEE_RATE` importado de config (não mais de risk.py)
+
+### Validação
+- `test_core.py`: **81/81** testes passando (12 novos)
+  - `TestConfigParametersFromRisk` (4) — risk.py usa config, não hardcoded
+  - `TestNotificadorContext` (4) — version, cap, prob, cooldown no contexto
+  - `TestSigmaFromConfig` (2) — sigma_min/max de config
+  - `TestSettlementRetryConfig` (2) — retry/void configs de config
+- `py_compile`: todos os `.py` modificados compilam sem erro
+
+---
+
 ## 2026-06-23 — Hardening v2 (branch feature/correcoes-auditoria-v2)
 
 ### P1-1: RANGE2/EXACT zscore — distância à borda mais próxima (bug crítico)

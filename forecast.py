@@ -25,7 +25,7 @@ import requests
 import time
 from datetime import datetime, timezone, timedelta
 
-from config import CITY_COORDS, CITY_TZ, CITY_SLUG_NORMALIZE
+from config import CITY_COORDS, CITY_TZ, CITY_SLUG_NORMALIZE, BIAS_WINDOW_DAYS, BIAS_MIN_SAMPLES, FORECAST_CACHE_TTL
 
 logger = logging.getLogger(__name__)
 
@@ -55,11 +55,8 @@ def city_today(city_slug):
 # BIAS CORRECTION
 # =========================================================
 
-BIAS_WINDOW_DAYS = 21
-BIAS_MIN_SAMPLES = 3
-
 _BIAS_CACHE = {}
-_BIAS_CACHE_TTL = 3600
+_BIAS_CACHE_TTL = FORECAST_CACHE_TTL
 
 
 def _city_raw_to_slug(city_raw, slug_normalize):
@@ -172,7 +169,7 @@ def get_corrected_forecast(city_slug, forecast_day):
 _FORECAST_CACHE = {}
 _CACHE_TIME     = {}
 
-CACHE_TTL_SECONDS = 3600
+CACHE_TTL_SECONDS = FORECAST_CACHE_TTL
 
 # =========================================================
 # FORECAST

@@ -255,6 +255,22 @@ def _build_context():
             brier_mean = round(sum(brier_scores) / len(brier_scores), 4)
             validacao_str = f"\n- Brier Score médio: {brier_mean}"
 
+    # Carrega parâmetros reais do config (não hardcoded)
+    try:
+        from config import (
+            MIN_PROB_ABOVE_BELOW, MIN_PRICE, MIN_TARGET_ZSCORE,
+            MAX_POSITION, MAX_TOTAL_EXPOSURE, MAX_OPEN_TRADES,
+            START_BALANCE,
+        )
+    except Exception:
+        MIN_PROB_ABOVE_BELOW = 0.72
+        MIN_PRICE = 0.15
+        MIN_TARGET_ZSCORE = 1.0
+        MAX_POSITION = 4.0
+        MAX_TOTAL_EXPOSURE = 20.0
+        MAX_OPEN_TRADES = 5
+        START_BALANCE = 100.0
+
     return f"""CONTEXTO DO BOT DE APOSTA — WEATHER QUANTITATIVO:
 
 SITUACAO ATUAL:
@@ -268,17 +284,17 @@ TRADES ABERTOS:{abertos_str if abertos_str else ' Nenhum'}
 
 ÚLTIMOS TRADES FECHADOS:{trades_str if trades_str else ' Nenhum'}
 
-SOBRE O BOT (Weather Quant v4):
+SOBRE O BOT (Weather Quant v5.1):
 - Usa Open-Meteo para forecast de temperatura máxima diária (22 cidades)
 - Modelo Normal com sigma calibrado: D+1=4.0°C, D+2=4.5°C, D+3=5.0°C
-- Filtros ativos: prob >= 80%, zscore >= 1.0, market_price >= 0.30
-- Edge máximo permitido: 40pp (não luta contra o mercado)
+- Filtros ativos: prob >= {MIN_PROB_ABOVE_BELOW*100:.0f}%, zscore >= {MIN_TARGET_ZSCORE:.1f}, market_price >= {MIN_PRICE:.2f}
 - Kelly dinâmico: 50% base → 35% após 2 perdas → 25% após 3+ perdas
-- Cap $2 por trade, exposição máxima $8, máximo 4 abertos
+- Cooldown: 3 losses = 4h, 5 losses = 12h (settlement continua)
+- Cap ${MAX_POSITION:.0f} por trade, exposição máxima ${MAX_TOTAL_EXPOSURE:.0f}, máximo {MAX_OPEN_TRADES} abertos
 - Beijing e Hong Kong bloqueados (erro histórico > 5°C)
 - Confirmação intra-dia para mercados D+0/D+1
 - Settlement automático via scheduler horário
-- Saldo atual resetado: $200 (início limpo após recalibração jun/2026)
+- Saldo inicial: ${START_BALANCE:.0f}
 
 Responda de forma concisa em português. Máximo 3 parágrafos."""
 

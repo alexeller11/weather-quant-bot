@@ -23,13 +23,12 @@ import logging
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
+from config import SIGMA_MIN, SIGMA_MAX
+
 logger = logging.getLogger(__name__)
 
 SIGMA_CALIBRATION_FILE = "sigma_calibration.json"
 _DB_KEY = "sigma_calibration_v2"
-
-SIGMA_MIN = 2.0
-SIGMA_MAX = 8.0
 
 
 class SigmaCalibrator:

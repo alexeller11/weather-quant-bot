@@ -69,6 +69,27 @@ MIN_MARKET_LIQUIDITY  = float(os.getenv("MIN_MARKET_LIQUIDITY", "100.00"))
 MIN_MARKET_VOLUME     = float(os.getenv("MIN_MARKET_VOLUME", "250.00"))
 MAX_IMPLIED_SPREAD    = float(os.getenv("MAX_IMPLIED_SPREAD", "0.08"))
 
+# ── Parâmetros antes hardcoded em risk.py ────────────────────────
+MIN_PROB_RANGE2       = float(os.getenv("MIN_PROB_RANGE2", "0.04"))
+MIN_EDGE_RANGE2      = float(os.getenv("MIN_EDGE_RANGE2", "0.02"))
+MIN_EDGE_NO          = float(os.getenv("MIN_EDGE_NO", "0.15"))
+MAX_PROB_FOR_NO      = float(os.getenv("MAX_PROB_FOR_NO", "0.35"))
+FEE_RATE             = float(os.getenv("FEE_RATE", "0.02"))
+MAX_PRICE_RANGE2     = float(os.getenv("MAX_PRICE_RANGE2", "0.70"))
+
+# ── Parâmetros antes hardcoded em sigma_calibrator.py ────────────
+SIGMA_MIN             = float(os.getenv("SIGMA_MIN", "2.0"))
+SIGMA_MAX             = float(os.getenv("SIGMA_MAX", "8.0"))
+
+# ── Parâmetros antes hardcoded em forecast.py ───────────────────
+BIAS_WINDOW_DAYS      = int(os.getenv("BIAS_WINDOW_DAYS", "21"))
+BIAS_MIN_SAMPLES     = int(os.getenv("BIAS_MIN_SAMPLES", "3"))
+FORECAST_CACHE_TTL   = int(os.getenv("FORECAST_CACHE_TTL", "3600"))
+
+# ── Parâmetros antes hardcoded em settlement.py ─────────────────
+MAX_OPEN_TRADE_DAYS   = int(os.getenv("MAX_OPEN_TRADE_DAYS", "7"))
+SETTLE_TEMP_RETRIES   = int(os.getenv("SETTLE_TEMP_RETRIES", "3"))
+
 
 # ──────────────────────────────────────────────────────────────
 # CIDADES — fonte única: cities.json

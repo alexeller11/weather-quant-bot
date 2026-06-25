@@ -551,5 +551,87 @@ class TestSettlementCityLookup(unittest.TestCase):
         self.assertIsNone(lon)
 
 
+class TestConfigParametersFromRisk(unittest.TestCase):
+    """Verifica que risk.py importa constantes de config (não hardcoded)."""
+
+    def test_fee_rate_matches_config(self):
+        from risk import FEE_RATE
+        from config import FEE_RATE as CFG_FEE
+        self.assertEqual(FEE_RATE, CFG_FEE)
+
+    def test_min_prob_range2_matches_config(self):
+        from risk import MIN_PROB_RANGE2
+        from config import MIN_PROB_RANGE2 as CFG
+        self.assertEqual(MIN_PROB_RANGE2, CFG)
+
+    def test_min_edge_range2_matches_config(self):
+        from risk import MIN_EDGE_RANGE2
+        from config import MIN_EDGE_RANGE2 as CFG
+        self.assertEqual(MIN_EDGE_RANGE2, CFG)
+
+    def test_max_prob_for_no_matches_config(self):
+        from risk import MAX_PROB_FOR_NO
+        from config import MAX_PROB_FOR_NO as CFG
+        self.assertEqual(MAX_PROB_FOR_NO, CFG)
+
+
+class TestNotificadorContext(unittest.TestCase):
+    """Verifica que _build_context() usa config real, não hardcoded."""
+
+    def test_context_has_correct_version(self):
+        from notificador import _build_context
+        ctx = _build_context()
+        self.assertIn("v5.1", ctx)
+        self.assertNotIn("v4", ctx)
+
+    def test_context_has_correct_position_cap(self):
+        from config import MAX_POSITION
+        from notificador import _build_context
+        ctx = _build_context()
+        self.assertIn(f"${MAX_POSITION:.0f}", ctx)
+        self.assertNotIn("Cap $2", ctx)
+
+    def test_context_has_correct_prob(self):
+        from config import MIN_PROB_ABOVE_BELOW
+        from notificador import _build_context
+        ctx = _build_context()
+        # Deve conter a prob real (72%), não a stale (80%)
+        self.assertIn(f"{MIN_PROB_ABOVE_BELOW*100:.0f}%", ctx)
+        self.assertNotIn("80%", ctx)
+
+    def test_context_mentions_cooldown(self):
+        from notificador import _build_context
+        ctx = _build_context()
+        self.assertIn("cooldown", ctx.lower())
+
+
+class TestSigmaFromConfig(unittest.TestCase):
+    """Verifica SigmaCalibrator usa SIGMA_MIN/SIGMA_MAX de config."""
+
+    def test_sigma_min_from_config(self):
+        from sigma_calibrator import SIGMA_MIN
+        from config import SIGMA_MIN as CFG
+        self.assertEqual(SIGMA_MIN, CFG)
+
+    def test_sigma_max_from_config(self):
+        from sigma_calibrator import SIGMA_MAX
+        from config import SIGMA_MAX as CFG
+        self.assertEqual(SIGMA_MAX, CFG)
+
+
+class TestSettlementRetryConfig(unittest.TestCase):
+    """Verifica que settlement importa configs certas."""
+
+    def test_max_open_trade_days_from_config(self):
+        from settlement import MAX_OPEN_TRADE_DAYS
+        from config import MAX_OPEN_TRADE_DAYS as CFG
+        self.assertEqual(MAX_OPEN_TRADE_DAYS, CFG)
+
+    def test_settle_temp_retries_from_config(self):
+        from settlement import SETTLE_TEMP_RETRIES
+        from config import SETTLE_TEMP_RETRIES as CFG
+        self.assertEqual(SETTLE_TEMP_RETRIES, CFG)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
