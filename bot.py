@@ -59,6 +59,7 @@ from config import (
     MAX_POSITION,
     CITIES,
 )
+from decision_log import record_decision
 
 logging.basicConfig(
     level=logging.INFO,
@@ -103,16 +104,19 @@ def process_city(city: Dict):
     city_slug = normalize_city_slug(name)
 
     if not city_is_reliable(city_slug):
+        record_decision("blocked", "city_unreliable", city=name)
         logger.info(f"{name}: cidade não confiável — pulando")
         return
 
     try:
         markets = fetch_markets(city_slug)
     except Exception as e:
+        record_decision("error", "fetch_markets_error", city=name, error=str(e))
         logger.error(f"fetch_markets({city_slug}): {e}")
         return
 
     if not markets:
+        record_decision("blocked", "no_markets", city=name)
         logger.debug(f"{name}: sem mercados")
         return
 
@@ -140,6 +144,7 @@ def process_city(city: Dict):
 
     ok, reason = risk_limits_ok(history_view, balance, start_balance)
     if not ok:
+        record_decision("blocked", "risk_limit", city=name, detail=reason)
         logger.warning(f"{name}: novas entradas bloqueadas por risco — {reason}")
         return
 
@@ -167,6 +172,7 @@ def process_city(city: Dict):
             )
 
             if market_base in seen_market_keys:
+                record_decision("blocked", "duplicate_market_in_cycle", city=name, market=m)
                 logger.debug(f"{name}: mercado duplicado no ciclo — {market_base}")
                 continue
             seen_market_keys.add(market_base)
@@ -177,27 +183,32 @@ def process_city(city: Dict):
             yes_traded = already_traded(history, yes_trade_id)
             no_traded = already_traded(history, no_trade_id)
             if yes_traded and no_traded:
+                record_decision("blocked", "already_traded_both_sides", city=name, market=m)
                 logger.debug(f"Já negociado (ambos lados): {market_base}")
                 continue
 
             open_trades = _get_open_trades(history_view)
             ok, reason = risk_limits_ok(history_view, balance, start_balance)
             if not ok:
+                record_decision("blocked", "risk_limit", city=name, market=m, detail=reason)
                 logger.warning(f"{name}: bloqueado por risco — {reason}")
                 break
             open_count = len(open_trades)
             if open_count >= MAX_OPEN_TRADES:
+                record_decision("blocked", "max_open_trades", city=name, market=m, open_count=open_count)
                 logger.info(f"Limite de {MAX_OPEN_TRADES} trades abertos atingido")
                 break
 
             exposure = sum(float(t.get("stake", 0)) for t in open_trades)
             total_headroom = exposure_headroom(exposure)
             if total_headroom <= 0:
+                record_decision("blocked", "max_total_exposure", city=name, market=m, exposure=exposure)
                 logger.info(f"Exposição máxima ${MAX_TOTAL_EXPOSURE:.2f} atingida")
                 break
 
             ev_headroom = event_headroom(open_trades, name, market_date)
             if ev_headroom <= 0:
+                record_decision("blocked", "event_exposure_limit", city=name, market=m)
                 logger.info(
                     f"{name} {market_date}: limite por evento atingido — pulando bucket"
                 )
@@ -208,6 +219,7 @@ def process_city(city: Dict):
             forecast_day = _forecast_day_for_market(market_date, city_slug)
             forecast_result = forecast_cache.get(forecast_day)
             if forecast_result is None or forecast_result[0] is None:
+                record_decision("blocked", "forecast_unavailable", city=name, market=m, forecast_day=forecast_day)
                 logger.debug(f"Forecast indisponível para {name} D+{forecast_day-1}")
                 continue
 
@@ -218,6 +230,7 @@ def process_city(city: Dict):
                 condition=condition,
             )
             if not cons["consensus"]:
+                record_decision("blocked", "consensus_failed", city=name, market=m, detail=cons.get("reason"))
                 logger.info(f"{name}: {cons['reason']}")
                 continue
 
@@ -229,6 +242,7 @@ def process_city(city: Dict):
                 target_c_check = (target - 32) * 5 / 9 if unit == "F" else target
                 intra = get_intraday_confirmation(city_slug, condition, target_c_check)
                 if intra["confirmed"] is False:
+                    record_decision("blocked", "intraday_negative", city=name, market=m, detail=intra.get("reason"))
                     logger.info(f"{name}: intra-dia negativo — {intra['reason']}")
                     continue
                 if intra["confirmed"] is True:
@@ -282,6 +296,11 @@ def process_city(city: Dict):
                     history = data.get("history", [])
                     history_view = dedupe_history_by_market(history)
                     balance = float(data.get("balance", 0))
+                else:
+                    record_decision(
+                        "blocked", "guardrail_failed", city=name, market=m, side="YES",
+                        prob=prob, edge=edge_yes, yes_price=yes_price, sigma=sigma,
+                    )
 
             # --- AVALIAR NO ---
             if edge_no > 0 and not no_traded:
@@ -305,6 +324,11 @@ def process_city(city: Dict):
                     history = data.get("history", [])
                     history_view = dedupe_history_by_market(history)
                     balance = float(data.get("balance", 0))
+                else:
+                    record_decision(
+                        "blocked", "guardrail_failed", city=name, market=m, side="NO",
+                        prob=prob, edge=edge_no, yes_price=yes_price, sigma=sigma,
+                    )
 
         except Exception as e:
             logger.error(f"{name} mercado {m.get('market_id','?')}: {e}", exc_info=True)
@@ -317,12 +341,17 @@ def _execute_trade(
     trade_id, side="YES",
 ):
     if stake <= 0:
+        record_decision("blocked", "stake_zero", city=name, market=m, side=side, prob=prob, edge=edge, stake=stake)
         return
 
     execution = None
     if PAPER_EXECUTION_ENABLED:
         execution = simulate_paper_buy(m, side, stake)
         if not execution.ok:
+            record_decision(
+                "blocked", "paper_execution_blocked", city=name, market=m, side=side,
+                prob=prob, edge=edge, requested_stake=stake, detail=execution.reason,
+            )
             logger.info(
                 f"PAPER EXEC bloqueado [{side}]: {name} {condition} {target}°{unit} | "
                 f"{execution.reason}"
@@ -343,6 +372,10 @@ def _execute_trade(
             entry_price = round(1.0 - yes_price, 4)
         shares = int(stake / entry_price) if entry_price > 0 else 0
     if shares <= 0:
+        record_decision(
+            "blocked", "shares_zero", city=name, market=m, side=side,
+            prob=prob, edge=edge, stake=stake, entry_price=entry_price,
+        )
         logger.info(
             f"Stake ${stake:.2f} insuficiente para comprar 1 share "
             f"a {entry_price:.3f} ({side})"
@@ -353,6 +386,7 @@ def _execute_trade(
     stake = real_cost
 
     if stake <= 0:
+        record_decision("blocked", "stake_zero_after_execution", city=name, market=m, side=side, prob=prob, edge=edge)
         return
 
     market_key = trade_id
@@ -411,8 +445,16 @@ def _execute_trade(
     if TRADING_ENABLED:
         recorded = record_trade(trade)
         if not recorded:
+            record_decision("blocked", "record_duplicate", city=name, market=m, side=side, market_id=trade_id)
             logger.info(f"TRADE NÃO registrado (duplicado?): {trade_id}")
             return
+        record_decision(
+            "recorded", "trade_recorded", city=name, market=m, side=side,
+            prob=prob, edge=edge, stake=stake, entry_price=entry_price,
+            shares=shares, paper_execution=execution is not None,
+            slippage=(execution.slippage if execution is not None else None),
+            fill_ratio=(execution.fill_ratio if execution is not None else None),
+        )
         new_balance = float(load_bankroll().get("balance", 0))
         logger.info(
             f"TRADE [{side}]: {name} {condition} {target}°{unit} | "
@@ -429,6 +471,13 @@ def _execute_trade(
         except Exception:
             pass
     else:
+        record_decision(
+            "signal", "signal_only", city=name, market=m, side=side,
+            prob=prob, edge=edge, stake=stake, entry_price=entry_price,
+            shares=shares, paper_execution=execution is not None,
+            slippage=(execution.slippage if execution is not None else None),
+            fill_ratio=(execution.fill_ratio if execution is not None else None),
+        )
         logger.info(
             f"SINAL [{side}]: {name} {condition} {target}°{unit} | "
             f"prob={prob:.3f} edge={edge:.3f} stake=${stake:.2f}"
