@@ -175,6 +175,35 @@ def _market_quality(market):
     return liquidity, volume, spread
 
 
+def _parse_json_field(value, default=None):
+    if default is None:
+        default = []
+    if value in (None, ""):
+        return default
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except Exception:
+            return default
+    return value
+
+
+def _token_ids(market):
+    tokens = _parse_json_field(market.get("clobTokenIds"), [])
+    if not tokens:
+        tokens = _parse_json_field(market.get("tokens"), [])
+
+    out = []
+    for item in tokens or []:
+        if isinstance(item, dict):
+            token_id = item.get("token_id") or item.get("tokenId") or item.get("id")
+        else:
+            token_id = item
+        if token_id not in (None, ""):
+            out.append(str(token_id))
+    return out
+
+
 def market_is_healthy(yes_price, no_price, market=None):
     """
     Piso de 0.03 para aceitar buckets de 2°F que legitimamente têm
@@ -328,6 +357,7 @@ def fetch_markets(city):
                     seen_market_keys.add(market_key)
 
                     liquidity, volume, book_spread = _market_quality(market)
+                    token_ids = _token_ids(market)
                     entry = {
                         "market_id":      market_key,
                         "market_key":     market_key,
@@ -345,6 +375,8 @@ def fetch_markets(city):
                         "liquidity":      liquidity,
                         "volume":         volume,
                         "book_spread":    book_spread,
+                        "yes_token_id":   token_ids[0] if len(token_ids) > 0 else "",
+                        "no_token_id":    token_ids[1] if len(token_ids) > 1 else "",
                     }
                     if parsed["condition"] == "range2":
                         entry["target_lo"] = parsed["target_lo"]

@@ -610,8 +610,10 @@ class TestNotificadorContext(unittest.TestCase):
         from notificador import _build_context
         ctx = _build_context()
         # Deve conter a prob real (72%), não a stale (80%)
-        self.assertIn(f"{MIN_PROB_ABOVE_BELOW*100:.0f}%", ctx)
-        self.assertNotIn("80%", ctx)
+        filter_lines = [line for line in ctx.splitlines() if "Filtros ativos:" in line]
+        self.assertTrue(filter_lines)
+        self.assertIn(f"{MIN_PROB_ABOVE_BELOW*100:.0f}%", filter_lines[0])
+        self.assertNotIn("prob >= 80%", filter_lines[0])
 
     def test_context_mentions_cooldown(self):
         from notificador import _build_context
@@ -645,6 +647,27 @@ class TestSettlementRetryConfig(unittest.TestCase):
         from settlement import SETTLE_TEMP_RETRIES
         from config import SETTLE_TEMP_RETRIES as CFG
         self.assertEqual(SETTLE_TEMP_RETRIES, CFG)
+
+class TestPaperExecution(unittest.TestCase):
+    def test_simulate_buy_walks_asks_and_computes_average(self):
+        from paper_execution import simulate_buy_from_levels
+        levels = [
+            {"price": 0.50, "size": 2.0},
+            {"price": 0.55, "size": 10.0},
+        ]
+        result = simulate_buy_from_levels(levels, stake=2.55, token_id="tok", side="YES")
+        self.assertTrue(result.ok, result.reason)
+        self.assertAlmostEqual(result.filled_cost, 2.55, places=4)
+        self.assertAlmostEqual(result.shares, 2.0 + (1.55 / 0.55), places=4)
+        self.assertGreater(result.avg_price, 0.50)
+        self.assertEqual(result.levels_used, 2)
+
+    def test_simulate_buy_blocks_insufficient_fill(self):
+        from paper_execution import simulate_buy_from_levels
+        levels = [{"price": 0.50, "size": 1.0}]
+        result = simulate_buy_from_levels(levels, stake=2.00, token_id="tok", side="YES")
+        self.assertFalse(result.ok)
+        self.assertIn("fill insuficiente", result.reason)
 
 
 if __name__ == "__main__":
