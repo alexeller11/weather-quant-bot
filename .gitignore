@@ -37,6 +37,7 @@ build/
 
 # Logs
 *.log
+decision_log.jsonl
 
 # IDE
 .vscode/

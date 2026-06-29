@@ -13,6 +13,7 @@ Execução:
 import unittest
 import sys
 import os
+import tempfile
 
 # Configura ambiente minimo para importar os modulos sem DB/env real
 os.environ.setdefault("DATABASE_URL", "")
@@ -668,6 +669,39 @@ class TestPaperExecution(unittest.TestCase):
         result = simulate_buy_from_levels(levels, stake=2.00, token_id="tok", side="YES")
         self.assertFalse(result.ok)
         self.assertIn("fill insuficiente", result.reason)
+
+
+class TestDecisionLog(unittest.TestCase):
+    def test_records_and_summarizes_decisions(self):
+        import decision_log
+
+        old_path = decision_log.DECISION_LOG_FILE
+        with tempfile.TemporaryDirectory() as tmp:
+            decision_log.DECISION_LOG_FILE = os.path.join(tmp, "decisions.jsonl")
+            self.assertTrue(decision_log.record_decision(
+                "blocked", "paper_execution_blocked",
+                city="New York", side="YES",
+                market={"market_id": "m1", "market_date": "2026-06-29"},
+                detail="slippage alto",
+            ))
+            events = decision_log.load_decisions()
+            self.assertEqual(len(events), 1)
+            summary = decision_log.summarize_decisions(events)
+            self.assertEqual(summary["blocked_count"], 1)
+            self.assertEqual(summary["by_reason"]["paper_execution_blocked"], 1)
+        decision_log.DECISION_LOG_FILE = old_path
+
+    def test_execution_summary_separates_orderbook_and_legacy(self):
+        from decision_log import trade_execution_summary
+
+        summary = trade_execution_summary([
+            {"paper_execution": True, "stake": 2.0, "filled_cost": 2.0, "slippage": 0.01, "fill_ratio": 1.0, "result": "OPEN"},
+            {"stake": 3.0, "result": "LOSS"},
+        ])
+        self.assertEqual(summary["paper_orderbook"], 1)
+        self.assertEqual(summary["legacy_paper"], 1)
+        self.assertEqual(summary["avg_slippage"], 0.01)
+        self.assertEqual(summary["avg_fill_ratio"], 1.0)
 
 
 if __name__ == "__main__":
