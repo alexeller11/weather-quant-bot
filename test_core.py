@@ -575,6 +575,20 @@ class TestConfigParametersFromRisk(unittest.TestCase):
         self.assertEqual(MAX_PROB_FOR_NO, CFG)
 
 
+class TestRuntimeCities(unittest.TestCase):
+    """Garante compatibilidade entre cities.json e bot.process_city."""
+
+    def test_cities_have_legacy_name_field(self):
+        from config import CITIES
+
+        self.assertGreater(len(CITIES), 0)
+        for city in CITIES:
+            self.assertTrue(city.get("name"))
+            self.assertTrue(city.get("slug"))
+            self.assertIn("lat", city)
+            self.assertIn("lon", city)
+
+
 class TestNotificadorContext(unittest.TestCase):
     """Verifica que _build_context() usa config real, não hardcoded."""
 

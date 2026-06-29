@@ -155,6 +155,19 @@ def build_city_maps(cities_list):
     return city_display, city_slug_normalize, city_slugs, city_coords, city_tz, city_slug_aliases
 
 
+def build_runtime_cities(cities_list):
+    """
+    Mantem o schema rico de cities.json, mas preserva o contrato legado
+    usado pelo bot: cada cidade precisa ter a chave "name".
+    """
+    runtime = []
+    for c in cities_list:
+        item = dict(c)
+        item["name"] = item.get("name") or item.get("display") or item.get("slug", "")
+        runtime.append(item)
+    return runtime
+
+
 _CITIES_RAW = _load_cities_json()
 
 if _CITIES_RAW:
@@ -164,7 +177,7 @@ if _CITIES_RAW:
      CITY_COORDS,
      CITY_TZ,
      CITY_SLUG_ALIASES) = build_city_maps(_CITIES_RAW)
-    CITIES = _CITIES_RAW
+    CITIES = build_runtime_cities(_CITIES_RAW)
 else:
     # Fallback hardcoded — mantido para robustez caso cities.json seja removido
     CITY_DISPLAY = {
