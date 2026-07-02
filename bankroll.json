@@ -1,6 +1,6 @@
 {
-    "seq": 58,
-    "balance": 560.5491,
+    "seq": 59,
+    "balance": 575.1815,
     "history": [
         {
             "pnl": -3.92,
@@ -1845,21 +1845,21 @@
         },
         {
             "ev": 2.4992,
-            "fee": 0.0,
-            "pnl": 0,
+            "fee": 0.2986,
+            "pnl": 10.6324,
             "city": "New York",
             "edge": 0.6887,
             "side": "NO",
             "type": "RANGE2",
             "unit": "F",
             "stake": 4.0,
-            "result": "OPEN",
+            "result": "WIN",
             "shares": 14.931,
             "target": 92.5,
             "best_ask": 0.24,
             "question": "Will the highest temperature in New York City be between 92-93°F on July 1?",
             "slippage": 0.0279,
-            "exit_time": null,
+            "exit_time": "2026-07-02T04:07:51.131410+00:00",
             "market_id": "new-york|2026-07-01|RANGE2|92-93|F_NO",
             "target_hi": 93.0,
             "target_lo": 92.0,
@@ -1873,7 +1873,7 @@
             "filled_cost": 4.0,
             "market_date": "2026-07-01",
             "no_token_id": "12738391957598415804367945843438214300738840546925335753424731691280878803372",
-            "real_temp_c": null,
+            "real_temp_c": 35.8,
             "sigma_total": 4.0,
             "forecast_day": 1,
             "market_price": 0.715,
@@ -1890,7 +1890,7 @@
             "paper_execution_reason": "filled"
         }
     ],
-    "saved_at": "2026-07-01T22:59:25.765703+00:00",
+    "saved_at": "2026-07-02T04:07:51.131427+00:00",
     "created_at": "2026-06-01T00:00:00+00:00",
     "override_note": "Correcao 08/06/2026 — restaura Madrid Jun-8 perdido por override reaplicado",
     "start_balance": 200.0,
