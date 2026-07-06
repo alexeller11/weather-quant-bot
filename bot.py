@@ -129,7 +129,6 @@ def process_city(city: Dict):
                 logger.debug(
                     f"Forecast {name} D+{forecast_day-1}: {result[0]:.1f}°C sigma={result[1]:.2f}"
                 )
-
     data = load_bankroll()
     history = data.get("history", [])
     history_view = dedupe_history_by_market(history)
@@ -209,10 +208,10 @@ def process_city(city: Dict):
                 logger.debug(f"Forecast indisponível para {name} D+{forecast_day-1}")
                 continue
 
-            forecast_c, sigma, bias = forecast_result
+            forecast_c, sigma, bias, forecast_c_raw = forecast_result
 
             cons = consensus_engine.consensus_temperature(
-                city["lat"], city["lon"], market_date, forecast_c,
+                city["lat"], city["lon"], market_date, forecast_c_raw,
                 condition=condition,
             )
             if not cons["consensus"]:
@@ -275,6 +274,7 @@ def process_city(city: Dict):
                         target, unit, yes_price, prob, edge_yes, stake,
                         forecast_day, sigma, forecast_c, target_lo, target_hi,
                         yes_trade_id, side="YES",
+                        forecast_c_raw=forecast_c_raw,
                     )
                     data = load_bankroll()
                     history = data.get("history", [])
@@ -298,6 +298,7 @@ def process_city(city: Dict):
                         target, unit, yes_price, prob, edge_no, stake,
                         forecast_day, sigma, forecast_c, target_lo, target_hi,
                         no_trade_id, side="NO",
+                        forecast_c_raw=forecast_c_raw,
                     )
                     data = load_bankroll()
                     history = data.get("history", [])
@@ -312,7 +313,7 @@ def _execute_trade(
     name, m, date_str, condition,
     target, unit, yes_price, prob, edge, stake,
     day_offset, sigma, forecast_c, target_lo, target_hi,
-    trade_id, side="YES",
+    trade_id, side="YES", forecast_c_raw=None,
 ):
     if stake <= 0:
         return
@@ -364,6 +365,7 @@ def _execute_trade(
         target_lo      = target_lo,
         target_hi      = target_hi,
         forecast_c     = forecast_c,
+        forecast_c_raw = forecast_c_raw,  # AUDITORIA bug #1: cru p/ compute_bias
         sigma_total    = round(sigma, 4),
         shares         = shares,
         model_prob     = round(prob, 4),
@@ -429,15 +431,18 @@ def scheduled_trading():
     logger.info(f"Ciclo de trading: {datetime.now():%H:%M:%S}")
 
     # Verifica invariante de bankroll antes de operar.
-    # Detecta divergencia entre saldo e historico; loga se > $0.05.
-    # Correcao de auditoria: check_balance_invariant existia mas nunca
-    # era chamada -- a divergencia de -$19.80 teria sido detectada cedo.
+    # AUDITORIA bug #15: docstring original dizia "loga se > $0.05" mas
+    # o gate real era $0.50 — divergências entre $0.05 e $0.50 eram
+    # silenciadas nesta camada. Agora consistente com o default de
+    # check_balance_invariant (tol=0.05), que internamente já loga WARN
+    # acima desse limiar; aqui só escalamos para WARNING crítico se a
+    # divergência for material ($0.50+).
     try:
         data = load_bankroll()
         diff = check_balance_invariant(data)
         if abs(diff) > 0.50:
             logger.warning(
-                f"DIVERG\u00caNCIA DE BANKROLL: {diff:+.4f} — verifique o histórico"
+                f"DIVERGÊNCIA DE BANKROLL: {diff:+.4f} — verifique o histórico"
             )
     except Exception as e:
         logger.warning(f"check_balance_invariant: {e}")

@@ -36,7 +36,7 @@ import requests
 from bankroll import canonical_market_base, normalize_city_slug
 from config import CITY_SLUG_ALIASES
 from forecast import city_today
-from config import MIN_MARKET_LIQUIDITY, MIN_MARKET_VOLUME, MAX_IMPLIED_SPREAD
+from config import MIN_MARKET_LIQUIDITY, MIN_MARKET_VOLUME, MAX_IMPLIED_SPREAD, MAX_FORECAST_DAY
 
 logger = logging.getLogger(__name__)
 
@@ -74,15 +74,37 @@ def safe_request(url, retries=2, timeout=8):
 
 
 def detect_unit(question):
-    """Detecta unidade da temperatura na pergunta."""
-    if re.search(r'°[Ff]|[Ff]ahrenheit|\d+\s*[Ff](?!\w)', question):
-        return "F"
-    if re.search(r'°[Cc]|[Cc]elsius', question):
+    """
+    Detecta unidade da temperatura na pergunta.
+
+    AUDITORIA bug #4: prioriza a unidade EXPLÍCITA (°C/°F/Celsius/Fahrenheit)
+    — antes, a heurística `max(num) > 55` errava casos como "55°F or higher"
+    (off-by-one) e qualquer mercado ≥ 55°F sem ° confundia a unidade,
+    propagando erro para conversão, sigma e settlement.
+
+    A heurística agora só é usada quando não há unidade explícita na
+    pergunta; o padrão de comparação "°[CcFf]" percebe "55 °F", "55 F".
+    """
+    # 1) Procura explicit °C/°F em qualquer parte do texto (cobre variantes
+    #    como "55°F", "55 °F", "Fahrenheit", "Celsius").
+    if re.search(r'°\s*[Cc]', question) or re.search(r'\b[Cc]elsius\b', question):
         return "C"
-    # Heurística: se números > 55 sem unidade explícita, provavelmente °F
-    nums = re.findall(r'-?\d+', question)
-    if nums and max(int(n) for n in nums) > 55:
+    if re.search(r'°\s*[Ff]', question) or re.search(r'\b[Ff]ahrenheit\b', question):
         return "F"
+    # 2) "N F" / "N C" sem °, ex: "55 F or higher"
+    if re.search(r'-?\d+(?:\.\d+)?\s*[Ff](?!\w)', question):
+        return "F"
+    if re.search(r'-?\d+(?:\.\d+)?\s*[Cc](?!\w)', question):
+        return "C"
+    # 3) Heurística LAST-RESORT quando não há unidade alguma — logar.
+    nums = re.findall(r'-?\d+', question)
+    if nums:
+        detected = "F" if max(int(n) for n in nums) >= 55 else "C"
+        logger.info(
+            f"[gamma] unidade implicita detectada={detected} para: "
+            f"{question[:60]!r} — verifique intenção"
+        )
+        return detected
     return "C"
 
 
@@ -91,9 +113,13 @@ _NUM = r'(-?\d+(?:\.\d+)?)'
 
 _RE_ABOVE  = re.compile(_NUM + r'\s*°?\s*[CcFf]?\s+or\s+(?:higher|above)', re.IGNORECASE)
 _RE_BELOW  = re.compile(_NUM + r'\s*°?\s*[CcFf]?\s+or\s+(?:below|lower)', re.IGNORECASE)
-# Bucket "48-49°F" / "-4 - -3°C": unidade OBRIGATÓRIA após o limite superior
-_RE_RANGE2 = re.compile(_NUM + r'\s*[-–]\s*' + _NUM + r'\s*°\s*[CcFf]')
-_RE_EXACT  = re.compile(_NUM + r'\s*°\s*[CcFf]')
+# Cuplo "48-49°F" / "48-49 F" / "-4 - -3°C": unidade (com ou sem °)
+# AUDITORIA bug #18: antes exigiamos "°" antes do C/F, isso descartava
+# qualquer pergunta "48-49 F" que é legitimamente escrita pela Polymarket.
+# Agora o "°?" é opcional em RANGE2/exact — a unidade é confirmada via
+# detect_unit() e/ou pelo match global da letra C/F.
+_RE_RANGE2 = re.compile(_NUM + r'\s*[-–]\s*' + _NUM + r'\s*°?\s*([CcFf])\b')
+_RE_EXACT  = re.compile(_NUM + r'\s*°?\s*([CcFf])\b')
 
 
 def parse_question(question):
@@ -259,7 +285,11 @@ def fetch_markets(city):
 
     local_today = datetime.strptime(city_today(city_slug), "%Y-%m-%d").date()
 
-    for i in range(0, 2):  # D+0 e D+1 locais
+    # AUDITORIA bug #13: antes hardcoded `range(0, 2)`, ignorando
+    # MAX_FORECAST_DAY do config. Agora respeita. Limitado a 7 (janela
+    # real do Open-Meteo para evitar IndexError em _forecast_day_for_market).
+    horizon = max(1, min(int(MAX_FORECAST_DAY), 7))
+    for i in range(0, horizon):  # D+0 ... D+(horizon-1) locais
         d = local_today + timedelta(days=i)
 
         events = []

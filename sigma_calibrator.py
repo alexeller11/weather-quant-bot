@@ -20,8 +20,10 @@ CORREÇÕES v3 (auditoria):
 import json
 import os
 import logging
+import time
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
+import unicodedata
 
 from config import SIGMA_MIN, SIGMA_MAX
 
@@ -30,10 +32,40 @@ logger = logging.getLogger(__name__)
 SIGMA_CALIBRATION_FILE = "sigma_calibration.json"
 _DB_KEY = "sigma_calibration_v2"
 
+# AUDITORIA bug #2: TTL de recarga para mitigar stale cross-process.
+# settlement.py gravava actualizacoes; o bot (processo separado) nunca
+# via-as. Espelha o padrao do ml_adjuster (1h). 0 = desativado.
+_CALIBRATOR_CACHE_TTL = int(os.getenv("SIGMA_CALIBRATOR_TTL", "3600"))
+
+
+def _strip_accents(text: str) -> str:
+    if not text:
+        return ""
+    normalized = unicodedata.normalize("NFKD", str(text))
+    return "".join(ch for ch in normalized if not unicodedata.combining(ch))
+
 
 class SigmaCalibrator:
     def __init__(self):
         self.calibration_data: Dict = self._load()
+        self._loaded_at: float = time.time()
+
+    def _maybe_reload(self):
+        """AUDITORIA bug #2: recarrega do DB/file se o cache expirou.
+
+        settlement.py e bot.py sao processos separados (Railway): sem
+        isto, o bot grava no seu RAM um snapshot cold-load nunca mais
+        atualizado — calibracao write-only entre restarts.
+        """
+        if _CALIBRATOR_CACHE_TTL <= 0:
+            return
+        if time.time() - self._loaded_at < _CALIBRATOR_CACHE_TTL:
+            return
+        fresh = self._load()
+        if fresh:
+            self.calibration_data = fresh
+            self._loaded_at = time.time()
+            logger.debug("[sigma] calibracao recarregada (TTL expirou)")
 
     # ── persistência ─────────────────────────────────────────
 
@@ -125,7 +157,9 @@ class SigmaCalibrator:
         mesmo evento liquidados juntos representam UM único erro de
         forecast, não N erros independentes.
         """
-        city_key = city.strip().lower()
+        # AUDITORIA bug #10: normalizacao com strip de acentos — igual
+        # ao get_adjusted_sigma e ao bankroll.normalize_city_slug.
+        city_key = _strip_accents(city).strip().lower().replace(" ", "-")
         error    = abs(predicted_temp - actual_temp)
         cond_key = condition.upper()
 
@@ -191,7 +225,12 @@ class SigmaCalibrator:
         base_sigma: float,
         condition: str = "ABOVE",
     ) -> float:
-        city_key = city.strip().lower()
+        self._maybe_reload()
+        # AUDITORIA bug #10: strip accents na chave — igual ao
+        # bankroll.normalize_city_slug. Sem isto, callers que passassem
+        # "São Paulo" vs "são paulo" vs "sao-paulo" dividiriam a
+        # calibracao em 3 buckets não relacionados.
+        city_key = _strip_accents(city).strip().lower().replace(" ", "-")
         cond_key = condition.upper()
 
         cond_data = (
@@ -224,13 +263,9 @@ class SigmaCalibrator:
     ) -> List[float]:
         """
         Lista de erros recentes (float, °C) para a cidade.
-
-        condition=None agrega todas as condições (ordenadas por timestamp);
-        com condition específica, retorna só aquela série. É a interface
-        que o ml_adjuster deve usar — a estrutura interna aninhada por
-        condição não é mais acessada de fora.
         """
-        city_key = city.strip().lower()
+        self._maybe_reload()
+        city_key = _strip_accents(city).strip().lower().replace(" ", "-")
         conds = self.calibration_data.get(city_key, {})
         if not isinstance(conds, dict):
             return []

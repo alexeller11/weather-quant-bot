@@ -427,18 +427,32 @@ def settle_all():
         )
 
         if forecast_c is not None and actual_temp_c is not None:
+            # AUDITORIA bug #1: usar forecast PURO para calibrar sigma.
+            # Antes usava `forecast_c` (já corrigido pelo bias), o que
+            # convergia o ajuste do sigma para o resíduo pós-correção
+            # — uma grandeza diferente da incerteza de forecast.
+            raw_forecast = settled.get("forecast_c_raw")
+            if raw_forecast is None:
+                raw_forecast = forecast_c
             try:
-                _calibrator.record_trade_result(
-                    city=city, day_offset=day_offset,
-                    predicted_temp=float(forecast_c),
-                    actual_temp=float(actual_temp_c),
-                    condition=condition,
-                    market_date=market_date,
-                )
+                # AUDITORIA bug #12 (leakage): ANTES, `record_trade_result`
+                # gravava o erro deste trade no calibrator, e o `update`
+                # seguinte chamava `get_recent_errors` que via o MESMO erro
+                # — input rotulado com a própria saída do trade que acabou
+                # de ser decidido (auto-reforço). Ordem invertida: treinar
+                # o SGD ANTES de alimentar o calibrator com o erro deste
+                # trade.
                 _ml_adjuster.update(
                     model_prob=model_prob, day_offset=day_offset,
                     city=city, calibrator=_calibrator, trade_success=won,
                     hour_utc=_entry_hour_utc(settled),
+                )
+                _calibrator.record_trade_result(
+                    city=city, day_offset=day_offset,
+                    predicted_temp=float(raw_forecast),
+                    actual_temp=float(actual_temp_c),
+                    condition=condition,
+                    market_date=market_date,
                 )
             except Exception as e:
                 logger.warning(f"Calibração: {e}")

@@ -111,7 +111,12 @@ def _kv_set(conn, key, value: dict):
 def _new_model() -> SGDClassifier:
     if SGDClassifier is None:
         return _FallbackSGDClassifier()
-    m = SGDClassifier(loss="log_loss", random_state=42, max_iter=1000)
+    # AUDITORIA bug #9: max_iter=1 (não 1000). Cada `update()` faz um
+    # `partial_fit` numa única amostra; com max_iter=1000, o SGD
+    # repetia o MESMO exemplo 1000 épocas, esmagando todo o histórico
+    # — só o último trade dominava. max_iter=1 é o online-learning
+    # incremental standard (um epoch por amostra nova).
+    m = SGDClassifier(loss="log_loss", random_state=42, max_iter=1, tol=1e-3)
     X = np.array([
         [0.7, 1 / 3.0,  6 / 24.0, 2.0 / 5.0, 1.0 / 5.0,  0.0,        0.0],
         [0.3, 3 / 3.0,  9 / 24.0, 3.5 / 5.0, 1.5 / 5.0, -0.5 / 5.0,  0.0],
@@ -167,12 +172,26 @@ def compute_features(
     day_offset: int,
     city_errors: list,
     hour_utc: int = 12,
-    month: int = 6,
     temp_trend: float = 0.0,
-    humidity: float = 0.0,
+    # AUDITORIA bug #11: `month` e `humidity` declarados antes mas
+    # NUNCA entravam no vetor — parâmetros "fantasma" que davam falsa
+    # sensação de features ricas. Removidos da assinatura. Para preservar
+    # o shape (7 dims) e manter compatibilidade com modelos já pickled
+    # em DB, as duas últimas posições ficam reservadas a 0.0.
 ) -> np.ndarray:
     """
     Features v3 (7 dimensões, NORMALIZADAS para ~[0,1] / [-1,1]).
+
+    Dims efetivas (4):
+      0  — model_prob           (sinal direto da prob do modelo)
+      1  — day_offset / 3        (horizonte)
+      2  — hour_utc / 24         (hora do dia do trade)
+      3  — mean_err / 5          (erro médio histórico da cidade)
+    Dims derivadas do histórico local:
+      4  — std_err / 5
+      5  — recent_trend / 5      (última - penúltima)
+    Reservadas (sempre 0 — slots de upgrade futuros sem quebrar pickled):
+      6  — temp_trend / 5 (recebido mas em callers sempre 0)
     """
     if not city_errors:
         mean_err, std_err = 2.0, 1.0

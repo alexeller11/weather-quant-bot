@@ -29,6 +29,13 @@ AJUSTE v5.5 (2026-06-17):
 import os
 import logging
 from datetime import datetime, timedelta, timezone
+
+# AUDITORIA bug #3: fonte única de sigma por horizonte. Antes havia
+# três cópias inconsistentes {1:4,2:4.5,3:5} com defaults diferentes
+# (5.0 aqui vs 6.0 em model.py e forecast.py) — modelo e gate de risco
+# aplicavam sigma diferente ao mesmo mercado D+4+.
+from model import get_base_sigma
+
 from config import (
     KELLY_FRACTION,
     MAX_KELLY_FRACTION_CAP,
@@ -80,6 +87,15 @@ MIN_PRICE_YES_FOR_NO = float(os.getenv("MIN_PRICE_YES_FOR_NO", "0.45"))
 # FEE_RATE importado de config.py (env-configurable, shared com settlement.py).
 
 # Limite de stake por EVENTO (cidade + data).
+#
+# AUDITORIA bug #8: por default MAX_EVENT_EXPOSURE == MAX_POSITION ($4).
+# Isto significa que, no máximo, UMA aposta por evento chega a tamanho
+# cheio — uma segunda aposta num bucket diferente do mesmo (city, date)
+# fica capped a headroom ≈ $0. É intencional: o bot foi desenhado como
+# "uma convicção por evento" para evitar que dois buckets contraditórios
+# (ex.: ABOVE 25°C e RANGE2 24-26°C simultâneos) consumam o bankroll.
+# Para permitir múltiplos buckets por evento, sobrescreva via env:
+# MAX_EVENT_EXPOSURE=20 (igual ao MAX_TOTAL_EXPOSURE).
 MAX_EVENT_EXPOSURE = float(os.getenv("MAX_EVENT_EXPOSURE", str(MAX_POSITION)))
 
 
@@ -359,7 +375,7 @@ def check_guardrails(
     # Acima/below: distancia ao target; RANGE2/EXACT: distancia à borda mais próxima
     if forecast_temp is not None:
         if sigma is None or sigma <= 0:
-            sigma = {1: 4.0, 2: 4.5, 3: 5.0}.get(day_offset, 5.0)
+            sigma = get_base_sigma(day_offset)
 
         sigma_cap = SIGMA_CAP_EXACT if condition == "EXACT" else SIGMA_CAP_ABOVE_BELOW
         sigma = min(sigma, sigma_cap)
@@ -438,7 +454,7 @@ def _check_no_guardrails(
     # Zscore check: exige que o forecast esteja suficientemente distante
     # da borda mais próxima do bucket/target.
     if forecast_temp is not None and target_c is not None:
-        eff_sigma = sigma if (sigma and sigma > 0) else {1: 4.0, 2: 4.5, 3: 5.0}.get(day_offset, 5.0)
+        eff_sigma = sigma if (sigma and sigma > 0) else get_base_sigma(day_offset)
         sigma_cap = SIGMA_CAP_EXACT if condition == "EXACT" else SIGMA_CAP_ABOVE_BELOW
         eff_sigma = min(eff_sigma, sigma_cap)
 

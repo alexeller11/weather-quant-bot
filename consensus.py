@@ -40,6 +40,23 @@ class ConsensusEngine:
     ) -> Optional[float]:
         if not self.weatherapi_key:
             return None
+        # AUDITORIA bug #5: o horizonte da WeatherAPI é ~14 dias. Para
+        # datas para além disso, `dt` é silenciosamente ignorado e a API
+        # devolve "today" or um valor inválido — antes esse valor errado
+        # era comparado ao forecast OM (T+N), produzindo divergências
+        # espúrias ou consensus falsos. Rejeitamos explicitamente.
+        try:
+            target = datetime.strptime(date_str, "%Y-%m-%d").date()
+        except Exception:
+            logger.warning(f"[consensus] date_str invalida: {date_str!r}")
+            return None
+        today = datetime.utcnow().date()
+        if (target - today).days > 14:
+            logger.info(
+                f"[consensus] WeatherAPI nao cobre {date_str} (>"
+                f"14d) — usando só Open-Meteo"
+            )
+            return None
         try:
             r = requests.get(
                 "https://api.weatherapi.com/v1/forecast.json",
@@ -71,17 +88,24 @@ class ConsensusEngine:
         """
         Verifica consenso entre Open-Meteo e WeatherAPI.
 
-        threshold adaptativo (v2.1):
-          EXACT   → 2.5°C  (ajustado de 1.5 — divergência natural maior em verão)
-          RANGE2  → 3.5°C  (ajustado de 2.0 — buckets de 2°F precisam de margem)
-          ABOVE/BELOW → 3.0°C  (mantido)
+        AUDITORIA bug #5: `temp_openmeteo` deve ser o forecast PURO
+        (sem bias correction). Antes recebia o valor corrigido enquanto
+        o WeatherAPI tem o seu próprio viés não corrigido — comparação
+        sob convenções diferentes inflava falsos "sem consenso" nas
+        cidades com maior correção. Comparar os dois crus é equivalente
+        a subtrair os vieses relativos; se forem pequenos, consenso OK.
+
+        threshold adaptativo (v2.1 + bug #7):
+          EXACT       → 1.5°C (bucket narrow → exigir coerção alta)
+          RANGE2      → 2.0°C (bucket de 2°C → máx 1 bucket de diferença)
+          ABOVE/BELOW → 3.0°C (threshold original)
         """
         if threshold is None:
             cond = condition.upper()
             if cond == "EXACT":
-                threshold = 2.5
+                threshold = 1.5
             elif cond == "RANGE2":
-                threshold = 3.5
+                threshold = 2.0
             else:
                 threshold = 3.0
 

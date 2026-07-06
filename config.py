@@ -26,7 +26,13 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-TRADING_ENABLED       = int(os.getenv("TRADING_ENABLED", "0"))
+# AUDITORIA bug #17: aceitar "1"/"true"/"yes"/"on" (case-insensitive).
+# Antes `int(...)` crashava ao import com TRADING_ENABLED=true/yes.
+def _parse_bool_env(name: str, default: str = "0") -> bool:
+    raw = (os.getenv(name) or default).strip().lower()
+    return raw in ("1", "true", "yes", "on", "t", "y")
+
+TRADING_ENABLED       = _parse_bool_env("TRADING_ENABLED", "0")
 
 # AJUSTADO: 0.80 → 0.72
 # Tokyo prob=0.766 com edge=+0.647 era trade válido sendo bloqueado

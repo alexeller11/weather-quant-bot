@@ -36,8 +36,18 @@ def normal_cdf(x: float) -> float:
 
 
 def get_base_sigma(day_offset: int) -> float:
-    """Sigma base recalibrado após 39 trades reais."""
-    return {1: 4.0, 2: 4.5, 3: 5.0}.get(day_offset, 6.0)
+    """
+    sigma base por horizonte — FONTE ÚNICA para todo o projeto.
+
+    AUDITORIA bug #3: antes desta consolidacao, tres copias discordavam:
+      forecast.py: {1:4,2:4.5,3:5,4:5.5,5:6}, default 6.0
+      model.py:    {1:4,2:4.5,3:5},           default 6.0
+      risk.py:     {1:4,2:4.5,3:5},           default 5.0   (!!)
+    modelo e gate de risco aplicavam sigma diferente ao mesmo mercado.
+    Tudo agora deriva desta funcao.
+    """
+    base = {1: 4.0, 2: 4.5, 3: 5.0, 4: 5.5, 5: 6.0}
+    return base.get(int(day_offset), 6.0)
 
 
 def to_celsius(value: float, unit: str) -> float:
