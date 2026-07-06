@@ -23,6 +23,7 @@
 import logging
 import requests
 import time
+import unicodedata
 from datetime import datetime, timezone, timedelta
 
 from config import CITY_COORDS, CITY_TZ, CITY_SLUG_NORMALIZE, BIAS_WINDOW_DAYS, BIAS_MIN_SAMPLES, FORECAST_CACHE_TTL
@@ -33,6 +34,14 @@ try:
     from zoneinfo import ZoneInfo
 except ImportError:
     ZoneInfo = None
+
+
+def _strip_accents(text: str) -> str:
+    """Strips accents — igual ao bankroll.normalize_city_slug."""
+    if not text:
+        return ""
+    normalized = unicodedata.normalize("NFKD", str(text))
+    return "".join(ch for ch in normalized if not unicodedata.combining(ch))
 
 
 def city_now(city_slug):
@@ -60,10 +69,16 @@ _BIAS_CACHE_TTL = FORECAST_CACHE_TTL
 
 
 def _city_raw_to_slug(city_raw, slug_normalize):
-    slug = slug_normalize.get(city_raw)
+    # AUDITORIA bug #14: antes .lower().replace(" ","-").replace("_","-")
+    # NÃO tirava acentos — "São Paulo" → "são-paulo", que NÃO batia com
+    # "sao-paulo" em CITY_SLUG_NORMALIZE, deixando cidades acentuadas
+    # (São Paulo, México City, Tóquio/ver alterações) de fora do bias.
+    # Agora strip de acentos antes de tudo, igual ao bankroll.
+    norm = _strip_accents(city_raw).strip().lower().replace("_", "-").replace(" ", "-")
+    slug = slug_normalize.get(city_raw) or slug_normalize.get(norm)
     if slug:
         return slug
-    return city_raw.lower().replace(" ", "-").replace("_", "-").strip()
+    return norm or (city_raw or "").lower().strip()
 
 
 def compute_bias(city_slug):
@@ -116,9 +131,22 @@ def compute_bias(city_slug):
                 if exit_dt < cutoff:
                     continue
             except Exception:
-                pass
+                # Timestamp ilegível: NÃO inclui a amostra — antes, trades sem
+                # exit_time válido eram todos incluídos, widenndo a janela.
+                continue
 
-        err = float(t["forecast_c"]) - float(t["real_temp_c"])
+        # AUDITORIA bug #1: usar o forecast PURO (sem correção). Antes lia
+        # `forecast_c`, que o bot.py grava já corrigido pelo bias → loop de
+        # auto-feedback onde o bias era estimado sobre o seu próprio output,
+        # convergindo para zero. Preferimos `forecast_c_raw` se presente;
+        # fallback para `forecast_c` mantém histórico antigo compatible.
+        raw_forecast = t.get("forecast_c_raw")
+        if raw_forecast is None:
+            raw_forecast = t.get("forecast_c")
+        if raw_forecast is None:
+            continue
+
+        err = float(raw_forecast) - float(t["real_temp_c"])
         sample_key = (str(t.get("market_date", "")), int(t.get("forecast_day", 1) or 1))
         samples[sample_key] = err
 
@@ -140,12 +168,16 @@ def compute_bias(city_slug):
 
 def get_corrected_forecast(city_slug, forecast_day):
     """
-    Retorna (forecast_c_corrigido, raw_sigma, bias_aplicado).
-    forecast_c_corrigido = forecast_c_raw - bias
+    Retorna (forecast_c_corrigido, raw_sigma, bias_aplicado, forecast_c_raw).
+
+    AUDITORIA bug #1: agora retorna TAMBÉM o forecast cru (raw) para que o
+    bot.py possa persistir `forecast_c_raw` no trade e o compute_bias()
+    estime o viés sobre o valor PURO — sem o loop de auto-feedback que
+    media o bias sobre o seu próprio output.
     """
     raw = get_forecast(city_slug, forecast_day)
     if raw is None or raw[0] is None:
-        return None, None, 0.0
+        return None, None, 0.0, None
 
     forecast_c, raw_sigma = raw
     bias_c, n_samples = compute_bias(city_slug)
@@ -159,7 +191,7 @@ def get_corrected_forecast(city_slug, forecast_day):
             f"(bias={bias_c:+.2f}°C, n={n_samples})"
         )
 
-    return corrected, raw_sigma, bias_c
+    return corrected, raw_sigma, bias_c, forecast_c
 
 
 # =========================================================

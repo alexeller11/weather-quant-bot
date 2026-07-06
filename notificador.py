@@ -411,10 +411,30 @@ def processar_comando(texto):
             enviar_mensagem(f"Erro na validacao: {e}")
 
     elif cmd.startswith("/resetbankroll"):
-        # Reseta o bankroll no PostgreSQL para $200 limpos
+        # AUDITORIA bug #29: antes executava imediato — um botão mal
+        # clicado no Telegram removia TODO o histórico. Agora exige
+        # confirmação explícita em 2 passos:
+        #   1) /resetbankroll [valor]     -> pede confirmação
+        #   2) /resetbankroll CONFIRMAR [valor]  -> executa
         parts = cmd.split()
+        confirm_token = parts[1] if len(parts) > 1 else ""
+        if confirm_token != "confirmar":
+            try:
+                valor = float(parts[1]) if len(parts) > 1 else 200.0
+            except Exception:
+                valor = 200.0
+            enviar_mensagem(
+                f"<b>CONFIRMAÇÃO NECESSÁRIA</b>\n\n"
+                f"Estás prestes a resetar o bankroll para <b>${valor:.2f}</b>, "
+                f"apagando TODO o histórico de trades.\n\n"
+                f"Isto é irreversível.\n\n"
+                f"Para confirmar, envia:\n"
+                f"<code>/resetbankroll confirmar {valor:g}</code>"
+            )
+            return
+        # Segundo passo: CONFIRMAR presente
         try:
-            valor = float(parts[1]) if len(parts) > 1 else 200.0
+            valor = float(parts[2]) if len(parts) > 2 else 200.0
             valor = max(10.0, min(valor, 10000.0))
         except Exception:
             valor = 200.0
@@ -436,7 +456,7 @@ def processar_comando(texto):
             "/status                  — Saldo e trades abertos\n"
             "/validacao               — Relatório do modelo\n"
             "/settlement              — Liquidar agora\n"
-            "/resetbankroll [valor]   — Resetar saldo (padrão $200)\n"
+            "/resetbankroll [valor]   — Resetar saldo (exige CONFIRMAR)\n"
             "/help                    — Esta mensagem\n\n"
             "<b>💬 Conversa livre com IA</b>\n"
             "<i>Manda qualquer pergunta — a IA (Groq llama-3.3-70b) "

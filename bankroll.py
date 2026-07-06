@@ -274,11 +274,25 @@ def _process_lock():
                 _LOCK_FD = open(lock_path, "a+")
                 try:
                     if _HAS_FCNTL:
+                        # POSIX: flock block até você pegar (LOCK_EX).
                         fcntl.flock(_LOCK_FD.fileno(), fcntl.LOCK_EX)
                     elif _HAS_MSVCRT:
-                        # Windows: lock 1 byte at offset 0 (exclusive, non-blocking)
+                        # AUDITORIA bug #25: antes era LK_NBLCK
+                        # (try-and-give-up) — em deploy Windows multi-
+                        # processo isso cai no except e operava SEM lock
+                        # de ficheiro (só thread-lock). Agora bloqueamos
+                        # com busy-retry (LK_NBLCK + sleep) até 30 s.
+                        import time as _time
+                        deadline = _time.time() + 30.0
                         _LOCK_FD.seek(0)
-                        msvcrt.locking(_LOCK_FD.fileno(), msvcrt.LK_NBLCK, 1)
+                        while True:
+                            try:
+                                msvcrt.locking(_LOCK_FD.fileno(), msvcrt.LK_NBLCK, 1)
+                                break
+                            except OSError:
+                                if _time.time() >= deadline:
+                                    raise
+                                _time.sleep(0.05)
                     else:
                         if not _LOCK_WARNED:
                             logger.warning(
