@@ -93,7 +93,7 @@ Beijing e Hong Kong bloqueadas por erro sistemático de forecast > 5°C.
 
 ## Antes de usar capital real
 
-- Mínimo 200 trades fechados com as regras v5
+- Mínimo 110 trades fechados com as regras v5
 - Win rate IC 95% inferior > 52%
 - Pelo menos 10 trades RANGE2 para calibrar sigma
 - Período mínimo: 6–8 semanas
