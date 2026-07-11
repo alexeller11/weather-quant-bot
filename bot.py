@@ -17,7 +17,9 @@ import logging
 import time
 import os
 import sys
+import threading
 import schedule
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime, timezone
 from typing import Dict
 
@@ -536,15 +538,54 @@ def scheduled_trading():
     except Exception as e:
         logger.warning(f"trading_cooldown check: {e}")
 
-    for city in cities:
-        try:
-            process_city(city)
-        except Exception as e:
-            logger.error(f"{city.get('name','?')}: {e}", exc_info=True)
+for city in cities:
+    try:
+        process_city(city)
+    except Exception as e:
+        logger.error(f"{city.get('name','?')}: {e}", exc_info=True)
     logger.info("Fim do ciclo")
 
 
+# ── Health-check HTTP server (silencioso, apenas para Render) ────
+_httpd = None
+_httpd_error = None
+
+
+class _HealthHandler(BaseHTTPRequestHandler):
+    """Responde 200 em / e /healthz — sem logs nem body."""
+    def do_GET(self):
+        if self.path in ("/", "/healthz"):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain")
+            self.end_headers()
+            self.wfile.write(b"ok")
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def log_message(self, format, *args):
+        pass  # silencia o log do http.server
+
+
+def _start_health_server():
+    global _httpd, _httpd_error
+    try:
+        port = int(os.environ.get("PORT", "10000"))
+        _httpd = HTTPServer(("0.0.0.0", port), _HealthHandler)
+        _httpd.serve_forever()
+    except Exception as exc:
+        _httpd_error = exc
+        logger.warning(f"[health] erro no servidor HTTP: {exc}")
+
+
 def run():
+    # Arranca servidor HTTP em thread separada (satisfaz port scan do Render)
+    t = threading.Thread(target=_start_health_server, daemon=True)
+    t.start()
+    if _httpd_error:
+        raise RuntimeError(f"[health] nao foi possivel iniciar: {_httpd_error}")
+    logger.info("Health-check HTTP listener iniciado")
+
     try:
         iniciar_listener()
         logger.info("Listener Telegram iniciado")

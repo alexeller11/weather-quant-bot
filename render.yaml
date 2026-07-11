@@ -1,17 +1,16 @@
 services:
-- type: worker
-name: weather-quant-bot
+  - type: web
+    name: weather-quant-bot
     env: python
     buildCommand: pip install -r requirements.txt
-    # CORRIGIDO: Render free tier nao suporta processos em background (&).
-    # bot.py ja integra Telegram listener + scheduler + dashboard embedded —
-    # e o dashboard.py funciona como processo standalone se precisares.
     startCommand: python bot.py
     envVars:
       - key: TRADING_ENABLED
         value: "0"
-      - key: PAPER_EXECUTION_ENABLED
+      - key: PAPER_EXECUTION_REQUIRED
         value: "1"
+      - key: PORT
+        value: "10000"
       - key: DATABASE_URL
         sync: false
       - key: TELEGRAM_TOKEN
