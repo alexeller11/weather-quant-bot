@@ -143,12 +143,16 @@ def compute_bias(city_slug):
 
 def get_corrected_forecast(city_slug, forecast_day):
     """
-    Retorna (forecast_c_corrigido, raw_sigma, bias_aplicado).
+    Retorna (forecast_c_corrigido, raw_sigma, bias_aplicado, forecast_c_raw).
+
     forecast_c_corrigido = forecast_c_raw - bias
+    forecast_c_raw é preservado para evitar feedback loop no compute_bias:
+    o bias é calculado comparando previsao crua vs temperatura real, NAO
+    comparando previsao corrigida vs real (isso criaria ciclo auto-alimentado).
     """
     raw = get_forecast(city_slug, forecast_day)
     if raw is None or raw[0] is None:
-        return None, None, 0.0
+        return None, None, 0.0, None
 
     forecast_c, raw_sigma = raw
     bias_c, n_samples = compute_bias(city_slug)
@@ -162,7 +166,7 @@ def get_corrected_forecast(city_slug, forecast_day):
             f"(bias={bias_c:+.2f}°C, n={n_samples})"
         )
 
-    return corrected, raw_sigma, bias_c
+    return corrected, raw_sigma, bias_c, forecast_c
 
 
 # =========================================================
