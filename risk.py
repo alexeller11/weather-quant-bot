@@ -372,6 +372,54 @@ def event_headroom(open_trades: list, city: str, market_date: str) -> float:
     return max(0.0, MAX_EVENT_EXPOSURE - used)
 
 
+# ── Cooldown após perdas consecutivas ────────────────────────────
+
+def trading_cooldown(history: list) -> tuple:
+    """
+    Bloqueia novas entradas após sequência de perdas consecutivas.
+
+    - 3 perdas seguidas → cooldown de 2 horas
+    - 4 perdas seguidas → cooldown de 4 horas
+    - 5+ perdas seguidas → cooldown de 12 horas
+    - Um WIN quebra a sequência (zera o contador)
+    - Um WIN recente (último trade) também bloqueia alerta
+
+    Returns (bool blocked, str motivo).
+    """
+    consec = consecutive_losses(history)
+    if consec < 3:
+        return False, ""
+
+    now = time.time()
+    last_exit = 0.0
+    for t in reversed(history):
+        if t.get("result") != "OPEN":
+            ts_str = t.get("exit_time") or t.get("entry_time") or ""
+            try:
+                from datetime import datetime, timezone
+                dt = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                last_exit = dt.timestamp()
+            except Exception:
+                pass
+            break
+
+    if consec == 3:
+        cooldown_secs = 2 * 3600
+        label = "3"
+    elif consec == 4:
+        cooldown_secs = 4 * 3600
+        label = "4"
+    else:
+        cooldown_secs = 12 * 3600
+        label = f"{consec}"
+
+    if now - last_exit < cooldown_secs:
+        hours_left = (cooldown_secs - (now - last_exit)) / 3600
+        return True, f"cooldown: {label} perdas consecutivas, aguarde {hours_left:.1f}h"
+
+    return False, ""
+
+
 # ── Circuit breaker de perda diária ─────────────────────────────
 
 def risk_limits_ok(

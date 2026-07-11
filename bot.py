@@ -53,7 +53,7 @@ from settlement import settle_all
 from station_data import city_is_reliable, get_intraday_confirmation
 from config import (
     TRADING_ENABLED,
-    PAPER_EXECUTION_ENABLED,
+    PAPER_EXECUTION_REQUIRED,
     MAX_OPEN_TRADES,
     MAX_TOTAL_EXPOSURE,
     MAX_POSITION,
