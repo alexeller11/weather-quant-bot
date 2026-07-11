@@ -3,7 +3,10 @@ services:
     name: weather-quant-bot
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: bash start.sh
+    # CORRIGIDO: Render free tier nao suporta processos em background (&).
+    # bot.py ja integra Telegram listener + scheduler + dashboard embedded —
+    # e o dashboard.py funciona como processo standalone se precisares.
+    startCommand: python bot.py
     envVars:
       - key: TRADING_ENABLED
         value: "0"
@@ -22,4 +25,6 @@ services:
       - key: GITHUB_BRANCH
         value: main
       - key: GROQ_API_KEY
+        sync: false
+      - key: WEATHERAPI_KEY
         sync: false
