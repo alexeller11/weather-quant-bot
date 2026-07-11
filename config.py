@@ -270,9 +270,49 @@ def load_cities():
 
 CITIES = load_cities()
 
+# ── Popula CITY_COORDS, CITY_TZ, CITY_SLUG_ALIASES a partir do fallback ──
+# Quando cities.json não existe, estes dicts eram deixados vazios,
+# causando "cidade desconhecida" em forecast.py e station_data.py.
+_CITY_TZ_MAP = {
+    "new-york": "America/New_York",
+    "london": "Europe/London",
+    "paris": "Europe/Paris",
+    "hong-kong": "Asia/Hong_Kong",
+    "tokyo": "Asia/Tokyo",
+    "seoul": "Asia/Seoul",
+    "beijing": "Asia/Shanghai",
+    "sao-paulo": "America/Sao_Paulo",
+    "milan": "Europe/Rome",
+    "los-angeles": "America/Los_Angeles",
+    "houston": "America/Chicago",
+    "austin": "America/Chicago",
+    "denver": "America/Denver",
+    "seattle": "America/Los_Angeles",
+    "chicago": "America/Chicago",
+    "phoenix": "America/Phoenix",
+    "miami": "America/New_York",
+    "atlanta": "America/New_York",
+    "boston": "America/New_York",
+    "toronto": "America/Toronto",
+    "madrid": "Europe/Madrid",
+    "mexico-city": "America/Mexico_City",
+}
+
+# Mapa nome -> slug para construir CITY_COORDS/TZ a partir do fallback
+_NAME_TO_SLUG = {c["name"].lower(): c.get("slug", c["name"].lower().replace(" ", "-")) for c in _CITIES_FALLBACK}
+
 CITY_COORDS = {}
 CITY_TZ = {}
 CITY_SLUG_ALIASES = {}
+for slug in CITY_SLUGS:
+    display = CITY_DISPLAY.get(slug.replace("-", " "), slug)
+    name_key = display.lower() if isinstance(display, str) else slug
+    for c in _CITIES_FALLBACK:
+        if c["name"].lower() == name_key:
+            CITY_COORDS[slug] = (c["lat"], c["lon"])
+            break
+    CITY_TZ[slug] = _CITY_TZ_MAP.get(slug, "UTC")
+    CITY_SLUG_ALIASES[slug] = [slug.replace("-", " "), slug]
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
 CHAT_ID = os.getenv("CHAT_ID", "")

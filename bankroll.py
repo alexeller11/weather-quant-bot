@@ -342,12 +342,21 @@ def _get_db():
     url = os.environ.get("DATABASE_URL", "")
     if not url:
         return None
+    url = url.strip()
+    # Validação básica: deve ter formato postgres:// ou postgresql://
+    if not url.startswith(("postgres://", "postgresql://")):
+        logger.warning(
+            f" [db] DATABASE_URL invalida: deve comecar com "
+            f"'postgres://' ou 'postgresql://'. Recebido: "
+            f"{url[:40]}{'...' if len(url) > 40 else ''}"
+        )
+        return None
     try:
         import psycopg2
         conn = psycopg2.connect(url, sslmode="require")
         return conn
     except Exception as e:
-        logger.warning(f"  [db] conexão falhou: {e}")
+        logger.warning(f" [db] conexao falhou: {e}")
         return None
 
 
