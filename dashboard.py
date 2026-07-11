@@ -13,6 +13,7 @@ except ImportError:
     ThreadingHTTPServer = HTTPServer
 
 from bankroll import dedupe_history_by_market, check_balance_invariant
+from decision_log import load_decisions, summarize_decisions, trade_execution_summary
 try:
     from config import START_BALANCE
 except Exception:
@@ -152,6 +153,40 @@ def _scatter_trades(history):
         })
     return pts
 
+def _readiness_report(history, open_t, balance_divergence, execution):
+    orderbook=int(execution.get("paper_orderbook") or 0)
+    closed_orderbook=int(execution.get("closed_orderbook") or 0)
+    avg_fill=execution.get("avg_fill_ratio")
+    avg_slip=execution.get("avg_slippage")
+    tiny=int(execution.get("tiny_orderbook_trades") or 0)
+    checks=[
+        {"label":"30+ orderbook-paper trades","ok":orderbook>=30,
+         "value":f"{orderbook}/30"},
+        {"label":"10+ settled orderbook-paper trades","ok":closed_orderbook>=10,
+         "value":f"{closed_orderbook}/10"},
+        {"label":"avg fill ratio >= 98%","ok":avg_fill is not None and avg_fill>=0.98,
+         "value":("N/A" if avg_fill is None else f"{avg_fill*100:.1f}%")},
+        {"label":"avg slippage <= 3pp","ok":avg_slip is not None and avg_slip<=0.03,
+         "value":("N/A" if avg_slip is None else f"{avg_slip*100:.2f}pp")},
+        {"label":"no sub-$1 execution trades","ok":tiny==0,
+         "value":str(tiny)},
+        {"label":"bankroll invariant <= $0.05","ok":abs(float(balance_divergence or 0))<=0.05,
+         "value":f"${float(balance_divergence or 0):+.2f}"},
+        {"label":"open exposure under control","ok":len(open_t)<=5,
+         "value":str(len(open_t))},
+    ]
+    passed=sum(1 for c in checks if c["ok"])
+    score=round(passed/len(checks)*100)
+    if score>=100:
+        level="READY FOR SMALL LIVE PILOT"
+    elif score>=75:
+        level="ALMOST READY"
+    elif score>=50:
+        level="VALIDATING"
+    else:
+        level="NOT VALIDATED"
+    return {"score":score,"level":level,"checks":checks}
+
 def build_stats(data):
     raw_history=data.get("history",[])
     history=dedupe_history_by_market(raw_history)
@@ -211,6 +246,9 @@ def build_stats(data):
     for t in closed:
         d=(t.get("exit_time","") or "")[:10]
         if d: day_counts[d]+=1
+    execution=trade_execution_summary(history)
+    decision_log=summarize_decisions(load_decisions())
+    readiness=_readiness_report(history, open_t, balance_divergence, execution)
 
     return {
         "balance":round(float(balance),2),
@@ -235,6 +273,9 @@ def build_stats(data):
         "heatmap_dates":heatmap_dates[-14:],
         "scatter_trades":_scatter_trades(history),
         "trade_density":[{"date":d,"count":c} for d,c in sorted(day_counts.items())],
+        "execution":execution,
+        "decision_log":decision_log,
+        "readiness":readiness,
         "radar":{
             "win_rate":win_rate,
             "profit_factor":min(100,pf*25),
@@ -350,6 +391,15 @@ tr:hover td{background:rgba(0,212,255,.02)}
 .gw{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:4px;min-height:160px}
 .gnum{font-family:var(--display);font-size:38px;font-weight:900;color:#fff;text-align:center;line-height:1}
 .gsub{font-size:10px;color:var(--muted);text-align:center}
+.mini{display:grid;gap:7px;font-size:10px;color:var(--text)}
+.mrow{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid rgba(0,180,255,.05);padding:4px 0}
+.mrow span:first-child{color:var(--muted)}
+.pill{display:inline-flex;align-items:center;border:1px solid var(--border);border-radius:12px;padding:1px 7px;font-size:9px;white-space:nowrap}
+.pill.ok{border-color:rgba(0,255,136,.25);color:var(--green);background:rgba(0,255,136,.05)}
+.pill.warn{border-color:rgba(255,184,0,.25);color:var(--amber);background:rgba(255,184,0,.06)}
+.pill.bad{border-color:rgba(255,45,85,.25);color:var(--red);background:rgba(255,45,85,.06)}
+.checks{display:flex;flex-wrap:wrap;gap:5px}
+.reason{display:flex;justify-content:space-between;gap:8px;color:var(--muted);font-size:10px}
 .card,.kpi,.tcard{transition:border-color .25s,box-shadow .25s,transform .25s}
 .ch{position:relative;overflow:hidden}.ch canvas{position:absolute;top:0;left:0}
 </style>
@@ -380,6 +430,11 @@ tr:hover td{background:rgba(0,212,255,.02)}
   <div class=\"kpi\" style=\"--acc:var(--amber)\"><div class=\"kl\">Profit Factor</div><div class=\"kv\" id=\"kPF\">\u2014</div><div class=\"ks\">&ge;1.5 = excelente</div></div>
   <div class=\"kpi\" style=\"--acc:var(--red)\"><div class=\"kl\">Max Drawdown</div><div class=\"kv\" id=\"kMDD\">\u2014</div><div class=\"ks\">queda m\u00e1x do pico</div></div>
   <div class=\"kpi\" style=\"--acc:#4dd0e1\"><div class=\"kl\">Sharpe Ratio</div><div class=\"kv\" id=\"kSh\">\u2014</div><div class=\"ks\">&gt;1 = bom</div></div>
+</div>
+<div class=\"g3\">
+  <div class=\"card\"><div class=\"ct\">ORDERBOOK PAPER EXECUTION</div><div class=\"mini\" id=\"execPanel\"></div></div>
+  <div class=\"card\"><div class=\"ct\">REAL MONEY READINESS</div><div class=\"mini\" id=\"readyPanel\"></div></div>
+  <div class=\"card\"><div class=\"ct\">DECISION LOG</div><div class=\"mini\" id=\"decisionPanel\"></div></div>
 </div>
 <div class=\"hero\">
   <div class=\"card\">
@@ -449,7 +504,7 @@ tr:hover td{background:rgba(0,212,255,.02)}
   </div>
   <div class=\"twrap\"><table><thead><tr>
     <th>Cidade</th><th>Data</th><th>Side</th><th>Tipo</th><th>Stake</th>
-    <th>Prob</th><th>Entry</th><th>Edge</th><th>Pergunta</th>
+    <th>Prob</th><th>Entry</th><th>Edge</th><th>Exec</th><th>Slip/Fill</th><th>Pergunta</th>
   </tr></thead><tbody id=\"oBody\"></tbody></table></div>
 </div>
 <div class=\"tcard\">
@@ -469,7 +524,7 @@ async function fetchData(){try{const r=await fetch('/api/stats');if(!r.ok)throw 
 fetchData();setInterval(fetchData,20000);
 let _firstRender=true;
 function render(){if(!D)return;
-  wbar();kpis();infoBar();ticker();buildChips();
+  wbar();kpis();infoBar();ticker();opsPanels();buildChips();
   equity();drawdown();heatmap();gauge();
   cityChart();typeChart();calibration();rollingWR();edgeChart();density();radar();scatter();
   tables();globe();
@@ -520,6 +575,28 @@ function infoBar(){
   $('iB').textContent=D.brier!=null?D.brier:'N/A';
   const w=$('iW');
   if(D.win_rate_10!=null){w.textContent=D.win_rate_10+'%';w.style.color=D.win_rate_10>=55?'var(--green)':D.win_rate_10>=45?'var(--amber)':'var(--red)'}else w.textContent='N/A';
+}
+function pct(v){return v==null?'N/A':(v*100).toFixed(1)+'%'}
+function pp(v){return v==null?'N/A':(v*100).toFixed(2)+'pp'}
+function opsPanels(){
+  const ex=D.execution||{}, rd=D.readiness||{}, dl=D.decision_log||{};
+  $('execPanel').innerHTML=[
+    ['Orderbook paper',ex.paper_orderbook||0],
+    ['Legacy paper',ex.legacy_paper||0],
+    ['Live orders',ex.live||0],
+    ['Avg slippage',pp(ex.avg_slippage)],
+    ['Avg fill ratio',pct(ex.avg_fill_ratio)],
+    ['Sub-$1 executions',ex.tiny_orderbook_trades||0],
+  ].map(r=>`<div class=\"mrow\"><span>${r[0]}</span><strong>${r[1]}</strong></div>`).join('');
+  const cls=(rd.score||0)>=100?'ok':(rd.score||0)>=50?'warn':'bad';
+  const checks=(rd.checks||[]).map(c=>`<span class=\"pill ${c.ok?'ok':'bad'}\" title=\"${c.value||''}\">${c.label}</span>`).join('');
+  $('readyPanel').innerHTML=`<div class=\"mrow\"><span>Score</span><strong class=\"pill ${cls}\">${rd.score||0}%</strong></div>
+    <div class=\"mrow\"><span>Status</span><strong>${rd.level||'N/A'}</strong></div>
+    <div class=\"checks\">${checks}</div>`;
+  const reasons=Object.entries(dl.by_reason||{}).slice(0,7).map(([k,v])=>`<div class=\"reason\"><span>${k}</span><strong>${v}</strong></div>`).join('');
+  $('decisionPanel').innerHTML=`<div class=\"mrow\"><span>Total eventos</span><strong>${dl.total||0}</strong></div>
+    <div class=\"mrow\"><span>Ultimo trade/sinal</span><strong>${(dl.last_trade_ts||'N/A').slice(0,19)}</strong></div>
+    ${reasons||'<div class=\"empty2\" style=\"padding:8px\">Sem decisoes ainda</div>'}`;
 }
 function buildChips(){
   const wrap=$('chips');const cities=['all',...Object.keys(D.city_stats)];
@@ -667,11 +744,15 @@ function tables(){
     const s=t.side||'YES';const pa=t.model_prob!=null?(s==='NO'?Math.round((1-t.model_prob)*100):Math.round(t.model_prob*100)):null;
     const sc=s==='NO'?'var(--amber)':'var(--cyan)';const ep=Math.round((t.entry_price||t.market_price||0)*100);
     const e=((t.edge||0)*100).toFixed(1);
+    const ex=t.paper_execution?'BOOK':'LEGACY';
+    const slip=t.slippage!=null?(t.slippage*100).toFixed(2)+'pp':'N/A';
+    const fill=t.fill_ratio!=null?(t.fill_ratio*100).toFixed(0)+'%':'N/A';
     return`<tr><td><span class=\"ctag\">${t.city||'\u2014'}</span></td><td>${t.market_date||'\u2014'}</td><td><b style=\"color:${sc}\">${s}</b></td><td style=\"color:var(--amber)\">${t.type||'\u2014'}</td><td>$${(t.stake||0).toFixed(2)}</td>
     <td><div class=\"pb\"><div class=\"pbg\"><div class=\"pbf\" style=\"width:${pa||0}%;background:${sc}\"></div></div>${pa!=null?pa+'%':'\u2014'}</div></td>
     <td>${ep}%</td><td class=\"${parseFloat(e)>=0?'bw':'bl'}\">${parseFloat(e)>=0?'+':''}${e}%</td>
+    <td><span class=\"pill ${t.paper_execution?'ok':'warn'}\">${ex}</span></td><td style=\"color:var(--muted);font-size:10px\">${slip} / ${fill}</td>
     <td style=\"color:var(--muted);font-size:10px\">${(t.question||'').substring(0,46)}\u2026</td></tr>`;
-  }).join(''):'<tr><td colspan=\"9\" class=\"empty2\">Nenhuma posi\u00e7\u00e3o aberta</td></tr>';
+  }).join(''):'<tr><td colspan=\"11\" class=\"empty2\">Nenhuma posi\u00e7\u00e3o aberta</td></tr>';
   const closed=(D.closed_trades||[]).filter(t=>{
     if(aC!=='all'&&t.city!==aC)return false;
     if(aR==='all'||aR==='OPEN')return true;return t.result===aR;

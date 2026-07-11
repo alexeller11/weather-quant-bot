@@ -41,6 +41,21 @@ _THREAD_LOCK = threading.RLock()
 _LOCK_DEPTH = 0
 _LOCK_FD = None
 
+# ── File-lock compatibilidade multi-plataforma ────────────────────
+try:
+    import fcntl
+    _HAS_FCNTL = True
+except ImportError:
+    _HAS_FCNTL = False
+
+try:
+    import msvcrt
+    _HAS_MSVCRT = True
+except ImportError:
+    _HAS_MSVCRT = False
+
+_LOCK_WARNED = False  # para logar uma única vez se nenhum lock disponível
+
 # ──────────────────────────────────────────────────────────────
 # NORMALIZAÇÃO E CHAVES CANÔNICAS
 # ──────────────────────────────────────────────────────────────
@@ -250,7 +265,7 @@ def already_traded(history, market_id):
 
 @contextmanager
 def _process_lock():
-    global _LOCK_DEPTH, _LOCK_FD
+    global _LOCK_DEPTH, _LOCK_FD, _LOCK_WARNED
     lock_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), LOCK_FILE)
     with _THREAD_LOCK:
         acquired_here = False
@@ -258,10 +273,37 @@ def _process_lock():
             try:
                 _LOCK_FD = open(lock_path, "a+")
                 try:
-                    import fcntl
-                    fcntl.flock(_LOCK_FD.fileno(), fcntl.LOCK_EX)
+                    if _HAS_FCNTL:
+                        # POSIX: flock block até você pegar (LOCK_EX).
+                        fcntl.flock(_LOCK_FD.fileno(), fcntl.LOCK_EX)
+                    elif _HAS_MSVCRT:
+                        # AUDITORIA bug #25: antes era LK_NBLCK
+                        # (try-and-give-up) — em deploy Windows multi-
+                        # processo isso cai no except e operava SEM lock
+                        # de ficheiro (só thread-lock). Agora bloqueamos
+                        # com busy-retry (LK_NBLCK + sleep) até 30 s.
+                        import time as _time
+                        deadline = _time.time() + 30.0
+                        _LOCK_FD.seek(0)
+                        while True:
+                            try:
+                                msvcrt.locking(_LOCK_FD.fileno(), msvcrt.LK_NBLCK, 1)
+                                break
+                            except OSError:
+                                if _time.time() >= deadline:
+                                    raise
+                                _time.sleep(0.05)
+                    else:
+                        if not _LOCK_WARNED:
+                            logger.warning(
+                                "Nenhum file-lock disponível (fcntl/msvcrt). "
+                                "Usando apenas thread-lock — NÃO rode processos concorrentes."
+                            )
+                            _LOCK_WARNED = True
                 except Exception:
-                    pass
+                    if not _LOCK_WARNED:
+                        logger.warning("File-lock falhou — usando apenas thread-lock.")
+                        _LOCK_WARNED = True
                 acquired_here = True
             except Exception:
                 _LOCK_FD = None
@@ -272,8 +314,11 @@ def _process_lock():
             _LOCK_DEPTH -= 1
             if _LOCK_DEPTH == 0 and _LOCK_FD is not None:
                 try:
-                    import fcntl
-                    fcntl.flock(_LOCK_FD.fileno(), fcntl.LOCK_UN)
+                    if _HAS_FCNTL:
+                        fcntl.flock(_LOCK_FD.fileno(), fcntl.LOCK_UN)
+                    elif _HAS_MSVCRT:
+                        _LOCK_FD.seek(0)
+                        msvcrt.locking(_LOCK_FD.fileno(), msvcrt.LK_UNLCK, 1)
                 except Exception:
                     pass
                 try:
@@ -281,8 +326,6 @@ def _process_lock():
                 except Exception:
                     pass
                 _LOCK_FD = None
-            elif acquired_here and _LOCK_FD is None:
-                pass
 
 
 @contextmanager

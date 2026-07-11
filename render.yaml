@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: weather-quant-bot
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: bash start.sh
+    envVars:
+      - key: TRADING_ENABLED
+        value: "0"
+      - key: PAPER_EXECUTION_ENABLED
+        value: "1"
+      - key: DATABASE_URL
+        sync: false
+      - key: TELEGRAM_TOKEN
+        sync: false
+      - key: CHAT_ID
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: GITHUB_REPO
+        sync: false
+      - key: GITHUB_BRANCH
+        value: main
+      - key: GROQ_API_KEY
+        sync: false

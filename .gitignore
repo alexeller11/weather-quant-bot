@@ -31,11 +31,13 @@ __pycache__/
 *.egg-info/
 .venv/
 venv/
+.deps/
 dist/
 build/
 
 # Logs
 *.log
+decision_log.jsonl
 
 # IDE
 .vscode/

@@ -255,6 +255,22 @@ def _build_context():
             brier_mean = round(sum(brier_scores) / len(brier_scores), 4)
             validacao_str = f"\n- Brier Score médio: {brier_mean}"
 
+    # Carrega parâmetros reais do config (não hardcoded)
+    try:
+        from config import (
+            MIN_PROB_ABOVE_BELOW, MIN_PRICE, MIN_TARGET_ZSCORE,
+            MAX_POSITION, MAX_TOTAL_EXPOSURE, MAX_OPEN_TRADES,
+            START_BALANCE,
+        )
+    except Exception:
+        MIN_PROB_ABOVE_BELOW = 0.72
+        MIN_PRICE = 0.15
+        MIN_TARGET_ZSCORE = 1.0
+        MAX_POSITION = 4.0
+        MAX_TOTAL_EXPOSURE = 20.0
+        MAX_OPEN_TRADES = 5
+        START_BALANCE = 100.0
+
     return f"""CONTEXTO DO BOT DE APOSTA — WEATHER QUANTITATIVO:
 
 SITUACAO ATUAL:
@@ -268,17 +284,17 @@ TRADES ABERTOS:{abertos_str if abertos_str else ' Nenhum'}
 
 ÚLTIMOS TRADES FECHADOS:{trades_str if trades_str else ' Nenhum'}
 
-SOBRE O BOT (Weather Quant v4):
+SOBRE O BOT (Weather Quant v5.1):
 - Usa Open-Meteo para forecast de temperatura máxima diária (22 cidades)
 - Modelo Normal com sigma calibrado: D+1=4.0°C, D+2=4.5°C, D+3=5.0°C
-- Filtros ativos: prob >= 80%, zscore >= 1.0, market_price >= 0.30
-- Edge máximo permitido: 40pp (não luta contra o mercado)
+- Filtros ativos: prob >= {MIN_PROB_ABOVE_BELOW*100:.0f}%, zscore >= {MIN_TARGET_ZSCORE:.1f}, market_price >= {MIN_PRICE:.2f}
 - Kelly dinâmico: 50% base → 35% após 2 perdas → 25% após 3+ perdas
-- Cap $2 por trade, exposição máxima $8, máximo 4 abertos
+- Cooldown: 3 losses = 4h, 5 losses = 12h (settlement continua)
+- Cap ${MAX_POSITION:.0f} por trade, exposição máxima ${MAX_TOTAL_EXPOSURE:.0f}, máximo {MAX_OPEN_TRADES} abertos
 - Beijing e Hong Kong bloqueados (erro histórico > 5°C)
 - Confirmação intra-dia para mercados D+0/D+1
 - Settlement automático via scheduler horário
-- Saldo atual resetado: $200 (início limpo após recalibração jun/2026)
+- Saldo inicial: ${START_BALANCE:.0f}
 
 Responda de forma concisa em português. Máximo 3 parágrafos."""
 
@@ -395,10 +411,30 @@ def processar_comando(texto):
             enviar_mensagem(f"Erro na validacao: {e}")
 
     elif cmd.startswith("/resetbankroll"):
-        # Reseta o bankroll no PostgreSQL para $200 limpos
+        # AUDITORIA bug #29: antes executava imediato — um botão mal
+        # clicado no Telegram removia TODO o histórico. Agora exige
+        # confirmação explícita em 2 passos:
+        #   1) /resetbankroll [valor]     -> pede confirmação
+        #   2) /resetbankroll CONFIRMAR [valor]  -> executa
         parts = cmd.split()
+        confirm_token = parts[1] if len(parts) > 1 else ""
+        if confirm_token != "confirmar":
+            try:
+                valor = float(parts[1]) if len(parts) > 1 else 200.0
+            except Exception:
+                valor = 200.0
+            enviar_mensagem(
+                f"<b>CONFIRMAÇÃO NECESSÁRIA</b>\n\n"
+                f"Estás prestes a resetar o bankroll para <b>${valor:.2f}</b>, "
+                f"apagando TODO o histórico de trades.\n\n"
+                f"Isto é irreversível.\n\n"
+                f"Para confirmar, envia:\n"
+                f"<code>/resetbankroll confirmar {valor:g}</code>"
+            )
+            return
+        # Segundo passo: CONFIRMAR presente
         try:
-            valor = float(parts[1]) if len(parts) > 1 else 200.0
+            valor = float(parts[2]) if len(parts) > 2 else 200.0
             valor = max(10.0, min(valor, 10000.0))
         except Exception:
             valor = 200.0
@@ -420,7 +456,7 @@ def processar_comando(texto):
             "/status                  — Saldo e trades abertos\n"
             "/validacao               — Relatório do modelo\n"
             "/settlement              — Liquidar agora\n"
-            "/resetbankroll [valor]   — Resetar saldo (padrão $200)\n"
+            "/resetbankroll [valor]   — Resetar saldo (exige CONFIRMAR)\n"
             "/help                    — Esta mensagem\n\n"
             "<b>💬 Conversa livre com IA</b>\n"
             "<i>Manda qualquer pergunta — a IA (Groq llama-3.3-70b) "
