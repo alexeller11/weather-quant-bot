@@ -58,6 +58,9 @@ PROB_DEADZONE_MAX = float(os.getenv("PROB_DEADZONE_MAX", "0.55"))
 PROBABILITY_DEAD_ZONE_LOW = PROB_DEADZONE_MIN
 PROBABILITY_DEAD_ZONE_HIGH = PROB_DEADZONE_MAX
 
+# ── Circuit breaker de perda diária ─────────────────────────────
+MAX_DAILY_LOSS = float(os.getenv("MAX_DAILY_LOSS", "10.00"))
+
 # AJUSTADO v5.5: 0.08 -> 0.15 para YES
 # Seoul a 0.09 gerou retorno de 39x distorcendo paper trading.
 # Preços abaixo de 0.15 indicam mercado ilíquido ou já "decidido".

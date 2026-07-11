@@ -370,3 +370,87 @@ def event_open_stake(open_trades: list, city: str, market_date: str) -> float:
 def event_headroom(open_trades: list, city: str, market_date: str) -> float:
     used = event_open_stake(open_trades, city, market_date)
     return max(0.0, MAX_EVENT_EXPOSURE - used)
+
+
+# ── Circuit breaker de perda diária ─────────────────────────────
+
+def risk_limits_ok(
+    history: list,
+    balance: float,
+    start_balance: float,
+) -> tuple:
+    """
+    Verifica se o risco global permite novas entradas.
+
+    Regras:
+    - Perda líquida diária (UTC) não pode exceder MAX_DAILY_LOSS.
+    - Se saldo cair abaixo de start_balance, perda acumulada bloqueia.
+
+    Returns (bool ok, str motivo).
+    """
+    from datetime import datetime, timezone
+    from config import MAX_DAILY_LOSS
+
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    daily_loss = 0.0
+    for t in history:
+        if t.get("result") != "OPEN":
+            ts = t.get("exit_time") or t.get("entry_time") or ""
+            if today_str in ts:
+                daily_loss += float(t.get("pnl", 0.0))
+
+    if daily_loss < -MAX_DAILY_LOSS:
+        return False, (
+            f"diario: perda ${abs(daily_loss):.2f} excede limiar "
+            f"${MAX_DAILY_LOSS:.2f}"
+        )
+
+    if balance < start_balance * 0.5:
+        spread = start_balance - balance
+        return False, f"drawdown: ${abs(spread):.2f} abaixo de 50% do bankroll"
+
+    return True, "ok"
+
+
+# ── Distância à borda mais próxima ───────────────────────────────
+
+def _nearest_edge_distance(
+    forecast_temp: float,
+    condition: str,
+    target_c: float,
+    unit: str = "C",
+    target_lo_raw: float = 0.0,
+    target_hi_raw: float = 0.0,
+) -> float:
+    """
+    Distância da previsão à borda mais próxima do bucket alvo.
+
+    Todos os valores já chegam em °C (o caller converte antes de chamar).
+    O parâmetro ``unit`` é informativo para compatibilidade com código
+    que trabalha em °F — NÃO faz conversão aqui.
+
+    Usado para filtrar trades onde o forecast está "no meio"
+    do bucket (máxima incerteza).
+    """
+    forecast_c = forecast_temp
+    lo_c = target_lo_raw
+    hi_c = target_hi_raw
+
+    cond = condition.upper()
+
+    if cond == "ABOVE":
+        return max(0.0, forecast_c - target_c)
+
+    if cond == "BELOW":
+        return max(0.0, target_c - forecast_c)
+
+    if cond == "RANGE2" and lo_c and hi_c:
+        if forecast_c < lo_c:
+            return max(0.0, lo_c - forecast_c)
+        if forecast_c > hi_c:
+            return max(0.0, forecast_c - hi_c)
+        # Dentro do bucket → distância à borda mais próxima
+        return min(forecast_c - lo_c, hi_c - forecast_c)
+
+    # Fallback genérico
+    return abs(forecast_c - target_c)
