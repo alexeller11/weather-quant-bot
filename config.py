@@ -72,6 +72,12 @@ MIN_MARKET_LIQUIDITY = float(os.getenv("MIN_MARKET_LIQUIDITY", "100.00"))
 MIN_MARKET_VOLUME = float(os.getenv("MIN_MARKET_VOLUME", "250.00"))
 MAX_IMPLIED_SPREAD = float(os.getenv("MAX_IMPLIED_SPREAD", "0.08"))
 
+# ── Paper execution (simulação contra order book real) ──────────
+ORDERBOOK_TIMEOUT = int(os.getenv("ORDERBOOK_TIMEOUT", "5"))
+PAPER_EXECUTION_REQUIRED = _parse_bool_env("PAPER_EXECUTION_REQUIRED", "0")
+PAPER_MAX_SLIPPAGE = float(os.getenv("PAPER_MAX_SLIPPAGE", "0.05"))
+PAPER_MIN_FILL_RATIO = float(os.getenv("PAPER_MIN_FILL_RATIO", "0.80"))
+
 # ── Parâmetros antes hardcoded em risk.py ────────────────────────
 MIN_PROB_RANGE2 = float(os.getenv("MIN_PROB_RANGE2", "0.04"))
 MIN_EDGE_RANGE2 = float(os.getenv("MIN_EDGE_RANGE2", "0.02"))
