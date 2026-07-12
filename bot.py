@@ -546,45 +546,47 @@ for city in cities:
     logger.info("Fim do ciclo")
 
 
-# ── Health-check HTTP server (silencioso, apenas para Render) ────
-_httpd = None
-_httpd_error = None
+# ── Dashboard HTTP server (satisfaz Render + serve dashboard) ────
+_dashboard_httpd = None
+_dashboard_error = None
 
 
-class _HealthHandler(BaseHTTPRequestHandler):
-    """Responde 200 em / e /healthz — sem logs nem body."""
-    def do_GET(self):
-        if self.path in ("/", "/healthz"):
-            self.send_response(200)
-            self.send_header("Content-Type", "text/plain")
-            self.end_headers()
-            self.wfile.write(b"ok")
-        else:
-            self.send_response(404)
-            self.end_headers()
-
-    def log_message(self, format, *args):
-        pass  # silencia o log do http.server
-
-
-def _start_health_server():
-    global _httpd, _httpd_error
+def _start_dashboard_server():
+    """Arranca o servidor HTTP do dashboard em porta dinâmica (Render)."""
+    global _dashboard_httpd, _dashboard_error
     try:
-        port = int(os.environ.get("PORT", "10000"))
-        _httpd = HTTPServer(("0.0.0.0", port), _HealthHandler)
-        _httpd.serve_forever()
+        from dashboard import Handler, HTML, load_data, build_stats
+        import json
+
+        PORT = int(os.environ.get("PORT", "10000"))
+
+        # Classe wrapper que combina rotas do dashboard + healthz
+        class _CombinedHandler(Handler):
+            def do_GET(self):
+                if self.path in ("/healthz", "/health"):
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/plain")
+                    self.end_headers()
+                    self.wfile.write(b"ok")
+                    return
+                # Resto: delega ao Handler original (/, /api/stats)
+                super().do_GET()
+
+        _dashboard_httpd = HTTPServer(("0.0.0.0", PORT), _CombinedHandler)
+        logger.info(f"Dashboard HTTP listener na porta {PORT}")
+        _dashboard_httpd.serve_forever()
     except Exception as exc:
-        _httpd_error = exc
-        logger.warning(f"[health] erro no servidor HTTP: {exc}")
+        _dashboard_error = exc
+        logger.warning(f"[dashboard] erro no servidor HTTP: {exc}")
 
 
 def run():
-    # Arranca servidor HTTP em thread separada (satisfaz port scan do Render)
-    t = threading.Thread(target=_start_health_server, daemon=True)
+    # Arranca dashboard em thread separada (satisfaz port scan + serve UI)
+    t = threading.Thread(target=_start_dashboard_server, daemon=True)
     t.start()
-    if _httpd_error:
-        raise RuntimeError(f"[health] nao foi possivel iniciar: {_httpd_error}")
-    logger.info("Health-check HTTP listener iniciado")
+    if _dashboard_error:
+        raise RuntimeError(f"[dashboard] nao foi possivel iniciar: {_dashboard_error}")
+    logger.info("Dashboard + health-check HTTP listener iniciado")
 
     try:
         iniciar_listener()
