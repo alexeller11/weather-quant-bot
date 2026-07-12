@@ -149,38 +149,37 @@ def process_city(city: Dict):
         logger.warning(f"{name}: novas entradas bloqueadas por risco — {reason}")
         return
 
-    seen_market_keys = set()
+seen_market_keys = set()
 
-    for m in markets:
+for m in markets:
+    try:
+        market_date = str(m.get("market_date", ""))
+        # Pula mercados com data no passado — settlement ja fecha esses
         try:
-  market_date = str(m.get("market_date", ""))
-  # Pula mercados com data no passado — settlement já fecha esses
-  from datetime import date as _dt_date
-  try:
-    m_date_obj = _dt_date.fromisoformat(market_date[:10])
-    if m_date_obj < _dt_date.today():
-      record_decision("blocked", "market_expired", city=name, market_date=market_date)
-      logger.debug(f"{name}: mercado {market_date} vencido — pulando")
-      continue
-  except (ValueError, TypeError):
-    pass
-  condition = str(m.get("condition", "above")).upper()
-            target = float(m.get("target", 0))
-            unit = str(m.get("unit", "C")).upper()
-            target_lo = m.get("target_lo")
-            target_hi = m.get("target_hi")
-            market_base = str(
-                m.get("market_id")
-                or canonical_market_base(
-                    city=name,
-                    market_date=market_date,
-                    condition=condition,
-                    target=target,
-                    unit=unit,
-                    target_lo=target_lo,
-                    target_hi=target_hi,
-                )
+            m_date_obj = date.fromisoformat(market_date[:10])
+            if m_date_obj < date.today():
+                record_decision("blocked", "market_expired", city=name, market_date=market_date)
+                logger.debug(f"{name}: mercado {market_date} vencido — pulando")
+                continue
+        except (ValueError, TypeError):
+            pass
+        condition = str(m.get("condition", "above")).upper()
+        target = float(m.get("target", 0))
+        unit = str(m.get("unit", "C")).upper()
+        target_lo = m.get("target_lo")
+        target_hi = m.get("target_hi")
+        market_base = str(
+            m.get("market_id")
+            or canonical_market_base(
+                city=name,
+                market_date=market_date,
+                condition=condition,
+                target=target,
+                unit=unit,
+                target_lo=target_lo,
+                target_hi=target_hi,
             )
+        )
 
             if market_base in seen_market_keys:
                 record_decision("blocked", "duplicate_market_in_cycle", city=name, market=m)
