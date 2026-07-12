@@ -103,6 +103,9 @@ FORECAST_CACHE_TTL = int(os.getenv("FORECAST_CACHE_TTL", "3600"))
 MAX_OPEN_TRADE_DAYS = int(os.getenv("MAX_OPEN_TRADE_DAYS", "7"))
 SETTLE_TEMP_RETRIES = int(os.getenv("SETTLE_TEMP_RETRIES", "3"))
 
+# ── Live orderbook gate antes de abrir trade ──────────────────────
+CHECK_LIVE_BEFORE_OPEN = _parse_bool_env("CHECK_LIVE_BEFORE_OPEN", "0")
+
 # ──────────────────────────────────────────────────────────────
 # CIDADES — fonte única: cities.json
 # build_city_maps() DERIVA todos os dicts/listas a partir do JSON.

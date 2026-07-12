@@ -21,13 +21,21 @@ except Exception:
 
 PORT = int(os.environ.get("PORT", 8765))
 
-def load_data():
-    errors = []
-    db_url = os.environ.get("DATABASE_URL")
-    if db_url and db_url.strip():
-        try:
-            import psycopg2
-            conn = psycopg2.connect(db_url, sslmode="require")
+ def _clean_db_url(url):
+    """Strip quotes/spaces from Render-injected DATABASE_URL."""
+    u = (url or "").strip().strip("\"'")
+    if u.startswith("postgres://") or u.startswith("postgresql://"):
+        return u
+    return ""
+
+ def load_data():
+  errors = []
+  raw_db_url = os.environ.get("DATABASE_URL", "")
+  db_url = _clean_db_url(raw_db_url)
+  if db_url and db_url.strip():
+    try:
+      import psycopg2
+      conn = psycopg2.connect(db_url, sslmode="require")
             with conn.cursor() as cur:
                 cur.execute("SELECT data FROM bankroll ORDER BY id DESC LIMIT 1")
                 row = cur.fetchone()

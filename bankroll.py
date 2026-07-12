@@ -338,26 +338,32 @@ def bankroll_lock():
 # POSTGRESQL
 # ──────────────────────────────────────────────────────────────
 
+ def _clean_db_url(url: str) -> str:
+    """Sanitiza URL do Render (remove aspas, espaços, prefixo malformado)."""
+    url = (url or "").strip().strip("\"'")
+    # Render às vezes injeta: postgres://user:pass@host:PORT/db?sslmode=require
+    # mas com aspas ou espaços colados. Remove prefixos host-only que quebram psycopg2.
+    if url.startswith("postgres://") or url.startswith("postgresql://"):
+        return url
+    # Apenas host+porta sem usuário — psycopg2 aceita, mas wrappers quebram
+    return ""
 def _get_db():
-    url = os.environ.get("DATABASE_URL", "")
-    if not url:
-        return None
-    url = url.strip()
-    # Validação básica: deve ter formato postgres:// ou postgresql://
-    if not url.startswith(("postgres://", "postgresql://")):
-        logger.warning(
-            f" [db] DATABASE_URL invalida: deve comecar com "
-            f"'postgres://' ou 'postgresql://'. Recebido: "
-            f"{url[:40]}{'...' if len(url) > 40 else ''}"
-        )
-        return None
-    try:
-        import psycopg2
-        conn = psycopg2.connect(url, sslmode="require")
-        return conn
-    except Exception as e:
-        logger.warning(f" [db] conexao falhou: {e}")
-        return None
+  raw = os.environ.get("DATABASE_URL", "")
+  url = _clean_db_url(raw)
+  if not url:
+    if raw:
+      logger.warning(
+        f" [db] DATABASE_URL invalida (ignorada): "
+        f"'{raw[:50]}{'...' if len(raw) > 50 else ''}'"
+      )
+    return None
+  try:
+    import psycopg2
+    conn = psycopg2.connect(url, sslmode="require")
+    return conn
+  except Exception as e:
+    logger.warning(f" [db] conexao falhou: {e}")
+    return None
 
 
 def _ensure_table(conn):

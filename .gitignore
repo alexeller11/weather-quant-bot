@@ -1,5 +1,5 @@
-# Estado do bot — fonte da verdade é o PostgreSQL
-bankroll.json
+# Estado do bot — bankroll.json é versionado para persistência local
+# bankroll.json  (removido do ignore para o dashboard ter dados no deploy)
 bankroll.json.bak
 bankroll.json.bak2
 bankroll_backup_*.json
@@ -8,7 +8,6 @@ bankroll_override*.json
 bankroll_override*.bak
 bankroll_override*.bak2
 validacao.json
-bankroll.lock
 
 # Backups automáticos
 *.bak

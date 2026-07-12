@@ -153,8 +153,18 @@ def process_city(city: Dict):
 
     for m in markets:
         try:
-            market_date = str(m.get("market_date", ""))
-            condition = str(m.get("condition", "above")).upper()
+  market_date = str(m.get("market_date", ""))
+  # Pula mercados com data no passado — settlement já fecha esses
+  from datetime import date as _dt_date
+  try:
+    m_date_obj = _dt_date.fromisoformat(market_date[:10])
+    if m_date_obj < _dt_date.today():
+      record_decision("blocked", "market_expired", city=name, market_date=market_date)
+      logger.debug(f"{name}: mercado {market_date} vencido — pulando")
+      continue
+  except (ValueError, TypeError):
+    pass
+  condition = str(m.get("condition", "above")).upper()
             target = float(m.get("target", 0))
             unit = str(m.get("unit", "C")).upper()
             target_lo = m.get("target_lo")
