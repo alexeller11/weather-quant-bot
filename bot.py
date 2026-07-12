@@ -11,6 +11,23 @@ v5.6: Correções estruturais
 AUDITORIA SENIOR:
 - check_balance_invariant() agora chamado no inicio de cada ciclo.
   Detecta divergencias entre saldo e historico antes de operar.
+
+PATCH (aplicado nesta versão):
+1) scheduled_trading(): o bloco 'for city in cities: process_city(city)...'
+   estava SEM indentação, ou seja, fora da função (rodava só uma vez, na
+   importação do módulo, e nunca era re-executado pelo scheduler). Reindentado
+   para dentro da função.
+2) run(): o bloco 'schedule.every(...)... / while True: schedule.run_pending()'
+   também estava SEM indentação, fora da função. Isso fazia esse loop infinito
+   rodar no nível do módulo, ANTES do "if __name__ == '__main__': run()" ser
+   alcançado — ou seja, run() (que inicia a thread do servidor HTTP do
+   dashboard) nunca era chamado. Essa é a causa raiz do timeout de porta no
+   Render. Reindentado para dentro da função.
+3) process_city(): 'market_date[:10]' (variável que só existe no 2º loop) foi
+   trocado por 'date_str[:10]' no loop de pré-carga do forecast_cache, que
+   causava UnboundLocalError.
+4) _execute_trade(): 'PAPER_EXECUTION_ENABLED' (nome inexistente) trocado por
+   'PAPER_EXECUTION_REQUIRED' (nome importado de config.py).
 """
 
 import logging
@@ -129,9 +146,11 @@ def process_city(city: Dict):
         date_str = str(m.get("market_date", ""))
         from datetime import date as _dt
         try:
-            _md = _dt.fromisoformat(market_date[:10])
+            # PATCH 3: era 'market_date[:10]' -> 'date_str[:10]'
+            _md = _dt.fromisoformat(date_str[:10])
             if _md < _dt.today():
-                record_decision("blocked", "market_expired", city=name, market_date=market_date)
+                # PATCH 3: era 'market_date=market_date' -> 'market_date=date_str'
+                record_decision("blocked", "market_expired", city=name, market_date=date_str)
                 continue
         except (ValueError, TypeError):
             pass
@@ -356,7 +375,8 @@ def _execute_trade(
         return
 
     execution = None
-    if PAPER_EXECUTION_ENABLED:
+    # PATCH 4: era 'PAPER_EXECUTION_ENABLED' (não existe) -> 'PAPER_EXECUTION_REQUIRED'
+    if PAPER_EXECUTION_REQUIRED:
         execution = simulate_paper_buy(m, side, stake)
         if not execution.ok:
             record_decision(
@@ -546,12 +566,15 @@ def scheduled_trading():
     except Exception as e:
         logger.warning(f"trading_cooldown check: {e}")
 
-for city in cities:
-    try:
-        process_city(city)
-    except Exception as e:
-        logger.error(f"{city.get('name','?')}: {e}", exc_info=True)
+    # PATCH 1: este bloco estava SEM indentação (fora da função) no original.
+    for city in cities:
+        try:
+            process_city(city)
+        except Exception as e:
+            logger.error(f"{city.get('name','?')}: {e}", exc_info=True)
+
     logger.info("Fim do ciclo")
+
     # Estado final do ciclo
     end_data = load_bankroll()
     end_open = [t for t in end_data.get("history", []) if t.get("result") == "OPEN"]
@@ -606,19 +629,21 @@ def run():
     except Exception as e:
         logger.warning(f"Listener Telegram não iniciado: {e}")
 
-schedule.every(1).hours.do(scheduled_trading)
-schedule.every(1).hours.do(settlement_cycle)
-schedule.every().sunday.at("08:00").do(weekly_report_cycle)
-# Trading PRIMEIRO, settlement DEPOIS — evita race condition onde
-# settlement fecha trades que acabaram de ser abertos no mesmo ciclo.
-scheduled_trading()
-logger.info("Aguardando 120s antes da primeira liquidação...")
-time.sleep(120)
-settlement_cycle()
+    # PATCH 2: todo este bloco (até o while True) estava SEM indentação
+    # (fora da função) no original — por isso run() nunca era alcançado.
+    schedule.every(1).hours.do(scheduled_trading)
+    schedule.every(1).hours.do(settlement_cycle)
+    schedule.every().sunday.at("08:00").do(weekly_report_cycle)
+    # Trading PRIMEIRO, settlement DEPOIS — evita race condition onde
+    # settlement fecha trades que acabaram de ser abertos no mesmo ciclo.
+    scheduled_trading()
+    logger.info("Aguardando 120s antes da primeira liquidação...")
+    time.sleep(120)
+    settlement_cycle()
 
-while True:
-    schedule.run_pending()
-    time.sleep(30)
+    while True:
+        schedule.run_pending()
+        time.sleep(30)
 
 
 if __name__ == "__main__":
