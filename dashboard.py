@@ -21,21 +21,16 @@ except Exception:
 
 PORT = int(os.environ.get("PORT", 8765))
 
- def _clean_db_url(url):
-    """Strip quotes/spaces from Render-injected DATABASE_URL."""
-    u = (url or "").strip().strip("\"'")
-    if u.startswith("postgres://") or u.startswith("postgresql://"):
-        return u
-    return ""
-
- def load_data():
-  errors = []
-  raw_db_url = os.environ.get("DATABASE_URL", "")
-  db_url = _clean_db_url(raw_db_url)
-  if db_url and db_url.strip():
-    try:
-      import psycopg2
-      conn = psycopg2.connect(db_url, sslmode="require")
+def load_data():
+    errors = []
+    raw_db_url = os.environ.get("DATABASE_URL", "")
+    # Sanitiza: Render injeta aspas/espaços
+    u = raw_db_url.strip().strip('"'"'"'"')
+    db_url = u if (u.startswith("postgres://") or u.startswith("postgresql://")) else ""
+    if db_url and db_url.strip():
+        try:
+            import psycopg2
+            conn = psycopg2.connect(db_url, sslmode="require")
             with conn.cursor() as cur:
                 cur.execute("SELECT data FROM bankroll ORDER BY id DESC LIMIT 1")
                 row = cur.fetchone()
@@ -45,10 +40,10 @@ PORT = int(os.environ.get("PORT", 8765))
         except Exception as e:
             errors.append(f"PostgreSQL: {str(e)[:80]}")
     else:
-        errors.append("DATABASE_URL não configurada")
+        errors.append("DATABASE_URL n\u00e3o configurada")
     try:
-        token = os.environ.get("GITHUB_TOKEN","").strip()
-        repo = os.environ.get("GITHUB_REPO","").strip()
+        token  = os.environ.get("GITHUB_TOKEN","").strip()
+        repo   = os.environ.get("GITHUB_REPO","").strip()
         branch = os.environ.get("GITHUB_BRANCH","main")
         if token and repo:
             import requests as req
@@ -58,21 +53,12 @@ PORT = int(os.environ.get("PORT", 8765))
                 params={"ref":branch},timeout=10)
             if r.status_code == 200:
                 data = json.loads(base64.b64decode(r.json()["content"]).decode())
-                return data,"⚠ GitHub fallback (PostgreSQL indisponível)"
+                return data,"\u26a0 GitHub fallback (PostgreSQL indispon\u00edvel)"
             errors.append(f"GitHub HTTP {r.status_code}")
         else:
-            errors.append("GITHUB_TOKEN/REPO não configurados")
+            errors.append("GITHUB_TOKEN/REPO n\u00e3o configurados")
     except Exception as e:
         errors.append(f"GitHub: {str(e)[:80]}")
-    # Fallback final: lê bankroll.json local
-    try:
-        local_path = os.path.join(os.path.dirname(__file__), "bankroll.json")
-        if os.path.isfile(local_path):
-            with open(local_path, "r", encoding="utf-8") as fh:
-                data = json.load(fh)
-            return data, "⚠ Dados locais (sem PostgreSQL/GitHub)"
-    except Exception as e:
-        errors.append(f"Local: {str(e)[:80]}")
     return None," | ".join(errors)
 
 
@@ -419,12 +405,6 @@ tr:hover td{background:rgba(0,212,255,.02)}
 .reason{display:flex;justify-content:space-between;gap:8px;color:var(--muted);font-size:10px}
 .card,.kpi,.tcard{transition:border-color .25s,box-shadow .25s,transform .25s}
 .ch{position:relative;overflow:hidden}.ch canvas{position:absolute;top:0;left:0}
-.status-dot{width:6px;height:6px;border-radius:50%;display:inline-block;margin-right:4px;box-shadow:0 0 6px currentColor}
-.status-online{color:var(--green);background:var(--green)}
-.status-offline{color:var(--red);background:var(--red)}
-.status-warn{color:var(--amber);background:var(--amber)}
-.spill.offline{border-color:rgba(255,45,85,.2);color:var(--red);background:rgba(255,45,85,.06)}
-.spill.online{border-color:rgba(0,255,136,.15);color:var(--green);background:rgba(0,255,136,.05)}
 </style>
 </head>
 <body>
@@ -438,13 +418,6 @@ tr:hover td{background:rgba(0,212,255,.02)}
     <button class=\"rbtn2\" onclick=\"fetchData()\">\u21bb SYNC</button>
   </div>
 </header>
-<div class=\"ticker\" id=\"refreshBar\" style=\"display:flex;justify-content:center;align-items:center;height:22px;font-size:10px;color:var(--muted)">
-  ⏱ Próximo refresh em <strong id=\"countdown\" style=\"color:var(--cyan);margin:0 4px\">20</strong>s
-  · <span style=\"color:var(--muted);margin:0 6px\">|</span>
-  Último ciclo: <span id=\"lastCycle\" style=\"color:var(--text)">—</span>
-  · <span style=\"color:var(--muted);margin:0 6px\">|</span>
-  <span id=\"botStatusText\" style=\"color:var(--green)">● ONLINE</span>
-</div>
 <div class=\"ticker\"><div class=\"ticker-inner\" id=\"tkr\"></div></div>
 <div class=\"ibar\">
   <div class=\"ii\">Abertos: <strong id=\"iO\">\u2014</strong></div><div class=\"idiv\"></div>
@@ -551,44 +524,9 @@ tr:hover td{background:rgba(0,212,255,.02)}
 <script>
 let D=null,aC='all',aR='all',ch={};
 async function fetchData(){try{const r=await fetch('/api/stats');if(!r.ok)throw new Error(r.status);D=await r.json();render()}catch(e){console.error(e)}}
-fetchData();
-let _refreshInterval=20000,_countdown=20,_cdTimer;
-function startCountdown(){
-  clearInterval(_cdTimer);
-  _countdown=_refreshInterval/1000;
-  $('countdown').textContent=_countdown;
-  _cdTimer=setInterval(()=>{
-    _countdown--;
-    $('countdown').textContent=_countdown;
-    if(_countdown<=0){_countdown=_refreshInterval/1000}
-  },1000);
-}
-startCountdown();
+fetchData();setInterval(fetchData,20000);
 let _firstRender=true;
-let _lastCycle='';
 function render(){if(!D)return;
-  if(D.bot_online!==false){
-    const bs=$('botStatusText');
-    if(bs){bs.textContent='● ONLINE';bs.style.color='var(--green)'}
-    if(D.updated)_lastCycle=D.updated;
-  }else{
-    const bs=$('botStatusText');
-    if(bs){bs.textContent='● OFFLINE';bs.style.color='var(--red)'}
-  }
-  if($('lastCycle'))$('lastCycle').textContent=_lastCycle||'—';
-  startCountdown();
-  if(D.bot_online!==false){
-    $('botStatusText').textContent='● ONLINE';
-    $('botStatusText').style.color='var(--green)';
-    $('botStatus').className='spill online';
-    $('lastCycle').textContent=D.updated||'—';
-  }else{
-    $('botStatusText').textContent='● OFFLINE';
-    $('botStatusText').style.color='var(--red)';
-    $('botStatus').className='spill offline';
-    $('lastCycle').textContent='sem dados recentes';
-  }
-  startCountdown();
   wbar();kpis();infoBar();ticker();opsPanels();buildChips();
   equity();drawdown();heatmap();gauge();
   cityChart();typeChart();calibration();rollingWR();edgeChart();density();radar();scatter();
