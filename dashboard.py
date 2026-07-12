@@ -37,10 +37,10 @@ def load_data():
         except Exception as e:
             errors.append(f"PostgreSQL: {str(e)[:80]}")
     else:
-        errors.append("DATABASE_URL n\u00e3o configurada")
+        errors.append("DATABASE_URL não configurada")
     try:
-        token  = os.environ.get("GITHUB_TOKEN","").strip()
-        repo   = os.environ.get("GITHUB_REPO","").strip()
+        token = os.environ.get("GITHUB_TOKEN","").strip()
+        repo = os.environ.get("GITHUB_REPO","").strip()
         branch = os.environ.get("GITHUB_BRANCH","main")
         if token and repo:
             import requests as req
@@ -50,12 +50,21 @@ def load_data():
                 params={"ref":branch},timeout=10)
             if r.status_code == 200:
                 data = json.loads(base64.b64decode(r.json()["content"]).decode())
-                return data,"\u26a0 GitHub fallback (PostgreSQL indispon\u00edvel)"
+                return data,"⚠ GitHub fallback (PostgreSQL indisponível)"
             errors.append(f"GitHub HTTP {r.status_code}")
         else:
-            errors.append("GITHUB_TOKEN/REPO n\u00e3o configurados")
+            errors.append("GITHUB_TOKEN/REPO não configurados")
     except Exception as e:
         errors.append(f"GitHub: {str(e)[:80]}")
+    # Fallback final: lê bankroll.json local
+    try:
+        local_path = os.path.join(os.path.dirname(__file__), "bankroll.json")
+        if os.path.isfile(local_path):
+            with open(local_path, "r", encoding="utf-8") as fh:
+                data = json.load(fh)
+            return data, "⚠ Dados locais (sem PostgreSQL/GitHub)"
+    except Exception as e:
+        errors.append(f"Local: {str(e)[:80]}")
     return None," | ".join(errors)
 
 
