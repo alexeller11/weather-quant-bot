@@ -598,11 +598,15 @@ def run():
     except Exception as e:
         logger.warning(f"Listener Telegram não iniciado: {e}")
 
-    schedule.every(1).hours.do(scheduled_trading)
-    schedule.every(1).hours.do(settlement_cycle)
-    schedule.every().sunday.at("08:00").do(weekly_report_cycle)
-    settlement_cycle()
-    scheduled_trading()
+schedule.every(1).hours.do(scheduled_trading)
+schedule.every(1).hours.do(settlement_cycle)
+schedule.every().sunday.at("08:00").do(weekly_report_cycle)
+# Trading PRIMEIRO, settlement DEPOIS — evita race condition onde
+# settlement fecha trades que acabaram de ser abertos no mesmo ciclo.
+scheduled_trading()
+logger.info("Aguardando 120s antes da primeira liquidação...")
+time.sleep(120)
+settlement_cycle()
     while True:
         schedule.run_pending()
         time.sleep(30)
