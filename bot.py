@@ -20,7 +20,7 @@ import sys
 import threading
 import schedule
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from typing import Dict
 
 from bankroll import (
@@ -127,6 +127,14 @@ def process_city(city: Dict):
     forecast_cache = {}
     for m in markets:
         date_str = str(m.get("market_date", ""))
+        from datetime import date as _dt
+        try:
+            _md = _dt.fromisoformat(market_date[:10])
+            if _md < _dt.today():
+                record_decision("blocked", "market_expired", city=name, market_date=market_date)
+                continue
+        except (ValueError, TypeError):
+            pass
         forecast_day = _forecast_day_for_market(date_str, city_slug)
         if forecast_day not in forecast_cache:
             result = get_corrected_forecast(city_slug, forecast_day)
@@ -154,15 +162,6 @@ def process_city(city: Dict):
     for m in markets:
         try:
             market_date = str(m.get("market_date", ""))
-            # Pula mercados com data no passado — settlement ja fecha esses
-            try:
-                m_date_obj = date.fromisoformat(market_date[:10])
-                if m_date_obj < date.today():
-                    record_decision("blocked", "market_expired", city=name, market_date=market_date)
-                    logger.debug(f"{name}: mercado {market_date} vencido — pulando")
-                    continue
-            except (ValueError, TypeError):
-                pass
             condition = str(m.get("condition", "above")).upper()
             target = float(m.get("target", 0))
             unit = str(m.get("unit", "C")).upper()
