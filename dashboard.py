@@ -411,6 +411,12 @@ tr:hover td{background:rgba(0,212,255,.02)}
 .reason{display:flex;justify-content:space-between;gap:8px;color:var(--muted);font-size:10px}
 .card,.kpi,.tcard{transition:border-color .25s,box-shadow .25s,transform .25s}
 .ch{position:relative;overflow:hidden}.ch canvas{position:absolute;top:0;left:0}
+.status-dot{width:6px;height:6px;border-radius:50%;display:inline-block;margin-right:4px;box-shadow:0 0 6px currentColor}
+.status-online{color:var(--green);background:var(--green)}
+.status-offline{color:var(--red);background:var(--red)}
+.status-warn{color:var(--amber);background:var(--amber)}
+.spill.offline{border-color:rgba(255,45,85,.2);color:var(--red);background:rgba(255,45,85,.06)}
+.spill.online{border-color:rgba(0,255,136,.15);color:var(--green);background:rgba(0,255,136,.05)}
 </style>
 </head>
 <body>
@@ -424,6 +430,13 @@ tr:hover td{background:rgba(0,212,255,.02)}
     <button class=\"rbtn2\" onclick=\"fetchData()\">\u21bb SYNC</button>
   </div>
 </header>
+<div class=\"ticker\" id=\"refreshBar\" style=\"display:flex;justify-content:center;align-items:center;height:22px;font-size:10px;color:var(--muted)">
+  ⏱ Próximo refresh em <strong id=\"countdown\" style=\"color:var(--cyan);margin:0 4px\">20</strong>s
+  · <span style=\"color:var(--muted);margin:0 6px\">|</span>
+  Último ciclo: <span id=\"lastCycle\" style=\"color:var(--text)">—</span>
+  · <span style=\"color:var(--muted);margin:0 6px\">|</span>
+  <span id=\"botStatusText\" style=\"color:var(--green)">● ONLINE</span>
+</div>
 <div class=\"ticker\"><div class=\"ticker-inner\" id=\"tkr\"></div></div>
 <div class=\"ibar\">
   <div class=\"ii\">Abertos: <strong id=\"iO\">\u2014</strong></div><div class=\"idiv\"></div>
@@ -530,9 +543,44 @@ tr:hover td{background:rgba(0,212,255,.02)}
 <script>
 let D=null,aC='all',aR='all',ch={};
 async function fetchData(){try{const r=await fetch('/api/stats');if(!r.ok)throw new Error(r.status);D=await r.json();render()}catch(e){console.error(e)}}
-fetchData();setInterval(fetchData,20000);
+fetchData();
+let _refreshInterval=20000,_countdown=20,_cdTimer;
+function startCountdown(){
+  clearInterval(_cdTimer);
+  _countdown=_refreshInterval/1000;
+  $('countdown').textContent=_countdown;
+  _cdTimer=setInterval(()=>{
+    _countdown--;
+    $('countdown').textContent=_countdown;
+    if(_countdown<=0){_countdown=_refreshInterval/1000}
+  },1000);
+}
+startCountdown();
 let _firstRender=true;
+let _lastCycle='';
 function render(){if(!D)return;
+  if(D.bot_online!==false){
+    const bs=$('botStatusText');
+    if(bs){bs.textContent='● ONLINE';bs.style.color='var(--green)'}
+    if(D.updated)_lastCycle=D.updated;
+  }else{
+    const bs=$('botStatusText');
+    if(bs){bs.textContent='● OFFLINE';bs.style.color='var(--red)'}
+  }
+  if($('lastCycle'))$('lastCycle').textContent=_lastCycle||'—';
+  startCountdown();
+  if(D.bot_online!==false){
+    $('botStatusText').textContent='● ONLINE';
+    $('botStatusText').style.color='var(--green)';
+    $('botStatus').className='spill online';
+    $('lastCycle').textContent=D.updated||'—';
+  }else{
+    $('botStatusText').textContent='● OFFLINE';
+    $('botStatusText').style.color='var(--red)';
+    $('botStatus').className='spill offline';
+    $('lastCycle').textContent='sem dados recentes';
+  }
+  startCountdown();
   wbar();kpis();infoBar();ticker();opsPanels();buildChips();
   equity();drawdown();heatmap();gauge();
   cityChart();typeChart();calibration();rollingWR();edgeChart();density();radar();scatter();

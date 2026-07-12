@@ -607,9 +607,10 @@ scheduled_trading()
 logger.info("Aguardando 120s antes da primeira liquidação...")
 time.sleep(120)
 settlement_cycle()
-    while True:
-        schedule.run_pending()
-        time.sleep(30)
+
+while True:
+    schedule.run_pending()
+    time.sleep(30)
 
 
 if __name__ == "__main__":
