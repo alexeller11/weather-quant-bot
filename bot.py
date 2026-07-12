@@ -544,6 +544,10 @@ for city in cities:
     except Exception as e:
         logger.error(f"{city.get('name','?')}: {e}", exc_info=True)
     logger.info("Fim do ciclo")
+    # Estado final do ciclo
+    end_data = load_bankroll()
+    end_open = [t for t in end_data.get("history", []) if t.get("result") == "OPEN"]
+    logger.info(f"[CYCLE] Fim: {len(end_open)} abertos, saldo=${end_data.get('balance',0):.2f}")
 
 
 # ── Dashboard HTTP server (satisfaz Render + serve dashboard) ────
