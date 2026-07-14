@@ -79,6 +79,8 @@ from config import (
     CITIES,
 )
 from decision_log import record_decision
+from analytics.manager import analytics_manager
+from analytics.reports import text as analytics_report_text
 
 logging.basicConfig(
     level=logging.INFO,
@@ -531,6 +533,7 @@ def settlement_cycle():
     logger.info("Iniciando liquidação...")
     try:
         settle_all()
+        update_analytics()
     except Exception as e:
         logger.error(f"Liquidação: {e}", exc_info=True)
 
@@ -645,6 +648,28 @@ def run():
         schedule.run_pending()
         time.sleep(30)
 
+
+
+
+# ── Analytics helpers ─────────────────────────────────────────
+
+def update_analytics():
+    """
+    Atualiza o Analytics a partir do bankroll atual.
+    """
+    try:
+        analytics_manager.run(load_bankroll())
+        logger.info("Analytics atualizado.")
+    except Exception as exc:
+        logger.exception("Analytics: %s", exc)
+
+
+def analytics_report():
+    """
+    Retorna relatório textual do Analytics.
+    """
+    analytics_manager.update(load_bankroll())
+    return analytics_report_text(analytics_manager.report())
 
 if __name__ == "__main__":
     logger.info("Weather Quant Bot v5.6")
