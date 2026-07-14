@@ -1,210 +1,123 @@
+
 """
-analytics.dataset
+analytics/dataset.py (v2)
 
-TradeDataset é a representação canônica do estado do Weather Quant
-para análises.
-
-Todos os módulos de Analytics trabalham SOMENTE com este objeto.
-
-Nunca ler bankroll.json diretamente dentro de finance.py,
-statistics.py, performance.py ou health.py.
+Camada de normalização entre o bankroll e o Analytics.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from collections import defaultdict
+from typing import Any, Dict, List
 
 
-Trade = Dict
+Trade = Dict[str, Any]
 
 
 @dataclass
 class TradeDataset:
-    """
-    Snapshot do bankroll convertido para um formato próprio para
-    cálculos estatísticos.
-    """
-
-    # bankroll
     balance: float
     start_balance: float
-    seq: int
+    seq: int = 0
+    created_at: str | None = None
+    generated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
-    created_at: Optional[str]
-
-    generated_at: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc)
-    )
-
-    # trades
     history: List[Trade] = field(default_factory=list)
 
+    closed_trades: List[Trade] = field(default_factory=list)
     open_trades: List[Trade] = field(default_factory=list)
 
-    closed_trades: List[Trade] = field(default_factory=list)
-
     wins: List[Trade] = field(default_factory=list)
-
     losses: List[Trade] = field(default_factory=list)
-
     voids: List[Trade] = field(default_factory=list)
 
-    # equity
     equity_curve: List[float] = field(default_factory=list)
 
-    # índices
-    by_city: Dict[str, List[Trade]] = field(default_factory=dict)
-
-    by_market: Dict[str, List[Trade]] = field(default_factory=dict)
-
-    by_day: Dict[int, List[Trade]] = field(default_factory=dict)
-
-    by_month: Dict[int, List[Trade]] = field(default_factory=dict)
-
-    by_season: Dict[str, List[Trade]] = field(default_factory=dict)
+    by_city: Dict[str, List[Trade]] = field(default_factory=lambda: defaultdict(list))
+    by_market: Dict[str, List[Trade]] = field(default_factory=lambda: defaultdict(list))
+    by_day: Dict[int, List[Trade]] = field(default_factory=lambda: defaultdict(list))
+    by_month: Dict[int, List[Trade]] = field(default_factory=lambda: defaultdict(list))
+    by_season: Dict[str, List[Trade]] = field(default_factory=lambda: defaultdict(list))
 
     @property
     def trades(self) -> int:
         return len(self.history)
 
 
-def build_dataset(bankroll: Dict) -> TradeDataset:
-    """
-    Converte bankroll -> TradeDataset.
+def _season(month: int) -> str:
+    if month in (12, 1, 2):
+        return "SUMMER"
+    if month in (3, 4, 5):
+        return "AUTUMN"
+    if month in (6, 7, 8):
+        return "WINTER"
+    return "SPRING"
 
-    Esta função é chamada apenas pelo Analytics Engine.
-    """
 
-    history = bankroll.get("history", [])
-
-    dataset = TradeDataset(
-        balance=float(bankroll.get("balance", 0.0)),
-        start_balance=float(bankroll.get("start_balance", 0.0)),
+def build_dataset(bankroll: Dict[str, Any]) -> TradeDataset:
+    ds = TradeDataset(
+        balance=float(bankroll.get("balance", 0)),
+        start_balance=float(bankroll.get("start_balance", 0)),
         seq=int(bankroll.get("seq", 0)),
         created_at=bankroll.get("created_at"),
-        history=history,
     )
 
-    #
-    # separação dos trades
-    #
+    ds.history = list(bankroll.get("history", []))
 
-    for trade in history:
+    balance = ds.start_balance
+    ds.equity_curve.append(balance)
 
+    closed_sorted = []
+
+    for trade in ds.history:
         result = str(trade.get("result", "")).upper()
 
         if result == "OPEN":
-            dataset.open_trades.append(trade)
-
+            ds.open_trades.append(trade)
         else:
-            dataset.closed_trades.append(trade)
+            ds.closed_trades.append(trade)
+            closed_sorted.append(trade)
 
         if result == "WIN":
-            dataset.wins.append(trade)
-
+            ds.wins.append(trade)
         elif result == "LOSS":
-            dataset.losses.append(trade)
-
+            ds.losses.append(trade)
         elif result == "VOID":
-            dataset.voids.append(trade)
+            ds.voids.append(trade)
 
-        #
-        # cidade
-        #
+        city = (trade.get("city") or trade.get("city_slug") or "unknown").lower()
+        ds.by_city[city].append(trade)
 
-        city = (
-            trade.get("city")
-            or trade.get("city_slug")
-            or "unknown"
-        )
+        market = (trade.get("type") or trade.get("condition") or "UNKNOWN").upper()
+        ds.by_market[market].append(trade)
 
-        dataset.by_city.setdefault(city, []).append(trade)
-
-        #
-        # tipo
-        #
-
-        market = (
-            trade.get("condition")
-            or trade.get("type")
-            or "UNKNOWN"
-        )
-
-        dataset.by_market.setdefault(market, []).append(trade)
-
-        #
-        # horizonte
-        #
-
-        forecast_day = int(
-            trade.get("forecast_day", 0) or 0
-        )
-
-        dataset.by_day.setdefault(
-            forecast_day,
-            []
-        ).append(trade)
-
-        #
-        # mês
-        #
+        day = int(trade.get("forecast_day", 0) or 0)
+        ds.by_day[day].append(trade)
 
         market_date = trade.get("market_date")
-
-        if market_date:
-
+        if isinstance(market_date, str) and len(market_date) >= 7:
             try:
-
-                month = int(str(market_date)[5:7])
-
-                dataset.by_month.setdefault(
-                    month,
-                    []
-                ).append(trade)
-
-                #
-                # estação
-                #
-
-                if month in (12, 1, 2):
-                    season = "SUMMER"
-
-                elif month in (3, 4, 5):
-                    season = "AUTUMN"
-
-                elif month in (6, 7, 8):
-                    season = "WINTER"
-
-                else:
-                    season = "SPRING"
-
-                dataset.by_season.setdefault(
-                    season,
-                    []
-                ).append(trade)
-
+                month = int(market_date[5:7])
+                ds.by_month[month].append(trade)
+                ds.by_season[_season(month)].append(trade)
             except Exception:
                 pass
 
-    #
-    # curva de patrimônio
-    #
+    closed_sorted.sort(key=lambda t: t.get("exit_time", ""))
 
-    balance = dataset.start_balance
-
-    dataset.equity_curve.append(balance)
-
-    closed = sorted(
-        dataset.closed_trades,
-        key=lambda t: t.get("exit_time", "")
-    )
-
-    for trade in closed:
-
+    for trade in closed_sorted:
         balance += float(trade.get("pnl", 0))
+        ds.equity_curve.append(round(balance, 4))
 
-        dataset.equity_curve.append(balance)
+    return ds
 
-    return dataset
+
+def build_dataset_from_history(history, start_balance=0.0):
+    bankroll = {
+        "balance": start_balance,
+        "start_balance": start_balance,
+        "history": history,
+    }
+    return build_dataset(bankroll)
