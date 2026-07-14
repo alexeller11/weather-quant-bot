@@ -1,366 +1,75 @@
-"""
-analytics.statistics
 
-Métricas estatísticas do modelo probabilístico.
-
-Este módulo NÃO mede lucro.
-
-Ele mede se as probabilidades produzidas pelo modelo
-estão corretas.
-
-Todas as funções recebem TradeDataset.
-"""
-
+"""analytics.statistics (v2)"""
 from __future__ import annotations
-
 import math
 from collections import defaultdict
 from statistics import mean
-
 from .dataset import TradeDataset
 
-
-# ============================================================
-# Helpers
-# ============================================================
-
-def resolved(dataset: TradeDataset):
-    """
-    Apenas trades resolvidos (WIN/LOSS).
-    """
-    return dataset.wins + dataset.losses
-
-
-def probabilities(dataset: TradeDataset):
-
-    values = []
-
-    for trade in resolved(dataset):
-
-        p = trade.get("model_prob")
-
-        if p is None:
-            p = trade.get("probability")
-
-        if p is None:
-            continue
-
-        try:
-            values.append(float(p))
-        except Exception:
-            pass
-
-    return values
-
-
-def outcomes(dataset: TradeDataset):
-
-    values = []
-
-    for trade in resolved(dataset):
-
-        if trade.get("result") == "WIN":
-            values.append(1.0)
-        else:
-            values.append(0.0)
-
-    return values
-
-
-# ============================================================
-# Brier Score
-# ============================================================
-
-def brier_score(dataset: TradeDataset):
-
-    probs = probabilities(dataset)
-
-    actual = outcomes(dataset)
-
-    if not probs:
-        return 0.0
-
-    return sum(
-
-        (p-a)**2
-
-        for p, a in zip(probs, actual)
-
-    ) / len(probs)
-
-
-# ============================================================
-# Log Loss
-# ============================================================
-
-def log_loss(dataset: TradeDataset):
-
-    probs = probabilities(dataset)
-
-    actual = outcomes(dataset)
-
-    if not probs:
-        return 0.0
-
-    eps = 1e-15
-
-    total = 0.0
-
-    for p, y in zip(probs, actual):
-
-        p = min(max(p, eps), 1-eps)
-
-        total += (
-
-            y*math.log(p)
-
-            +
-
-            (1-y)*math.log(1-p)
-
-        )
-
-    return -total/len(probs)
-
-
-# ============================================================
-# Calibration
-# ============================================================
-
-def calibration_bins(dataset: TradeDataset, bins=10):
-
-    bucket = defaultdict(list)
-
-    probs = probabilities(dataset)
-
-    actual = outcomes(dataset)
-
-    for p, y in zip(probs, actual):
-
-        idx = min(
-
-            int(p*bins),
-
-            bins-1
-
-        )
-
-        bucket[idx].append((p, y))
-
-    return bucket
-
-
-def calibration_curve(dataset: TradeDataset, bins=10):
-
-    result = []
-
-    buckets = calibration_bins(dataset, bins)
-
-    for idx in range(bins):
-
-        values = buckets.get(idx)
-
-        if not values:
-            continue
-
-        p = mean(v[0] for v in values)
-
-        y = mean(v[1] for v in values)
-
-        result.append({
-
-            "bin": idx,
-
-            "predicted": p,
-
-            "observed": y,
-
-            "samples": len(values)
-
-        })
-
-    return result
-
-
-# ============================================================
-# Calibration Error
-# ============================================================
-
-def expected_calibration_error(dataset: TradeDataset, bins=10):
-
-    curve = calibration_curve(dataset, bins)
-
-    total = sum(
-
-        c["samples"]
-
-        for c in curve
-
-    )
-
-    if total == 0:
-
-        return 0.0
-
-    ece = 0.0
-
-    for row in curve:
-
-        ece += (
-
-            abs(
-
-                row["predicted"]
-
-                -
-
-                row["observed"]
-
-            )
-
-            *
-
-            row["samples"]
-
-            /
-
-            total
-
-        )
-
-    return ece
-
-
-# ============================================================
-# Sharpness
-# ============================================================
-
-def sharpness(dataset: TradeDataset):
-
-    probs = probabilities(dataset)
-
-    if not probs:
-
-        return 0.0
-
-    return mean(
-
-        abs(
-
-            p-0.5
-
-        )
-
-        for p in probs
-
-    )
-
-
-# ============================================================
-# Entropy
-# ============================================================
-
-def entropy(dataset: TradeDataset):
-
-    probs = probabilities(dataset)
-
-    if not probs:
-
-        return 0.0
-
-    eps = 1e-15
-
-    values = []
-
-    for p in probs:
-
-        p = min(max(p, eps), 1-eps)
-
-        values.append(
-
-            -p*math.log2(p)
-
-            -
-
-            (1-p)*math.log2(1-p)
-
-        )
-
-    return mean(values)
-
-
-# ============================================================
-# Bias
-# ============================================================
-
-def prediction_bias(dataset: TradeDataset):
-
-    probs = probabilities(dataset)
-
-    actual = outcomes(dataset)
-
-    if not probs:
-
-        return 0.0
-
-    return mean(
-
-        p-a
-
-        for p, a in zip(probs, actual)
-
-    )
-
-
-# ============================================================
-# Confidence
-# ============================================================
-
-def average_confidence(dataset: TradeDataset):
-
-    probs = probabilities(dataset)
-
-    if not probs:
-
-        return 0.0
-
-    return mean(
-
-        max(
-
-            p,
-
-            1-p
-
-        )
-
-        for p in probs
-
-    )
-
-
-# ============================================================
-# Summary
-# ============================================================
-
-def summary(dataset: TradeDataset):
-
-    return {
-
-        "brier": brier_score(dataset),
-
-        "log_loss": log_loss(dataset),
-
-        "ece": expected_calibration_error(dataset),
-
-        "sharpness": sharpness(dataset),
-
-        "entropy": entropy(dataset),
-
-        "bias": prediction_bias(dataset),
-
-        "confidence": average_confidence(dataset),
-
-        "calibration": calibration_curve(dataset),
-
-    }
+def _resolved(ds): return ds.wins+ds.losses
+
+def probabilities(ds):
+    vals=[]
+    for t in _resolved(ds):
+        p=t.get("model_prob") or t.get("probability") or t.get("prob") or t.get("prediction")
+        if p is None: continue
+        try: vals.append(float(p))
+        except: pass
+    return vals
+
+def outcomes(ds):
+    return [1.0 if t.get("result")=="WIN" else 0.0 for t in _resolved(ds)]
+
+def brier_score(ds):
+    p=probabilities(ds); y=outcomes(ds)
+    return 0.0 if not p else sum((a-b)**2 for a,b in zip(p,y))/len(p)
+
+def log_loss(ds):
+    p=probabilities(ds); y=outcomes(ds)
+    if not p: return 0.0
+    eps=1e-15; s=0.0
+    for pr,yy in zip(p,y):
+        pr=max(eps,min(1-eps,pr))
+        s+=yy*math.log(pr)+(1-yy)*math.log(1-pr)
+    return -s/len(p)
+
+def calibration_curve(ds,bins=10):
+    b=defaultdict(list)
+    for pr,yy in zip(probabilities(ds),outcomes(ds)):
+        b[min(int(pr*bins),bins-1)].append((pr,yy))
+    out=[]
+    for i in range(bins):
+        if not b[i]: continue
+        out.append({"bin":i,"predicted":mean(v[0] for v in b[i]),"observed":mean(v[1] for v in b[i]),"samples":len(b[i])})
+    return out
+
+def expected_calibration_error(ds,bins=10):
+    c=calibration_curve(ds,bins); tot=sum(x["samples"] for x in c)
+    if tot==0:return 0.0
+    return sum(abs(x["predicted"]-x["observed"])*x["samples"]/tot for x in c)
+
+def sharpness(ds):
+    p=probabilities(ds)
+    return 0.0 if not p else mean(abs(x-0.5) for x in p)
+
+def entropy(ds):
+    p=probabilities(ds)
+    if not p:return 0.0
+    e=[]; eps=1e-15
+    for x in p:
+        x=max(eps,min(1-eps,x)); e.append(-(x*math.log2(x)+(1-x)*math.log2(1-x)))
+    return mean(e)
+
+def prediction_bias(ds):
+    p=probabilities(ds); y=outcomes(ds)
+    return 0.0 if not p else mean(a-b for a,b in zip(p,y))
+
+def average_confidence(ds):
+    p=probabilities(ds)
+    return 0.0 if not p else mean(max(x,1-x) for x in p)
+
+def calibration_quality(ds):
+    return max(0.0,1.0-expected_calibration_error(ds))
+
+def summary(ds:TradeDataset):
+    return {"samples":len(_resolved(ds)),"brier":brier_score(ds),"log_loss":log_loss(ds),"ece":expected_calibration_error(ds),"calibration_quality":calibration_quality(ds),"sharpness":sharpness(ds),"entropy":entropy(ds),"bias":prediction_bias(ds),"confidence":average_confidence(ds),"calibration":calibration_curve(ds)}
