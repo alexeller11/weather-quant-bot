@@ -28,6 +28,7 @@ AJUSTE v5.5 (2026-06-17):
 
 import os
 import logging
+import time
 from config import (
     KELLY_FRACTION,
     MAX_KELLY_FRACTION_CAP,
@@ -47,6 +48,8 @@ from config import (
     MAX_OPEN_TRADES,
     MAX_TOTAL_EXPOSURE,
 )
+
+from analytics.storage import load_health
 
 logger = logging.getLogger(__name__)
 
@@ -502,3 +505,32 @@ def _nearest_edge_distance(
 
     # Fallback genérico
     return abs(forecast_c - target_c)
+
+
+
+# ── Analytics Health Integration ───────────────────────────────
+
+def apply_health_factor(stake: float):
+    """
+    Ajusta o stake usando o Analytics Health Engine.
+
+    Returns:
+        (stake_ajustado, motivo)
+    """
+    try:
+        health = load_health()
+
+        if not health:
+            return stake, "health indisponível"
+
+        if health.get("stop_trading", False):
+            return 0.0, "Health: STOP TRADING"
+
+        factor = float(health.get("kelly_factor", 1.0))
+        factor = max(0.0, min(1.0, factor))
+
+        return round(stake * factor, 2), f"Kelly x {factor:.2f}"
+
+    except Exception as exc:
+        logger.exception("Erro carregando Health: %s", exc)
+        return stake, "erro health"
