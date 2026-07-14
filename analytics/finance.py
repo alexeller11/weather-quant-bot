@@ -1,374 +1,156 @@
+
 """
-analytics.finance
+analytics/finance.py (v2)
 
-Métricas financeiras do Weather Quant.
-
-Todas as funções são PURAS.
-Nunca acessam arquivos.
-Nunca acessam banco.
-Nunca fazem logging.
-
-Recebem TradeDataset e retornam valores.
+Motor financeiro do Quant Intelligence Engine.
 """
 
 from __future__ import annotations
 
-from statistics import mean, pstdev
 import math
+from statistics import mean, pstdev
 
 from .dataset import TradeDataset
 
 
-# ============================================================
-# Helpers
-# ============================================================
-
-def closed(dataset: TradeDataset):
-    return dataset.closed_trades
+def _closed(ds: TradeDataset):
+    return ds.closed_trades
 
 
-def winning(dataset: TradeDataset):
-    return dataset.wins
+def total_profit(ds):
+    return sum(max(0.0, float(t.get("pnl", 0))) for t in _closed(ds))
 
 
-def losing(dataset: TradeDataset):
-    return dataset.losses
+def total_loss(ds):
+    return abs(sum(min(0.0, float(t.get("pnl", 0))) for t in _closed(ds)))
 
 
-# ============================================================
-# Lucro
-# ============================================================
-
-def total_profit(dataset: TradeDataset) -> float:
-    """
-    Soma apenas pnl positivo.
-    """
-    return sum(
-        max(0.0, float(t.get("pnl", 0.0)))
-        for t in closed(dataset)
-    )
+def total_pnl(ds):
+    return sum(float(t.get("pnl", 0)) for t in _closed(ds))
 
 
-def total_loss(dataset: TradeDataset) -> float:
-    """
-    Soma absoluta do pnl negativo.
-    """
-    return abs(
-        sum(
-            min(0.0, float(t.get("pnl", 0.0)))
-            for t in closed(dataset)
-        )
-    )
+def total_stake(ds):
+    return sum(float(t.get("stake", 0)) for t in _closed(ds))
 
 
-def total_pnl(dataset: TradeDataset) -> float:
-    return sum(
-        float(t.get("pnl", 0.0))
-        for t in closed(dataset)
-    )
+def roi(ds):
+    stake = total_stake(ds)
+    return 0.0 if stake <= 0 else total_pnl(ds) / stake
 
 
-# ============================================================
-# Stake
-# ============================================================
-
-def total_stake(dataset: TradeDataset) -> float:
-    return sum(
-        float(t.get("stake", 0.0))
-        for t in closed(dataset)
-    )
+def win_rate(ds):
+    total = len(ds.wins) + len(ds.losses)
+    return 0.0 if total == 0 else len(ds.wins) / total
 
 
-def average_stake(dataset: TradeDataset) -> float:
-
-    trades = closed(dataset)
-
+def expectancy(ds):
+    trades = ds.wins + ds.losses
     if not trades:
         return 0.0
-
-    return mean(
-        float(t.get("stake", 0.0))
-        for t in trades
-    )
+    return mean(float(t.get("pnl", 0)) for t in trades)
 
 
-# ============================================================
-# ROI
-# ============================================================
-
-def roi(dataset: TradeDataset) -> float:
-    """
-    ROI baseado em stake investido.
-    """
-
-    stake = total_stake(dataset)
-
-    if stake <= 0:
-        return 0.0
-
-    return total_pnl(dataset) / stake
-
-
-# ============================================================
-# Win Rate
-# ============================================================
-
-def win_rate(dataset: TradeDataset) -> float:
-
-    wins = len(dataset.wins)
-
-    losses = len(dataset.losses)
-
-    total = wins + losses
-
-    if total == 0:
-        return 0.0
-
-    return wins / total
-
-
-# ============================================================
-# Expectancy
-# ============================================================
-
-def expectancy(dataset: TradeDataset) -> float:
-
-    trades = dataset.wins + dataset.losses
-
+def average_stake(ds):
+    trades = _closed(ds)
     if not trades:
         return 0.0
-
-    return mean(
-        float(t.get("pnl", 0.0))
-        for t in trades
-    )
+    return mean(float(t.get("stake", 0)) for t in trades)
 
 
-# ============================================================
-# Profit Factor
-# ============================================================
-
-def profit_factor(dataset: TradeDataset) -> float:
-
-    gp = total_profit(dataset)
-
-    gl = total_loss(dataset)
-
-    if gl == 0:
-
-        return float("inf") if gp else 0.0
-
-    return gp / gl
+def profit_factor(ds):
+    loss = total_loss(ds)
+    if loss == 0:
+        return float("inf") if total_profit(ds) else 0.0
+    return total_profit(ds) / loss
 
 
-# ============================================================
-# Equity Curve
-# ============================================================
-
-def equity_curve(dataset: TradeDataset):
-
-    return dataset.equity_curve.copy()
+def equity_curve(ds):
+    return list(ds.equity_curve)
 
 
-# ============================================================
-# Drawdown
-# ============================================================
-
-def current_drawdown(dataset: TradeDataset) -> float:
-
-    curve = equity_curve(dataset)
-
+def max_drawdown(ds):
+    curve = equity_curve(ds)
     if len(curve) < 2:
         return 0.0
-
-    peak = max(curve)
-
-    current = curve[-1]
-
-    if peak <= 0:
-        return 0.0
-
-    return (peak - current) / peak
-
-
-def max_drawdown(dataset: TradeDataset) -> float:
-
-    curve = equity_curve(dataset)
-
-    if len(curve) < 2:
-        return 0.0
-
     peak = curve[0]
-
     max_dd = 0.0
-
     for value in curve:
-
-        if value > peak:
-            peak = value
-
-        if peak <= 0:
-            continue
-
-        dd = (peak - value) / peak
-
-        max_dd = max(max_dd, dd)
-
+        peak = max(peak, value)
+        if peak > 0:
+            max_dd = max(max_dd, (peak - value) / peak)
     return max_dd
 
 
-# ============================================================
-# Recovery Factor
-# ============================================================
-
-def recovery_factor(dataset: TradeDataset):
-
-    dd = max_drawdown(dataset)
-
-    if dd <= 0:
+def current_drawdown(ds):
+    curve = equity_curve(ds)
+    if len(curve) < 2:
         return 0.0
+    peak = max(curve)
+    if peak <= 0:
+        return 0.0
+    return (peak - curve[-1]) / peak
 
-    return total_pnl(dataset) / dd
 
-
-# ============================================================
-# Returns
-# ============================================================
-
-def trade_returns(dataset: TradeDataset):
-
+def trade_returns(ds):
     values = []
-
-    for trade in dataset.wins + dataset.losses:
-
-        stake = float(trade.get("stake", 0))
-
-        if stake <= 0:
-            continue
-
-        pnl = float(trade.get("pnl", 0))
-
-        values.append(pnl / stake)
-
+    for t in ds.wins + ds.losses:
+        stake = float(t.get("stake", 0))
+        if stake > 0:
+            values.append(float(t.get("pnl", 0)) / stake)
     return values
 
 
-# ============================================================
-# Sharpe
-# ============================================================
-
-def sharpe(dataset: TradeDataset, risk_free_rate=0.0):
-
-    returns = trade_returns(dataset)
-
-    if len(returns) < 2:
+def sharpe(ds, risk_free_rate=0.0):
+    r = trade_returns(ds)
+    if len(r) < 2:
         return 0.0
-
-    std = pstdev(returns)
-
-    if std <= 1e-9:
+    sd = pstdev(r)
+    if sd <= 1e-9:
         return 0.0
+    return (mean(r) - risk_free_rate) / sd
 
-    return (mean(returns) - risk_free_rate) / std
 
-
-# ============================================================
-# Sortino
-# ============================================================
-
-def sortino(dataset: TradeDataset, risk_free_rate=0.0):
-
-    returns = trade_returns(dataset)
-
-    if len(returns) < 2:
+def sortino(ds, risk_free_rate=0.0):
+    r = trade_returns(ds)
+    if len(r) < 2:
         return 0.0
-
-    downside = [
-
-        r
-
-        for r in returns
-
-        if r < risk_free_rate
-
-    ]
-
+    downside = [x for x in r if x < risk_free_rate]
     if len(downside) < 2:
         return 0.0
-
-    downside_std = math.sqrt(
-
-        sum(
-
-            (r-risk_free_rate)**2
-
-            for r in downside
-
-        ) / len(downside)
-
-    )
-
-    if downside_std <= 1e-9:
+    dd = math.sqrt(sum((x-risk_free_rate)**2 for x in downside)/len(downside))
+    if dd <= 1e-9:
         return 0.0
-
-    return (mean(returns)-risk_free_rate)/downside_std
-
-
-# ============================================================
-# Calmar
-# ============================================================
-
-def calmar(dataset: TradeDataset):
-
-    dd = max_drawdown(dataset)
-
-    if dd <= 0:
-        return 0.0
-
-    return roi(dataset) / dd
+    return (mean(r)-risk_free_rate)/dd
 
 
-# ============================================================
-# Summary
-# ============================================================
+def calmar(ds):
+    dd = max_drawdown(ds)
+    return 0.0 if dd <= 0 else roi(ds)/dd
 
-def summary(dataset: TradeDataset) -> dict:
-    """
-    Resumo financeiro usado pelo Analytics Engine.
-    """
 
+def recovery_factor(ds):
+    dd = max_drawdown(ds)
+    return 0.0 if dd <= 0 else total_pnl(ds)/dd
+
+
+def summary(ds: TradeDataset):
     return {
-
-        "balance": dataset.balance,
-
-        "start_balance": dataset.start_balance,
-
-        "profit": total_profit(dataset),
-
-        "loss": total_loss(dataset),
-
-        "pnl": total_pnl(dataset),
-
-        "stake": total_stake(dataset),
-
-        "roi": roi(dataset),
-
-        "win_rate": win_rate(dataset),
-
-        "expectancy": expectancy(dataset),
-
-        "profit_factor": profit_factor(dataset),
-
-        "drawdown": current_drawdown(dataset),
-
-        "max_drawdown": max_drawdown(dataset),
-
-        "recovery_factor": recovery_factor(dataset),
-
-        "sharpe": sharpe(dataset),
-
-        "sortino": sortino(dataset),
-
-        "calmar": calmar(dataset),
-
+        "balance": ds.balance,
+        "start_balance": ds.start_balance,
+        "trades": ds.trades,
+        "profit": total_profit(ds),
+        "loss": total_loss(ds),
+        "pnl": total_pnl(ds),
+        "stake": total_stake(ds),
+        "average_stake": average_stake(ds),
+        "roi": roi(ds),
+        "win_rate": win_rate(ds),
+        "expectancy": expectancy(ds),
+        "profit_factor": profit_factor(ds),
+        "drawdown": current_drawdown(ds),
+        "max_drawdown": max_drawdown(ds),
+        "recovery_factor": recovery_factor(ds),
+        "sharpe": sharpe(ds),
+        "sortino": sortino(ds),
+        "calmar": calmar(ds),
     }
