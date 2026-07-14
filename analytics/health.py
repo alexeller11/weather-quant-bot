@@ -1,235 +1,115 @@
+
 """
-analytics.health
+analytics/health.py (v2)
 
 Health Engine do Weather Quant.
-
-Transforma métricas em decisões operacionais.
-
-Este módulo NÃO calcula métricas.
-Ele apenas interpreta os resultados.
-
-Pode ser usado para:
-
-- Sistema inteiro
-- Cidade
-- Mercado
-- Horizonte
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from typing import Dict, List
 
-from .score import build as build_score
+MIN_TRADES = 30
+MAX_ECE = 0.15
+MAX_DRAWDOWN = 0.20
+MIN_SHARPE = 0.80
+MIN_ROI = 0.00
+MIN_CALIBRATION = 0.85
 
-
-# ============================================================
-# Configuração
-# ============================================================
-
-MIN_SAMPLE_SIZE = 30
-
-MAX_BRIER = 0.25
-
-MAX_DRAWDOWN = 0.25
-
-MIN_SHARPE = 0.50
-
-MIN_ROI = -0.05
-
-
-# ============================================================
-# Modelo
-# ============================================================
 
 @dataclass
 class HealthReport:
-
     score: float
-
     status: str
-
     kelly_factor: float
-
-    recommendation: str
-
     paper_mode: bool
-
     stop_trading: bool
-
+    recommendation: str
     alerts: List[str]
 
 
-# ============================================================
-# Regras
-# ============================================================
+def _status(score: float) -> str:
+    if score >= 90: return "GREEN"
+    if score >= 75: return "YELLOW"
+    if score >= 60: return "ORANGE"
+    if score >= 40: return "RED"
+    return "BLACK"
+
+
+def _kelly(score: float) -> float:
+    if score >= 90: return 1.0
+    if score >= 80: return 0.8
+    if score >= 70: return 0.6
+    if score >= 60: return 0.4
+    if score >= 50: return 0.2
+    return 0.0
+
 
 def evaluate(metrics: Dict) -> HealthReport:
-
-    score = build_score(metrics)
-
     alerts = []
-
-    paper = False
-
-    stop = False
+    penalties = 0
 
     trades = metrics.get("trades", 0)
+    roi = metrics.get("roi", 0.0)
+    sharpe = metrics.get("sharpe", 0.0)
+    drawdown = metrics.get("max_drawdown", 0.0)
+    ece = metrics.get("ece", 0.0)
+    calibration = metrics.get("calibration_quality", 1.0)
+    pf = metrics.get("profit_factor", 0.0)
 
-    roi = metrics.get("roi", 0)
-
-    brier = metrics.get("brier", 0)
-
-    drawdown = metrics.get("max_drawdown", 0)
-
-    sharpe = metrics.get("sharpe", 0)
-
-    #
-    # Pouca amostra
-    #
-
-    if trades < MIN_SAMPLE_SIZE:
-
-        alerts.append(
-
-            f"Apenas {trades} trades."
-
-        )
-
-    #
-    # Brier
-    #
-
-    if brier > MAX_BRIER:
-
-        alerts.append(
-
-            f"Brier alto ({brier:.3f})"
-
-        )
-
-        paper = True
-
-    #
-    # Drawdown
-    #
-
-    if drawdown > MAX_DRAWDOWN:
-
-        alerts.append(
-
-            f"Drawdown alto ({drawdown:.1%})"
-
-        )
-
-    #
-    # Sharpe
-    #
-
-    if sharpe < MIN_SHARPE:
-
-        alerts.append(
-
-            f"Sharpe baixo ({sharpe:.2f})"
-
-        )
-
-    #
-    # ROI
-    #
+    if trades < MIN_TRADES:
+        penalties += 10
+        alerts.append(f"Poucos trades ({trades})")
 
     if roi < MIN_ROI:
+        penalties += 20
+        alerts.append(f"ROI negativo ({roi:.2%})")
 
-        alerts.append(
+    if sharpe < MIN_SHARPE:
+        penalties += 15
+        alerts.append(f"Sharpe baixo ({sharpe:.2f})")
 
-            f"ROI negativo ({roi:.1%})"
+    if drawdown > MAX_DRAWDOWN:
+        penalties += 20
+        alerts.append(f"Drawdown alto ({drawdown:.2%})")
 
-        )
+    if ece > MAX_ECE:
+        penalties += 20
+        alerts.append(f"ECE alto ({ece:.3f})")
 
-    #
-    # Black
-    #
+    if calibration < MIN_CALIBRATION:
+        penalties += 10
+        alerts.append(f"Calibração ruim ({calibration:.2%})")
 
-    if score["score"] < 40:
+    if pf < 1:
+        penalties += 10
+        alerts.append(f"Profit Factor baixo ({pf:.2f})")
 
-        stop = True
+    score = max(0.0, 100.0 - penalties)
+
+    paper = score < 60
+    stop = score < 40
+
+    if stop:
+        rec = "Parar operações."
+    elif paper:
+        rec = "Entrar em Paper Trading."
+    elif score < 80:
+        rec = "Reduzir Kelly e monitorar."
+    else:
+        rec = "Operação normal."
 
     return HealthReport(
-
-        score=score["score"],
-
-        status=score["status"],
-
-        kelly_factor=score["kelly_factor"],
-
-        recommendation=score["recommendation"],
-
+        score=round(score,2),
+        status=_status(score),
+        kelly_factor=_kelly(score),
         paper_mode=paper,
-
         stop_trading=stop,
-
+        recommendation=rec,
         alerts=alerts,
-
     )
 
 
-# ============================================================
-# Cidade
-# ============================================================
-
-def city_health(city_metrics):
-
-    return evaluate(city_metrics)
-
-
-# ============================================================
-# Mercado
-# ============================================================
-
-def market_health(metrics):
-
-    return evaluate(metrics)
-
-
-# ============================================================
-# Horizonte
-# ============================================================
-
-def forecast_health(metrics):
-
-    return evaluate(metrics)
-
-
-# ============================================================
-# Sistema
-# ============================================================
-
-def system_health(metrics):
-
-    return evaluate(metrics)
-
-
-# ============================================================
-# JSON
-# ============================================================
-
 def to_dict(report: HealthReport):
-
-    return {
-
-        "score": report.score,
-
-        "status": report.status,
-
-        "kelly_factor": report.kelly_factor,
-
-        "recommendation": report.recommendation,
-
-        "paper_mode": report.paper_mode,
-
-        "stop_trading": report.stop_trading,
-
-        "alerts": report.alerts,
-
-    }
+    return asdict(report)
