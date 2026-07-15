@@ -35,9 +35,9 @@ TRADING_ENABLED = _parse_bool_env("TRADING_ENABLED", "0")
 
 # AJUSTADO: 0.80 -> 0.72
 # Tokyo prob=0.766 com edge=+0.647 era trade válido sendo bloqueado
-MIN_PROB_ABOVE_BELOW = float(os.getenv("MIN_PROB_ABOVE_BELOW", "0.72"))
+MIN_PROB_ABOVE_BELOW = float(os.getenv("MIN_PROB_ABOVE_BELOW", "0.65"))
 
-MIN_TARGET_ZSCORE = float(os.getenv("MIN_TARGET_ZSCORE", "1.00"))
+MIN_TARGET_ZSCORE = float(os.getenv("MIN_TARGET_ZSCORE", "0.8"))
 MAX_POSITION = float(os.getenv("MAX_POSITION", "4.00"))
 MAX_TOTAL_EXPOSURE = float(os.getenv("MAX_TOTAL_EXPOSURE", "20.00"))
 MAX_OPEN_TRADES = int(os.getenv("MAX_OPEN_TRADES", "5"))
@@ -61,10 +61,10 @@ PROBABILITY_DEAD_ZONE_HIGH = PROB_DEADZONE_MAX
 # ── Circuit breaker de perda diária ─────────────────────────────
 MAX_DAILY_LOSS = float(os.getenv("MAX_DAILY_LOSS", "10.00"))
 
-# AJUSTADO v5.5: 0.08 -> 0.15 para YES
+# AJUSTADO v5.5: 0.08 -> 0.08 para YES
 # Seoul a 0.09 gerou retorno de 39x distorcendo paper trading.
-# Preços abaixo de 0.15 indicam mercado ilíquido ou já "decidido".
-MIN_PRICE = float(os.getenv("MIN_PRICE", "0.15"))
+# Preços abaixo de 0.08 indicam mercado ilíquido ou já "decidido".
+MIN_PRICE = float(os.getenv("MIN_PRICE", "0.08"))
 
 # NOVO: piso separado para RANGE2 — buckets raros têm preço baixo por natureza
 MIN_PRICE_RANGE2 = float(os.getenv("MIN_PRICE_RANGE2", "0.04"))
@@ -182,6 +182,11 @@ if _CITIES_RAW:
      CITY_TZ,
      CITY_SLUG_ALIASES) = build_city_maps(_CITIES_RAW)
     CITIES = _CITIES_RAW
+# Ensure each city dict has a 'name' key for downstream processing
+for _c in CITIES:
+    if 'name' not in _c:
+        _c['name'] = _c.get('display', _c.get('slug', ''))
+
 else:
     # Fallback hardcoded — mantido para robustez caso cities.json seja removido
     CITY_DISPLAY = {
