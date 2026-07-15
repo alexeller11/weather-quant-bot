@@ -484,8 +484,12 @@ def _nearest_edge_distance(
     do bucket (máxima incerteza).
     """
     forecast_c = forecast_temp
-    lo_c = target_lo_raw
-    hi_c = target_hi_raw
+    if str(unit).upper() == "F":
+        lo_c = (target_lo_raw - 32) * 5 / 9 if target_lo_raw is not None else None
+        hi_c = (target_hi_raw - 32) * 5 / 9 if target_hi_raw is not None else None
+    else:
+        lo_c = target_lo_raw
+        hi_c = target_hi_raw
 
     cond = condition.upper()
 
@@ -495,7 +499,20 @@ def _nearest_edge_distance(
     if cond == "BELOW":
         return max(0.0, target_c - forecast_c)
 
-    if cond == "RANGE2" and lo_c and hi_c:
+    if cond == "EXACT":
+        from model import delta_to_celsius
+        half = delta_to_celsius(0.5, unit)
+        lo_c = target_c - half
+        hi_c = target_c + half
+        if forecast_c < lo_c:
+            return max(0.0, lo_c - forecast_c)
+        if forecast_c > hi_c:
+            return max(0.0, forecast_c - hi_c)
+        return min(forecast_c - lo_c, hi_c - forecast_c)
+
+    if cond == "RANGE2" and lo_c is not None and hi_c is not None:
+        if lo_c > hi_c:
+            lo_c, hi_c = hi_c, lo_c
         if forecast_c < lo_c:
             return max(0.0, lo_c - forecast_c)
         if forecast_c > hi_c:

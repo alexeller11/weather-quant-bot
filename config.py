@@ -44,7 +44,7 @@ MAX_OPEN_TRADES = int(os.getenv("MAX_OPEN_TRADES", "5"))
 KELLY_FRACTION = float(os.getenv("KELLY_FRACTION", "0.50"))
 MAX_KELLY_FRACTION_CAP = float(os.getenv("MAX_KELLY_FRACTION_CAP", "0.50"))
 MIN_EDGE = float(os.getenv("MIN_EDGE", "0.02"))
-MIN_EDGE_EXACT = float(os.getenv("MIN_EDGE_EXACT", "0.15"))
+MIN_EDGE_EXACT = float(os.getenv("MIN_EDGE_EXACT", "0.05"))
 MIN_EV = float(os.getenv("MIN_EV", "0.05"))
 EDGE_THRESHOLD = MIN_EDGE
 MAX_FORECAST_DAY = int(os.getenv("MAX_FORECAST_DAY", "3"))
@@ -143,6 +143,10 @@ def build_city_maps(cities_list):
     city_slug_aliases = {}
 
     for c in cities_list:
+        # Garantir chave "name" para compatibilidade com o bot.py
+        if "name" not in c:
+            c["name"] = c.get("display", c.get("slug", ""))
+
         slug = c["slug"]
         display = c["display"]
         lat = c["lat"]
@@ -243,79 +247,76 @@ else:
         "boston", "toronto", "madrid", "mexico-city",
     ]
 
-_CITIES_FALLBACK = [
-    {"name": "New York", "lat": 40.7128, "lon": -74.0060},
-    {"name": "London", "lat": 51.5074, "lon": -0.1278},
-    {"name": "Paris", "lat": 48.8566, "lon": 2.3522},
-    {"name": "Hong Kong", "lat": 22.3193, "lon": 114.1694},
-    {"name": "Tokyo", "lat": 35.6762, "lon": 139.6503},
-    {"name": "Seoul", "lat": 37.5665, "lon": 126.9780},
-    {"name": "Beijing", "lat": 39.9042, "lon": 116.4074},
-    {"name": "São Paulo", "lat": -23.5505, "lon": -46.6333},
-    {"name": "Milan", "lat": 45.4642, "lon": 9.1900},
-    {"name": "Los Angeles", "lat": 34.0522, "lon": -118.2437},
-    {"name": "Houston", "lat": 29.7604, "lon": -95.3698},
-    {"name": "Austin", "lat": 30.2672, "lon": -97.7431},
-    {"name": "Denver", "lat": 39.7392, "lon": -104.9903},
-    {"name": "Seattle", "lat": 47.6062, "lon": -122.3321},
-    {"name": "Chicago", "lat": 41.8781, "lon": -87.6298},
-    {"name": "Phoenix", "lat": 33.4484, "lon": -112.0740},
-    {"name": "Miami", "lat": 25.7617, "lon": -80.1918},
-    {"name": "Atlanta", "lat": 33.7490, "lon": -84.3880},
-    {"name": "Boston", "lat": 42.3601, "lon": -71.0589},
-    {"name": "Toronto", "lat": 43.6532, "lon": -79.3832},
-    {"name": "Madrid", "lat": 40.4168, "lon": -3.7038},
-    {"name": "Mexico City", "lat": 19.4326, "lon": -99.1332},
-]
+    _CITIES_FALLBACK = [
+        {"name": "New York", "lat": 40.7128, "lon": -74.0060},
+        {"name": "London", "lat": 51.5074, "lon": -0.1278},
+        {"name": "Paris", "lat": 48.8566, "lon": 2.3522},
+        {"name": "Hong Kong", "lat": 22.3193, "lon": 114.1694},
+        {"name": "Tokyo", "lat": 35.6762, "lon": 139.6503},
+        {"name": "Seoul", "lat": 37.5665, "lon": 126.9780},
+        {"name": "Beijing", "lat": 39.9042, "lon": 116.4074},
+        {"name": "São Paulo", "lat": -23.5505, "lon": -46.6333},
+        {"name": "Milan", "lat": 45.4642, "lon": 9.1900},
+        {"name": "Los Angeles", "lat": 34.0522, "lon": -118.2437},
+        {"name": "Houston", "lat": 29.7604, "lon": -95.3698},
+        {"name": "Austin", "lat": 30.2672, "lon": -97.7431},
+        {"name": "Denver", "lat": 39.7392, "lon": -104.9903},
+        {"name": "Seattle", "lat": 47.6062, "lon": -122.3321},
+        {"name": "Chicago", "lat": 41.8781, "lon": -87.6298},
+        {"name": "Phoenix", "lat": 33.4484, "lon": -112.0740},
+        {"name": "Miami", "lat": 25.7617, "lon": -80.1918},
+        {"name": "Atlanta", "lat": 33.7490, "lon": -84.3880},
+        {"name": "Boston", "lat": 42.3601, "lon": -71.0589},
+        {"name": "Toronto", "lat": 43.6532, "lon": -79.3832},
+        {"name": "Madrid", "lat": 40.4168, "lon": -3.7038},
+        {"name": "Mexico City", "lat": 19.4326, "lon": -99.1332},
+    ]
 
-def load_cities():
-    return _CITIES_FALLBACK
+    def load_cities():
+        return _CITIES_FALLBACK
 
-CITIES = load_cities()
+    CITIES = load_cities()
 
-# ── Popula CITY_COORDS, CITY_TZ, CITY_SLUG_ALIASES a partir do fallback ──
-# Quando cities.json não existe, estes dicts eram deixados vazios,
-# causando "cidade desconhecida" em forecast.py e station_data.py.
-_CITY_TZ_MAP = {
-    "new-york": "America/New_York",
-    "london": "Europe/London",
-    "paris": "Europe/Paris",
-    "hong-kong": "Asia/Hong_Kong",
-    "tokyo": "Asia/Tokyo",
-    "seoul": "Asia/Seoul",
-    "beijing": "Asia/Shanghai",
-    "sao-paulo": "America/Sao_Paulo",
-    "milan": "Europe/Rome",
-    "los-angeles": "America/Los_Angeles",
-    "houston": "America/Chicago",
-    "austin": "America/Chicago",
-    "denver": "America/Denver",
-    "seattle": "America/Los_Angeles",
-    "chicago": "America/Chicago",
-    "phoenix": "America/Phoenix",
-    "miami": "America/New_York",
-    "atlanta": "America/New_York",
-    "boston": "America/New_York",
-    "toronto": "America/Toronto",
-    "madrid": "Europe/Madrid",
-    "mexico-city": "America/Mexico_City",
-}
+    # ── Popula CITY_COORDS, CITY_TZ, CITY_SLUG_ALIASES a partir do fallback ──
+    # Quando cities.json não existe, estes dicts eram deixados vazios,
+    # causando "cidade desconhecida" em forecast.py e station_data.py.
+    _CITY_TZ_MAP = {
+        "new-york": "America/New_York",
+        "london": "Europe/London",
+        "paris": "Europe/Paris",
+        "hong-kong": "Asia/Hong_Kong",
+        "tokyo": "Asia/Tokyo",
+        "seoul": "Asia/Seoul",
+        "beijing": "Asia/Shanghai",
+        "sao-paulo": "America/Sao_Paulo",
+        "milan": "Europe/Rome",
+        "los-angeles": "America/Los_Angeles",
+        "houston": "America/Chicago",
+        "austin": "America/Chicago",
+        "denver": "America/Denver",
+        "seattle": "America/Los_Angeles",
+        "chicago": "America/Chicago",
+        "phoenix": "America/Phoenix",
+        "miami": "America/New_York",
+        "atlanta": "America/New_York",
+        "boston": "America/New_York",
+        "toronto": "America/Toronto",
+        "madrid": "Europe/Madrid",
+        "mexico-city": "America/Mexico_City",
+    }
 
-# Mapa nome -> slug para construir CITY_COORDS/TZ a partir do fallback
-_NAME_TO_SLUG = {c["name"].lower(): c.get("slug", c["name"].lower().replace(" ", "-")) for c in _CITIES_FALLBACK}
-
-CITY_COORDS = {}
-CITY_TZ = {}
-CITY_SLUG_ALIASES = {}
-for slug in CITY_SLUGS:
-    display = CITY_DISPLAY.get(slug.replace("-", " "), slug)
-    name_key = display.lower() if isinstance(display, str) else slug
-    for c in _CITIES_FALLBACK:
-        if c["name"].lower() == name_key:
-            CITY_COORDS[slug] = (c["lat"], c["lon"])
-            break
-    CITY_TZ[slug] = _CITY_TZ_MAP.get(slug, "UTC")
-    CITY_SLUG_ALIASES[slug] = [slug.replace("-", " "), slug]
+    CITY_COORDS = {}
+    CITY_TZ = {}
+    CITY_SLUG_ALIASES = {}
+    for slug in CITY_SLUGS:
+        display = CITY_DISPLAY.get(slug.replace("-", " "), slug)
+        name_key = display.lower() if isinstance(display, str) else slug
+        for c in _CITIES_FALLBACK:
+            if c["name"].lower() == name_key:
+                CITY_COORDS[slug] = (c["lat"], c["lon"])
+                break
+        CITY_TZ[slug] = _CITY_TZ_MAP.get(slug, "UTC")
+        CITY_SLUG_ALIASES[slug] = [slug.replace("-", " "), slug]
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
 CHAT_ID = os.getenv("CHAT_ID", "")
