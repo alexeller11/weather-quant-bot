@@ -28,6 +28,20 @@ PATCH (aplicado nesta versão):
    causava UnboundLocalError.
 4) _execute_trade(): 'PAPER_EXECUTION_ENABLED' (nome inexistente) trocado por
    'PAPER_EXECUTION_REQUIRED' (nome importado de config.py).
+
+PATCH v5.7 (aplicado nesta correção):
+5) process_city() / scheduled_trading(): 'city["name"]' e
+   "city.get('name','?')" trocados por 'city["display"]' e
+   "city.get('display','?')". cities.json usa o schema {slug, display, lat,
+   lon, tz, aliases} — não existe chave "name". Isso fazia todo item de
+   cities levantar KeyError dentro do try/except de scheduled_trading(),
+   silenciosamente, em TODO ciclo — ou seja, nenhuma cidade (nem as
+   antigas, nem as novas) era processada de fato.
+6) run(): faltava 'import requests' — o teste de bloqueio geográfico
+   ('requests.get(...)') levantava NameError e derrubava run() antes de
+   chegar no schedule.every(...)/while True, o que por si só já impedia
+   qualquer ciclo de trading de rodar. Import adicionado no topo do
+   arquivo.
 """
 
 import logging
@@ -36,6 +50,7 @@ import os
 import sys
 import threading
 import schedule
+import requests
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime, timezone
 from typing import Dict
@@ -77,6 +92,7 @@ from config import (
     MAX_OPEN_TRADES,
     MAX_TOTAL_EXPOSURE,
     MAX_POSITION,
+    MIN_EDGE_NO,
     CITIES,
 )
 from decision_log import record_decision
@@ -120,7 +136,7 @@ def _forecast_day_for_market(market_date: str, city_slug: str) -> int:
 
 
 def process_city(city: Dict):
-    name = city["name"]
+    name = city["display"]
     logger.info(f"Processando: {name}")
 
     city_slug = normalize_city_slug(name)
@@ -394,10 +410,10 @@ def _execute_trade(
         return
 
     execution = None
-    
+
     # Se PAPER_EXECUTION_REQUIRED for 0 e houver uma chave privada, tentamos o REAL
     is_real_mode = not PAPER_EXECUTION_REQUIRED and os.getenv("POLY_PRIV_KEY")
-    
+
     if is_real_mode:
         from real_execution import execute_real_trade
         res = execute_real_trade(m, side, stake)
@@ -610,7 +626,7 @@ def scheduled_trading():
             if i < len(cities) - 1:
                 time.sleep(1.5)
         except Exception as e:
-            logger.error(f"{city.get('name','?')}: {e}", exc_info=True)
+            logger.error(f"{city.get('display','?')}: {e}", exc_info=True)
 
     logger.info("Fim do ciclo")
 
@@ -695,8 +711,6 @@ def run():
     while True:
         schedule.run_pending()
         time.sleep(30)
-
-
 
 
 # ── Analytics helpers ─────────────────────────────────────────
