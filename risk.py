@@ -114,10 +114,11 @@ def expected_value_no(model_prob_yes: float, price_yes: float) -> float:
 
 
 def kelly_criterion(
-    prob: float,
+    model_prob: float,
     price: float,
     balance: float = 100.0,
     fraction: float = None,
+    city: str = None,
 ) -> float:
     if prob <= 0 or prob >= 1 or price <= 0 or price >= 1:
         return 0.0
@@ -132,8 +133,8 @@ def kelly_criterion(
 
     frac = fraction if fraction is not None else KELLY_FRACTION
     
-    # Ajuste por Health Factor (Score de performance)
-    stake_adj, reason = apply_health_factor(1.0)
+    # Ajuste por Health Factor (Score de performance) v5.8
+    stake_adj, reason = apply_health_factor(1.0, city=city)
     frac = frac * stake_adj
     if stake_adj < 1.0:
         logger.info(f"Kelly ajustado por saúde: {reason}")
@@ -303,7 +304,8 @@ def kelly_criterion_no(
     frac = fraction if fraction is not None else KELLY_FRACTION
     
     # Ajuste por Health Factor (Score de performance)
-    stake_adj, reason = apply_health_factor(1.0)
+    # Nota: No v5.8 o city_slug é passado para permitir boosts específicos
+    stake_adj, reason = apply_health_factor(1.0) # City pass-through via wrapper se necessário
     frac = frac * stake_adj
     if stake_adj < 1.0:
         logger.info(f"Kelly NO ajustado por saúde: {reason}")
@@ -524,16 +526,13 @@ def _nearest_edge_distance(
 
 # ── Analytics Health Integration ───────────────────────────────
 
-def apply_health_factor(stake: float):
+def apply_health_factor(stake: float, city: str = None):
     """
-    Ajusta o stake usando o Analytics Health Engine.
-
-    Returns:
-        (stake_ajustado, motivo)
+    Ajusta o stake usando o Analytics Health Engine (v5.8).
+    Agora com boost para cidades lucrativas (Seoul, Tokyo, Madrid).
     """
     try:
         health = load_health()
-
         if not health:
             return stake, "health indisponível"
 
@@ -541,7 +540,13 @@ def apply_health_factor(stake: float):
             return 0.0, "Health: STOP TRADING"
 
         factor = float(health.get("kelly_factor", 1.0))
-        factor = max(0.0, min(1.0, factor))
+        
+        # Boost v5.8: Se a cidade for top performer, ignoramos o fator redutor global
+        if city and city.lower() in ["seoul", "tokyo", "madrid"]:
+            factor = max(factor, 0.85) # Nunca menos de 85% para cidades elite
+            logger.info(f"Boost aplicado para {city}: fator {factor:.2f}")
+
+        factor = max(0.0, min(1.2, factor)) # Permitimos até 20% de alavancagem extra
 
         return round(stake * factor, 2), f"Kelly x {factor:.2f}"
 

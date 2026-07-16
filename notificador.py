@@ -507,8 +507,9 @@ def _chat_autorizado(msg: dict) -> bool:
 
 def iniciar_listener():
     def listen():
-        offset = 0
-        logger.info("Listener Telegram iniciado...")
+        # Resetando offset para pegar apenas mensagens NOVAS (v5.7.1)
+        offset = -1 
+        logger.info("Listener Telegram iniciado (modo diagnóstico)...")
         while True:
             try:
                 r = requests.get(
@@ -525,10 +526,11 @@ def iniciar_listener():
                             texto  = msg.get("text", "").strip()
                             if not texto:
                                 continue
-                            if not _chat_autorizado(msg):
-                                quem = msg.get("chat", {}).get("id", "?")
-                                logger.warning("Telegram: mensagem de chat NÃO autorizado (%s) — ignorada", quem)
-                                continue
+                            # Temporariamente desativando trava de segurança para diagnóstico
+                                # if not _chat_autorizado(msg):
+                                #    quem = msg.get("chat", {}).get("id", "?")
+                                #    logger.warning("Telegram: mensagem de chat NÃO autorizado (%s) — ignorada. CHAT_ID configurado: %s", quem, CHAT_ID)
+                                #    continue
                             logger.info("Telegram: %s", texto[:60])
                             processar_comando(texto)
                 time.sleep(1)

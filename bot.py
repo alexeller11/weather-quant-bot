@@ -323,7 +323,7 @@ def process_city(city: Dict):
             if edge_yes > 0 and not yes_traded:
                 if check_guardrails(market_dict, prob, forecast_c, sigma=sigma, side="YES"):
                     kf = dynamic_kelly_fraction(history_view)
-                    stake = kelly_criterion(prob, yes_price, balance, fraction=kf)
+                    stake = kelly_criterion(prob, yes_price, balance, fraction=kf, city=name)
                     stake = min(stake, stake_cap)
                     _execute_trade(
                         name, m, market_date, condition,
