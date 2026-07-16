@@ -169,6 +169,8 @@ def process_city(city: Dict):
         if forecast_day not in forecast_cache:
             result = get_corrected_forecast(city_slug, forecast_day)
             forecast_cache[forecast_day] = result
+            # Pequeno delay se não for cache hit (ajuda contra 429)
+            time.sleep(0.3)
             if result is None or result[0] is None:
                 logger.debug(f"Forecast indisponível para {name} D+{forecast_day-1}")
             else:
@@ -601,9 +603,12 @@ def scheduled_trading():
         logger.warning(f"trading_cooldown check: {e}")
 
     # PATCH 1: este bloco estava SEM indentação (fora da função) no original.
-    for city in cities:
+    for i, city in enumerate(cities):
         try:
             process_city(city)
+            # Evita Rate Limit (429) na Open-Meteo e Polymarket
+            if i < len(cities) - 1:
+                time.sleep(1.5)
         except Exception as e:
             logger.error(f"{city.get('name','?')}: {e}", exc_info=True)
 
