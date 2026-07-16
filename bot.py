@@ -657,6 +657,18 @@ def run():
         raise RuntimeError(f"[dashboard] nao foi possivel iniciar: {_dashboard_error}")
     logger.info("Dashboard + health-check HTTP listener iniciado")
 
+    # Teste de Bloqueio Geográfico (v5.8.2)
+    try:
+        r_geo = requests.get("https://clob.polymarket.com/markets/0x123", timeout=5)
+        if r_geo.status_code == 403:
+            logger.error("🚨 BLOQUEIO GEOGRÁFICO: O IP deste servidor está bloqueado pela Polymarket.")
+            from notificador import enviar_mensagem
+            enviar_mensagem("⚠️ <b>ALERTA:</b> O servidor está em uma região bloqueada pela Polymarket (EUA/Brasil). O bot não conseguirá operar sem um Proxy.")
+        else:
+            logger.info("✅ Conexão com Polymarket validada (sem bloqueio geográfico).")
+    except Exception as e:
+        logger.warning(f"Teste de geobloqueio falhou: {e}")
+
     try:
         iniciar_listener()
         logger.info("Listener Telegram iniciado")
