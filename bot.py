@@ -392,8 +392,24 @@ def _execute_trade(
         return
 
     execution = None
-    # PATCH 4: era 'PAPER_EXECUTION_ENABLED' (não existe) -> 'PAPER_EXECUTION_REQUIRED'
-    if PAPER_EXECUTION_REQUIRED:
+    
+    # Se PAPER_EXECUTION_REQUIRED for 0 e houver uma chave privada, tentamos o REAL
+    is_real_mode = not PAPER_EXECUTION_REQUIRED and os.getenv("POLY_PRIV_KEY")
+    
+    if is_real_mode:
+        from real_execution import execute_real_trade
+        res = execute_real_trade(m, side, stake)
+        if res["ok"]:
+            entry_price = res["avg_price"]
+            shares = res["shares"]
+            stake = res["filled_cost"]
+            logger.info(f"✅ TRADE REAL EXECUTADO: {side} @ {entry_price}")
+        else:
+            record_decision("blocked", "real_execution_failed", detail=res["reason"])
+            logger.error(f"❌ FALHA NO TRADE REAL: {res['reason']}")
+            return
+
+    elif PAPER_EXECUTION_REQUIRED:
         execution = simulate_paper_buy(m, side, stake)
         if not execution.ok:
             record_decision(

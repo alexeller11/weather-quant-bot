@@ -1,0 +1,18 @@
+{
+    "schema": 1,
+    "generated_at": "2026-07-16T20:57:46.807928+00:00",
+    "checksum": "b051acd120d9f68ce57f7fe7a7979433315cab7d5224541643f014c3d593e7db",
+    "payload": {
+        "alerts": [
+            "Sharpe baixo (0.49)",
+            "ECE alto (0.894)",
+            "Calibração ruim (10.63%)"
+        ],
+        "kelly_factor": 0.2,
+        "paper_mode": true,
+        "recommendation": "Entrar em Paper Trading.",
+        "score": 55.0,
+        "status": "RED",
+        "stop_trading": false
+    }
+}
