@@ -131,6 +131,13 @@ def kelly_criterion(
     kelly_pct = max(0.0, kelly_pct)
 
     frac = fraction if fraction is not None else KELLY_FRACTION
+    
+    # Ajuste por Health Factor (Score de performance)
+    stake_adj, reason = apply_health_factor(1.0)
+    frac = frac * stake_adj
+    if stake_adj < 1.0:
+        logger.info(f"Kelly ajustado por saúde: {reason}")
+
     stake_pct = kelly_pct * frac
     stake_pct = min(stake_pct, MAX_KELLY_FRACTION_CAP)
 
@@ -152,7 +159,10 @@ def check_guardrails(
     forecast_temp: float,
     sigma: float = None,
     side: str = "YES",
-) -> bool:
+) -> tuple:
+    """
+    Retorna (bool ok, str reason).
+    """
     condition  = market.get("condition", "ABOVE").upper()
     target_raw = float(market.get("target_temp", 0))
     price_yes  = float(market.get("price", 0))
@@ -177,78 +187,52 @@ def check_guardrails(
     # === LÓGICA YES ===
     min_p = MIN_PRICE_RANGE2 if condition == "RANGE2" else MIN_PRICE
     if price_yes < min_p or price_yes > MAX_PRICE:
-        logger.info(f"Bloqueado: preço fora da faixa ({price_yes:.3f}, min={min_p})")
-        return False
+        return False, "preco_fora_da_faixa"
 
     edge = model_prob - price_yes
 
     ev = expected_value(model_prob, price_yes)
     if ev < MIN_EV:
-        logger.info(
-            f"Bloqueado: EV líquido insuficiente ({ev:+.3f} < {MIN_EV}) "
-            f"[prob={model_prob:.3f} price={price_yes:.3f} fee={FEE_RATE}]"
-        )
-        return False
+        return False, "ev_insuficiente"
 
     if condition in ("ABOVE", "BELOW"):
         if PROB_DEADZONE_MIN <= model_prob <= PROB_DEADZONE_MAX:
-            logger.info(f"Bloqueado: prob na zona morta ({model_prob:.3f})")
-            return False
+            return False, "zona_morta"
         if model_prob < MIN_PROB_ABOVE_BELOW:
-            logger.info(
-                f"Bloqueado: prob abaixo do mínimo para {condition} "
-                f"({model_prob:.3f} < {MIN_PROB_ABOVE_BELOW})"
-            )
-            return False
+            return False, "prob_baixa"
         if edge < MIN_EDGE:
-            logger.info(f"Bloqueado: edge insuficiente ({edge:.3f})")
-            return False
+            return False, "edge_insuficiente"
 
         max_edge = _max_edge_for_prob(model_prob)
         if edge > max_edge:
-            logger.info(
-                f"Bloqueado: edge {edge:.3f} > {max_edge} "
-                f"(prob={model_prob:.2f} mkt={price_yes:.2f})"
-            )
-            return False
+            return False, "edge_alto_demais"
 
         if sigma is None or sigma <= 0:
             sigma = {1: 4.0, 2: 4.5, 3: 5.0}.get(day_offset, 5.0)
         sigma = min(sigma, SIGMA_CAP_ABOVE_BELOW)
         z_score = abs(forecast_temp - target_c) / sigma
         if z_score < MIN_TARGET_ZSCORE:
-            logger.info(f"Bloqueado: zscore {z_score:.2f} < {MIN_TARGET_ZSCORE}")
-            return False
+            return False, "zscore_baixo"
 
     elif condition == "EXACT":
         if edge < MIN_EDGE_EXACT:
-            logger.info(f"Bloqueado: edge insuficiente para EXACT ({edge:.3f})")
-            return False
+            return False, "edge_insuficiente"
 
     elif condition == "RANGE2":
         if model_prob < MIN_PROB_RANGE2:
-            logger.info(f"Bloqueado: prob abaixo do mínimo para RANGE2 ({model_prob:.3f})")
-            return False
+            return False, "prob_baixa"
         if edge < MIN_EDGE_RANGE2:
-            logger.info(f"Bloqueado: edge insuficiente para RANGE2 ({edge:.3f})")
-            return False
+            return False, "edge_insuficiente"
         if price_yes > 0.70:
-            logger.info(f"Bloqueado: RANGE2 preço alto demais ({price_yes:.3f})")
-            return False
+            return False, "preco_alto"
 
     elif condition == "RANGE":
-        logger.info("Bloqueado: tipo RANGE genérico não suportado")
-        return False
+        return False, "tipo_nao_suportado"
 
     else:
-        logger.info(f"Bloqueado: condition desconhecida ({condition})")
-        return False
+        return False, "condicao_desconhecida"
 
-    logger.info(
-        f"GUARDRAIL OK [{side}]: {condition} target={target_raw}°{unit} "
-        f"price_yes={price_yes:.3f} prob={model_prob:.3f} edge={edge:+.3f} EV={ev:+.3f}"
-    )
-    return True
+    return True, "ok"
 
 
 def _check_no_guardrails(
@@ -259,64 +243,41 @@ def _check_no_guardrails(
     target_c: float = None,
     sigma: float = None,
     day_offset: int = 1,
-) -> bool:
+) -> tuple:
     """
     Guardrails para apostas NO.
-
-    AJUSTE v5.5: RANGE2 agora suportado.
-    A lógica é idêntica ao EXACT: apostamos que a temperatura NÃO cai
-    no bucket. O zscore check verifica que o forecast está distante o
-    suficiente do centro do bucket para justificar a aposta.
-
-    AUDITORIA SENIOR: zscore check identico ao lado YES.
+    Retorna (bool ok, str reason).
     """
     if condition not in ("ABOVE", "BELOW", "EXACT", "RANGE2"):
-        logger.info(f"NO nao suportado para {condition}")
-        return False
+        return False, "condicao_nao_suportada"
 
     if price_yes < MIN_PRICE_YES_FOR_NO:
-        logger.info(f"NO bloqueado: price_yes muito baixo ({price_yes:.3f} < {MIN_PRICE_YES_FOR_NO})")
-        return False
+        return False, "price_yes_baixo"
 
     if model_prob > MAX_PROB_FOR_NO:
-        logger.info(f"NO bloqueado: model_prob alta demais ({model_prob:.3f} > {MAX_PROB_FOR_NO})")
-        return False
+        return False, "prob_alta"
 
     no_edge = price_yes - model_prob
     if no_edge < MIN_EDGE_NO:
-        logger.info(f"NO bloqueado: edge insuficiente ({no_edge:.3f} < {MIN_EDGE_NO})")
-        return False
+        return False, "edge_insuficiente"
 
     price_no = 1.0 - price_yes
     if price_no < MIN_PRICE:
-        logger.info(f"NO bloqueado: price_no muito baixo ({price_no:.3f})")
-        return False
+        return False, "price_no_baixo"
 
     ev_no = expected_value_no(model_prob, price_yes)
     if ev_no < MIN_EV:
-        logger.info(
-            f"NO bloqueado: EV líquido insuficiente ({ev_no:+.3f} < {MIN_EV})"
-        )
-        return False
+        return False, "ev_insuficiente"
 
-    # Zscore check: exige que o forecast esteja suficientemente distante
-    # do target. Para RANGE2, target_c é o centro do bucket.
+    # Zscore check
     if forecast_temp is not None and target_c is not None:
         eff_sigma = sigma if (sigma and sigma > 0) else {1: 4.0, 2: 4.5, 3: 5.0}.get(day_offset, 5.0)
         eff_sigma = min(eff_sigma, SIGMA_CAP_ABOVE_BELOW)
         z_score = abs(forecast_temp - target_c) / eff_sigma
         if z_score < MIN_TARGET_ZSCORE:
-            logger.info(
-                f"NO bloqueado: zscore {z_score:.2f} < {MIN_TARGET_ZSCORE} "
-                f"(forecast muito proximo do target)"
-            )
-            return False
+            return False, "zscore_baixo"
 
-    logger.info(
-        f"GUARDRAIL OK [NO]: {condition} price_yes={price_yes:.3f} "
-        f"price_no={price_no:.3f} prob={model_prob:.3f} NO_edge={no_edge:+.3f} EV={ev_no:+.3f}"
-    )
-    return True
+    return True, "ok"
 
 
 def kelly_criterion_no(
@@ -340,6 +301,13 @@ def kelly_criterion_no(
     kelly_pct = max(0.0, kelly_pct)
 
     frac = fraction if fraction is not None else KELLY_FRACTION
+    
+    # Ajuste por Health Factor (Score de performance)
+    stake_adj, reason = apply_health_factor(1.0)
+    frac = frac * stake_adj
+    if stake_adj < 1.0:
+        logger.info(f"Kelly NO ajustado por saúde: {reason}")
+
     stake_pct = kelly_pct * frac
     stake_pct = min(stake_pct, MAX_KELLY_FRACTION_CAP)
 
@@ -376,6 +344,35 @@ def event_headroom(open_trades: list, city: str, market_date: str) -> float:
 
 
 # ── Cooldown após perdas consecutivas ────────────────────────────
+
+def city_trading_cooldown(history: list, city: str) -> tuple:
+    """
+    Bloqueia novas entradas PARA UMA CIDADE após sequência de perdas.
+    """
+    city_history = [t for t in history if (t.get("city", "") or "").strip().lower() == city.strip().lower()]
+    consec = consecutive_losses(city_history)
+    if consec < 3:
+        return False, ""
+
+    now = time.time()
+    last_exit = 0.0
+    for t in reversed(city_history):
+        if t.get("result") != "OPEN":
+            ts_str = t.get("exit_time") or t.get("entry_time") or ""
+            try:
+                from datetime import datetime, timezone
+                dt = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                last_exit = dt.timestamp()
+            except Exception:
+                pass
+            break
+
+    cooldown_secs = {3: 2*3600, 4: 4*3600}.get(consec, 12*3600)
+    if now - last_exit < cooldown_secs:
+        hours_left = (cooldown_secs - (now - last_exit)) / 3600
+        return True, f"cooldown cidade: {consec} perdas, aguarde {hours_left:.1f}h"
+    return False, ""
+
 
 def trading_cooldown(history: list) -> tuple:
     """

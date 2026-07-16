@@ -130,6 +130,20 @@ def _tabela_validacao(target, unit, model_prob, real_temp_c, resultado):
 # NOTIFICAÇÕES DE TRADE
 # ──────────────────────────────────────────────────────────────
 
+def notificar_quase_trade(city, market_date, target, unit, model_prob, market_price, edge, min_edge, reason):
+    """Notifica quando um trade foi bloqueado por pouco (v5.7)."""
+    enviar_mensagem(
+        f"<b>⚠️ QUASE-TRADE (BLOQUEADO)</b>\n\n"
+        f"<b>Cidade:</b> {city}\n"
+        f"<b>Data:</b> {market_date}\n"
+        f"<b>Target:</b> {target}°{unit}\n"
+        f"<b>Motivo:</b> {reason}\n\n"
+        f"Modelo: <b>{model_prob*100:.1f}%</b> | "
+        f"Mercado: <b>{market_price*100:.1f}%</b>\n"
+        f"Edge: <b>{edge*100:+.1f}%</b> (Min: {min_edge*100:.1f}%)"
+    )
+
+
 def notificar_entrada_trade(city, market_date, target, unit, stake,
                              model_prob, market_price, edge,
                              balance=None, shares=None):

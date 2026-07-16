@@ -173,25 +173,11 @@ def compute_features(
     city_errors: list,
     hour_utc: int = 12,
     temp_trend: float = 0.0,
-    # AUDITORIA bug #11: `month` e `humidity` declarados antes mas
-    # NUNCA entravam no vetor — parâmetros "fantasma" que davam falsa
-    # sensação de features ricas. Removidos da assinatura. Para preservar
-    # o shape (7 dims) e manter compatibilidade com modelos já pickled
-    # em DB, as duas últimas posições ficam reservadas a 0.0.
 ) -> np.ndarray:
     """
-    Features v3 (7 dimensões, NORMALIZADAS para ~[0,1] / [-1,1]).
-
-    Dims efetivas (4):
-      0  — model_prob           (sinal direto da prob do modelo)
-      1  — day_offset / 3        (horizonte)
-      2  — hour_utc / 24         (hora do dia do trade)
-      3  — mean_err / 5          (erro médio histórico da cidade)
-    Dims derivadas do histórico local:
-      4  — std_err / 5
-      5  — recent_trend / 5      (última - penúltima)
-    Reservadas (sempre 0 — slots de upgrade futuros sem quebrar pickled):
-      6  — temp_trend / 5 (recebido mas em callers sempre 0)
+    Features v4 (7 dimensões, NORMALIZADAS).
+    
+    Agora o mês (estacionalidade) ocupa o slot 6.
     """
     if not city_errors:
         mean_err, std_err = 2.0, 1.0
@@ -203,6 +189,8 @@ def compute_features(
     if len(city_errors) >= 2:
         recent_trend = float(city_errors[-1]) - float(city_errors[-2])
 
+    month_norm = datetime.now(timezone.utc).month / 12.0
+
     return np.array([
         float(model_prob),
         float(day_offset) / 3.0,
@@ -210,7 +198,7 @@ def compute_features(
         mean_err / 5.0,
         std_err / 5.0,
         recent_trend / 5.0,
-        float(temp_trend) / 5.0,
+        month_norm,
     ]).reshape(1, -1)
 
 

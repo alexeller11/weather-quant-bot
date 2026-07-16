@@ -67,6 +67,7 @@ from risk import (
     event_headroom,
     risk_limits_ok,
     trading_cooldown,
+    city_trading_cooldown,
 )
 from settlement import settle_all
 from station_data import city_is_reliable, get_intraday_confirmation
@@ -127,6 +128,14 @@ def process_city(city: Dict):
     if not city_is_reliable(city_slug):
         record_decision("blocked", "city_unreliable", city=name)
         logger.info(f"{name}: cidade não confiável — pulando")
+        return
+
+    # Circuit breaker por cidade
+    data = load_bankroll()
+    on_cooldown, reason = city_trading_cooldown(data.get("history", []), name)
+    if on_cooldown:
+        record_decision("blocked", "city_cooldown", city=name, detail=reason)
+        logger.warning(f"{name}: em cooldown individual — {reason}")
         return
 
     try:
@@ -335,7 +344,8 @@ def process_city(city: Dict):
 
             # --- AVALIAR NO ---
             if edge_no > 0 and not no_traded:
-                if check_guardrails(market_dict, prob, forecast_c, sigma=sigma, side="NO"):
+                ok, reason = check_guardrails(market_dict, prob, forecast_c, sigma=sigma, side="NO")
+                if ok:
                     kf = dynamic_kelly_fraction(history_view)
                     stake = kelly_criterion_no(prob, yes_price, balance, fraction=kf)
                     open_trades = _get_open_trades(history_view)
@@ -357,9 +367,14 @@ def process_city(city: Dict):
                     history_view = dedupe_history_by_market(history)
                     balance = float(data.get("balance", 0))
                 else:
+                    # Alerta de Quase-Trade (v5.7)
+                    if reason == "edge_insuficiente":
+                        if edge_no >= (MIN_EDGE_NO - 0.005):
+                            notificar_quase_trade(name, market_date, target, unit, prob, yes_price, edge_no, MIN_EDGE_NO, reason)
+
                     record_decision(
                         "blocked", "guardrail_failed", city=name, market=m, side="NO",
-                        prob=prob, edge=edge_no, yes_price=yes_price, sigma=sigma,
+                        prob=prob, edge=edge_no, yes_price=yes_price, sigma=sigma, reason=reason
                     )
 
         except Exception as e:

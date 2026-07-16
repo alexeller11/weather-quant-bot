@@ -216,6 +216,7 @@ def get_forecast(city_slug, forecast_day=1):
         "latitude":      lat,
         "longitude":     lon,
         "daily":         "temperature_2m_max",
+        "current":       "time",
         "timezone":      "auto",
         "forecast_days": 7,
     }
@@ -228,6 +229,16 @@ def get_forecast(city_slug, forecast_day=1):
             return None, None
 
         data = r.json()
+        
+        # Verificação de Stale Data (v5.7)
+        if "current" in data and "time" in data["current"]:
+            try:
+                last_update = datetime.fromisoformat(data["current"]["time"].replace("Z", "+00:00"))
+                age_hours = (datetime.now(timezone.utc) - last_update).total_seconds() / 3600
+                if age_hours > 6:
+                    logger.warning(f"STALE DATA: {city_slug} atualizado ha {age_hours:.1f}h")
+            except Exception:
+                pass
 
         if (
             "daily" not in data

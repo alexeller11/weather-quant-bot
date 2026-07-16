@@ -515,26 +515,38 @@ def load_bankroll():
 
 
 def _persist_unlocked(data) -> None:
+    """
+    Persistência Robusta (v5.7):
+    O PostgreSQL é a fonte da verdade. O bankroll.json é apenas um cache de leitura.
+    """
     data = _coerce_bankroll_shape(data)
 
-    try:
-        _write_local(data)
-    except Exception as e:
-        logger.warning(f"  [local] save falhou: {e}")
-
+    # 1. PostgreSQL (Prioridade Máxima)
     conn = _get_db()
+    db_success = False
     if conn:
         try:
             _save_to_db(conn, data)
             logger.info(f"  [db] bankroll salvo — saldo: ${data.get('balance', 0):.2f} seq={data.get('seq')}")
+            db_success = True
         except Exception as e:
-            logger.warning(f"  [db] save falhou: {e}")
+            logger.error(f"CRÍTICO: Falha ao salvar no PostgreSQL: {e}")
         finally:
             try:
                 conn.close()
             except Exception:
                 pass
+    
+    # 2. Local (Cache de Fallback)
+    try:
+        _write_local(data)
+    except Exception as e:
+        logger.warning(f"  [local] cache falhou: {e}")
 
+    if not db_success:
+        logger.warning("Bankroll persistido APENAS localmente. Verifique o DATABASE_URL.")
+
+    # 3. GitHub (Backup terciário)
     try:
         from github_sync import commit_bankroll
         commit_bankroll(data)
