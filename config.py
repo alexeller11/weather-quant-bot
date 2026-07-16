@@ -37,14 +37,14 @@ TRADING_ENABLED = _parse_bool_env("TRADING_ENABLED", "0")
 # Tokyo prob=0.766 com edge=+0.647 era trade válido sendo bloqueado
 MIN_PROB_ABOVE_BELOW = float(os.getenv("MIN_PROB_ABOVE_BELOW", "0.65"))
 
-MIN_TARGET_ZSCORE = float(os.getenv("MIN_TARGET_ZSCORE", "0.8"))
+MIN_TARGET_ZSCORE = float(os.getenv("MIN_TARGET_ZSCORE", "0.7"))
 MAX_POSITION = float(os.getenv("MAX_POSITION", "4.00"))
 MAX_TOTAL_EXPOSURE = float(os.getenv("MAX_TOTAL_EXPOSURE", "20.00"))
 MAX_OPEN_TRADES = int(os.getenv("MAX_OPEN_TRADES", "5"))
 KELLY_FRACTION = float(os.getenv("KELLY_FRACTION", "0.50"))
 MAX_KELLY_FRACTION_CAP = float(os.getenv("MAX_KELLY_FRACTION_CAP", "0.50"))
-MIN_EDGE = float(os.getenv("MIN_EDGE", "0.02"))
-MIN_EDGE_EXACT = float(os.getenv("MIN_EDGE_EXACT", "0.05"))
+MIN_EDGE = float(os.getenv("MIN_EDGE", "0.015"))
+MIN_EDGE_EXACT = float(os.getenv("MIN_EDGE_EXACT", "0.04"))
 MIN_EV = float(os.getenv("MIN_EV", "0.05"))
 EDGE_THRESHOLD = MIN_EDGE
 MAX_FORECAST_DAY = int(os.getenv("MAX_FORECAST_DAY", "3"))

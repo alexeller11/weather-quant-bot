@@ -138,7 +138,7 @@ def process_city(city: Dict):
 
     if not markets:
         record_decision("blocked", "no_markets", city=name)
-        logger.debug(f"{name}: sem mercados")
+        logger.info(f"{name}: sem mercados saudáveis na Polymarket")
         return
 
     logger.info(f"{name}: {len(markets)} mercados válidos encontrados")

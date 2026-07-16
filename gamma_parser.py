@@ -74,14 +74,25 @@ def safe_request(url, retries=2, timeout=8):
 
 def detect_unit(question):
     """Detecta unidade da temperatura na pergunta."""
-    if re.search(r'°[Ff]|[Ff]ahrenheit|\d+\s*[Ff](?!\w)', question):
+    q = question.lower()
+    if "fahrenheit" in q or "°f" in q:
         return "F"
-    if re.search(r'°[Cc]|[Cc]elsius', question):
+    if "celsius" in q or "°c" in q:
         return "C"
-    # Heurística: se números > 55 sem unidade explícita, provavelmente °F
-    nums = re.findall(r'-?\d+', question)
-    if nums and max(int(n) for n in nums) > 55:
+    
+    # Busca por padrões como "72F" ou "22C"
+    if re.search(r'\d+\s*f(?!\w)', q):
         return "F"
+    if re.search(r'\d+\s*c(?!\w)', q):
+        return "C"
+
+    # Heurística: se números > 45 sem unidade explícita, provavelmente °F
+    # (Abaixado de 55 para 45 para capturar dias amenos nos EUA)
+    nums = re.findall(r'-?\d+', question)
+    if nums:
+        max_val = max(int(n) for n in nums)
+        if max_val > 45:
+            return "F"
     return "C"
 
 
