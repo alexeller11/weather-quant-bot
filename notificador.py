@@ -19,6 +19,13 @@ CORREÇÕES (auditoria):
    vetores da divergência de saldo.
 3. Brier do contexto da IA agora é ciente do lado (NO → 1−model_prob),
    consistente com validacao.py.
+
+PATCH (correção aplicada nesta versão):
+4. iniciar_listener(): a chamada a _chat_autorizado(msg) estava
+   COMENTADA ("Temporariamente desativando trava de segurança para
+   diagnóstico"), desfazendo a correção do item 1 acima. Com isso,
+   QUALQUER pessoa que encontrasse o bot no Telegram podia de novo
+   executar /resetbankroll e /settlement. Reativada.
 """
 
 import os
@@ -509,7 +516,7 @@ def iniciar_listener():
     def listen():
         # Resetando offset para pegar apenas mensagens NOVAS (v5.7.1)
         offset = -1 
-        logger.info("Listener Telegram iniciado (modo diagnóstico)...")
+        logger.info("Listener Telegram iniciado...")
         while True:
             try:
                 r = requests.get(
@@ -526,11 +533,17 @@ def iniciar_listener():
                             texto  = msg.get("text", "").strip()
                             if not texto:
                                 continue
-                            # Temporariamente desativando trava de segurança para diagnóstico
-                                # if not _chat_autorizado(msg):
-                                #    quem = msg.get("chat", {}).get("id", "?")
-                                #    logger.warning("Telegram: mensagem de chat NÃO autorizado (%s) — ignorada. CHAT_ID configurado: %s", quem, CHAT_ID)
-                                #    continue
+                            # PATCH: trava de segurança reativada — estava
+                            # comentada ("diagnóstico"), o que permitia
+                            # qualquer chat executar comandos sensíveis
+                            # (/resetbankroll, /settlement).
+                            if not _chat_autorizado(msg):
+                                quem = msg.get("chat", {}).get("id", "?")
+                                logger.warning(
+                                    "Telegram: mensagem de chat NÃO autorizado (%s) — ignorada. CHAT_ID configurado: %s",
+                                    quem, CHAT_ID,
+                                )
+                                continue
                             logger.info("Telegram: %s", texto[:60])
                             processar_comando(texto)
                 time.sleep(1)
