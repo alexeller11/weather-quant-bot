@@ -24,6 +24,14 @@ AJUSTE v5.5 (2026-06-17):
    A lógica é idêntica ao EXACT — apostamos que a temperatura NÃO cai
    no bucket. O zscore check garante que o forecast está suficientemente
    distante do bucket antes de entrar.
+
+PATCH (correção aplicada nesta versão):
+7. kelly_criterion(): o parâmetro se chamava 'model_prob' mas o corpo da
+   função referenciava a variável inexistente 'prob' em três lugares
+   ('if prob <= 0...', 'q = 1.0 - prob', 'kelly_pct = (prob * b - q) / b').
+   Isso causava NameError em TODA chamada da função — ou seja, nenhum
+   trade do lado YES conseguia ter o stake calculado. Corrigido para usar
+   'model_prob' consistentemente.
 """
 
 import os
@@ -120,19 +128,20 @@ def kelly_criterion(
     fraction: float = None,
     city: str = None,
 ) -> float:
-    if prob <= 0 or prob >= 1 or price <= 0 or price >= 1:
+    # PATCH 7: era 'prob' (indefinido) -> 'model_prob' (nome real do parâmetro).
+    if model_prob <= 0 or model_prob >= 1 or price <= 0 or price >= 1:
         return 0.0
 
     b = _net_odds(price)
     if b <= 0:
         return 0.0
-    q = 1.0 - prob
+    q = 1.0 - model_prob
 
-    kelly_pct = (prob * b - q) / b
+    kelly_pct = (model_prob * b - q) / b
     kelly_pct = max(0.0, kelly_pct)
 
     frac = fraction if fraction is not None else KELLY_FRACTION
-    
+
     # Ajuste por Health Factor (Score de performance) v5.8
     stake_adj, reason = apply_health_factor(1.0, city=city)
     frac = frac * stake_adj
@@ -302,7 +311,7 @@ def kelly_criterion_no(
     kelly_pct = max(0.0, kelly_pct)
 
     frac = fraction if fraction is not None else KELLY_FRACTION
-    
+
     # Ajuste por Health Factor (Score de performance)
     # Nota: No v5.8 o city_slug é passado para permitir boosts específicos
     stake_adj, reason = apply_health_factor(1.0) # City pass-through via wrapper se necessário
@@ -540,7 +549,7 @@ def apply_health_factor(stake: float, city: str = None):
             return 0.0, "Health: STOP TRADING"
 
         factor = float(health.get("kelly_factor", 1.0))
-        
+
         # Boost v5.8: Se a cidade for top performer, ignoramos o fator redutor global
         if city and city.lower() in ["seoul", "tokyo", "madrid"]:
             factor = max(factor, 0.85) # Nunca menos de 85% para cidades elite
