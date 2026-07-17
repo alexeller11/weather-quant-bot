@@ -69,7 +69,7 @@ from consensus import ConsensusEngine
 from forecast import get_corrected_forecast, city_today
 from gamma_parser import fetch_markets
 from model import calculate_probability
-from notificador import iniciar_listener, notificar_entrada_trade
+from notificador import iniciar_listener, notificar_entrada_trade, notificar_quase_trade
 from paper_execution import simulate_paper_buy
 from risk import (
     check_guardrails,
@@ -362,7 +362,17 @@ def process_city(city: Dict):
 
             # --- AVALIAR NO ---
             if edge_no > 0 and not no_traded:
-                ok, reason = check_guardrails(market_dict, prob, forecast_c, sigma=sigma, side="NO")
+                # PATCH v5.7 (correção): check_guardrails() em risk.py retorna
+                # um bool simples, não uma tupla (ok, reason). O código anterior
+                # fazia 'ok, reason = check_guardrails(...)', o que levantava
+                # TypeError ("cannot unpack non-iterable bool object") toda vez
+                # que havia edge_no > 0 — ou seja, o lado NO nunca era avaliado
+                # de fato, sempre caía no except genérico do loop de mercados.
+                # Revertido para tratar o retorno como bool. A notificação de
+                # "quase-trade" (que dependia de 'reason') fica desativada até
+                # risk.check_guardrails() ser atualizado para retornar
+                # (bool, motivo) de forma consistente nos dois lados (YES e NO).
+                ok = check_guardrails(market_dict, prob, forecast_c, sigma=sigma, side="NO")
                 if ok:
                     kf = dynamic_kelly_fraction(history_view)
                     stake = kelly_criterion_no(prob, yes_price, balance, fraction=kf)
@@ -385,14 +395,21 @@ def process_city(city: Dict):
                     history_view = dedupe_history_by_market(history)
                     balance = float(data.get("balance", 0))
                 else:
-                    # Alerta de Quase-Trade (v5.7)
-                    if reason == "edge_insuficiente":
-                        if edge_no >= (MIN_EDGE_NO - 0.005):
-                            notificar_quase_trade(name, market_date, target, unit, prob, yes_price, edge_no, MIN_EDGE_NO, reason)
+                    # Alerta de Quase-Trade (v5.7): sem 'reason' vindo de
+                    # check_guardrails(), usamos apenas a distância de edge
+                    # como aproximação de "quase passou" pelo filtro mais comum
+                    # (MIN_EDGE_NO). Não cobre os outros motivos de bloqueio
+                    # (price_yes baixo, prob alta demais, zscore, etc.) — para
+                    # isso, check_guardrails() precisaria retornar o motivo.
+                    if edge_no >= (MIN_EDGE_NO - 0.005):
+                        notificar_quase_trade(
+                            name, market_date, target, unit, prob, yes_price,
+                            edge_no, MIN_EDGE_NO, "edge_insuficiente (aprox.)"
+                        )
 
                     record_decision(
                         "blocked", "guardrail_failed", city=name, market=m, side="NO",
-                        prob=prob, edge=edge_no, yes_price=yes_price, sigma=sigma, reason=reason
+                        prob=prob, edge=edge_no, yes_price=yes_price, sigma=sigma,
                     )
 
         except Exception as e:
