@@ -17,6 +17,19 @@ por natureza — não por iliquidez. Precisa de piso menor.
 - MAX_EDGE_RANGE2: novo parâmetro = 0.25
 Milan ABOVE 24C com edge=0.848 foi bloqueado pelo cap de 0.40 (correto).
 Para RANGE2 o edge máximo pode ser menor (0.25) pois probs são mais baixas.
+
+PATCH (correção aplicada nesta versão):
+- Bloco de carregamento de CITIES: o loop "Ensure each city dict has a
+  'name' key" estava desindentado (fora do 'if _CITIES_RAW:'), e o
+  'else:' logo depois ficou anexado a esse 'for' (for...else válido em
+  Python) em vez de ao 'if' original. Como o for não tem 'break', o
+  else SEMPRE executava — mesmo com cities.json carregado com sucesso —
+  sobrescrevendo CITY_SLUGS/CITY_COORDS/CITY_TZ/CITIES inteiros com a
+  lista hardcoded de 22 cidades do fallback. Na prática, qualquer
+  cidade nova adicionada a cities.json era descartada silenciosamente
+  em todo import do módulo. Corrigido reindentando o loop para dentro
+  do 'if', restaurando o else como fallback real (só roda quando
+  cities.json não existe/falha ao carregar).
 """
 
 import os
@@ -182,10 +195,16 @@ if _CITIES_RAW:
      CITY_TZ,
      CITY_SLUG_ALIASES) = build_city_maps(_CITIES_RAW)
     CITIES = _CITIES_RAW
-# Ensure each city dict has a 'name' key for downstream processing
-for _c in CITIES:
-    if 'name' not in _c:
-        _c['name'] = _c.get('display', _c.get('slug', ''))
+    # Ensure each city dict has a 'name' key for downstream processing
+    # PATCH: este loop estava fora do 'if' (desindentado), o que fazia o
+    # 'else' abaixo virar a cláusula de um 'for...else' que roda SEMPRE
+    # (não há 'break' no loop) — sobrescrevendo CITIES com o fallback
+    # hardcoded mesmo quando cities.json carregava com sucesso. Reindentado
+    # para dentro do 'if' para que o fallback só rode quando realmente
+    # não há cities.json.
+    for _c in CITIES:
+        if 'name' not in _c:
+            _c['name'] = _c.get('display', _c.get('slug', ''))
 
 else:
     # Fallback hardcoded — mantido para robustez caso cities.json seja removido
