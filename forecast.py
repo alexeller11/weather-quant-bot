@@ -216,7 +216,7 @@ def get_forecast(city_slug, forecast_day=1):
         "latitude":      lat,
         "longitude":     lon,
         "daily":         "temperature_2m_max",
-        "current":       "time",
+        "current":       "temperature_2m",
         "timezone":      "auto",
         "forecast_days": 7,
     }
