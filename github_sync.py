@@ -121,7 +121,7 @@ def commit_bankroll(bankroll_data):
             )
 
             if r.status_code in (200, 201):
-                logger.info(f"[github] bankroll salvo: ${saldo:.2f}")
+                logger.info(f"[github] bankroll salvo: ${saldo:.2f} (branch={branch})")
                 return True
 
             if r.status_code == 409 and tentativa == 0:
