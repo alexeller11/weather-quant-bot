@@ -362,8 +362,8 @@ def process_city(city: Dict):
                     balance = float(data.get("balance", 0))
                 else:
                     record_decision(
-                        "blocked", "guardrail_failed", city=name, market=m, side="YES",
-                        prob=prob, edge=edge_yes, yes_price=yes_price, sigma=sigma, reason=reason,
+                        "blocked", reason, city=name, market=m, side="YES",
+                        prob=prob, edge=edge_yes, yes_price=yes_price, sigma=sigma,
                     )
 
             # --- AVALIAR NO ---
@@ -401,8 +401,8 @@ def process_city(city: Dict):
                             notificar_quase_trade(name, market_date, target, unit, prob, yes_price, edge_no, MIN_EDGE_NO, reason)
 
                     record_decision(
-                        "blocked", "guardrail_failed", city=name, market=m, side="NO",
-                        prob=prob, edge=edge_no, yes_price=yes_price, sigma=sigma, reason=reason
+                        "blocked", reason, city=name, market=m, side="NO",
+                        prob=prob, edge=edge_no, yes_price=yes_price, sigma=sigma,
                     )
 
         except Exception as e:
