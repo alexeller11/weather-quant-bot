@@ -1,5 +1,5 @@
 {
-    "seq": 97,
+    "seq": 98,
     "balance": 594.5504,
     "history": [
         {
@@ -2831,18 +2831,18 @@
         {
             "ev": 0.2304,
             "fee": 0.0,
-            "pnl": 0,
+            "pnl": -3.96,
             "city": "Los Angeles",
             "edge": 0.023,
             "side": "YES",
             "type": "RANGE2",
             "unit": "F",
             "stake": 3.96,
-            "result": "OPEN",
+            "result": "LOSS",
             "shares": 44,
             "target": 76.5,
             "question": "Will the highest temperature in Los Angeles be between 76-77°F on July 17?",
-            "exit_time": null,
+            "exit_time": "2026-07-18T11:19:59.125327+00:00",
             "market_id": "los-angeles|2026-07-17|RANGE2|76-77|F_YES",
             "target_hi": 77.0,
             "target_lo": 76.0,
@@ -2854,7 +2854,7 @@
             "entry_price": 0.09,
             "market_date": "2026-07-17",
             "no_token_id": "",
-            "real_temp_c": null,
+            "real_temp_c": 32.4,
             "sigma_total": 4.5,
             "forecast_day": 2,
             "market_price": 0.09,
@@ -2864,7 +2864,7 @@
             "gamma_market_id": "2941537"
         }
     ],
-    "saved_at": "2026-07-17T11:38:55.726197+00:00",
+    "saved_at": "2026-07-18T11:19:59.125346+00:00",
     "created_at": "2026-06-01T00:00:00+00:00",
     "override_note": "Correcao 08/06/2026 — restaura Madrid Jun-8 perdido por override reaplicado",
     "start_balance": 200.0,
