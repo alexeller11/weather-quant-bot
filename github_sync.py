@@ -25,7 +25,12 @@ def _get_config():
     return {
         "token": os.environ.get("GITHUB_TOKEN", "").strip(),
         "repo": os.environ.get("GITHUB_REPO", "").strip(),
-        "branch": os.environ.get("GITHUB_BRANCH", "main").strip(),
+        # IMPORTANTE: nunca usar a branch de deploy (ex.: "main") aqui.
+        # O Render (e serviços similares) fazem auto-deploy a cada push
+        # nessa branch. Se o backup do bankroll for pra "main", cada
+        # settlement dispara um redeploy que MATA o processo em execução
+        # no meio do ciclo. Usamos uma branch separada só para dados.
+        "branch": os.environ.get("GITHUB_BRANCH", "data-backup").strip(),
     }
 
 
