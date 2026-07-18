@@ -123,12 +123,12 @@ class TestKellyCriterion(unittest.TestCase):
 
     def test_zero_edge_returns_zero(self):
         """Edge zero (prob = price): Kelly = 0."""
-        stake = self.kelly(prob=0.5, price=0.5, balance=100.0)
+        stake = self.kelly(model_prob=0.5, price=0.5, balance=100.0)
         self.assertEqual(stake, 0.0)
 
     def test_positive_edge_nonzero(self):
         """Edge positivo significativo: Kelly > 0."""
-        stake = self.kelly(prob=0.8, price=0.5, balance=100.0)
+        stake = self.kelly(model_prob=0.8, price=0.5, balance=100.0)
         self.assertGreater(stake, 0.0)
 
     def test_fee_reduces_effective_odds(self):
@@ -141,22 +141,22 @@ class TestKellyCriterion(unittest.TestCase):
     def test_max_position_cap(self):
         """Stake nunca excede MAX_POSITION."""
         from config import MAX_POSITION
-        stake = self.kelly(prob=0.99, price=0.01, balance=10000.0)
+        stake = self.kelly(model_prob=0.99, price=0.01, balance=10000.0)
         self.assertLessEqual(stake, MAX_POSITION)
 
     def test_invalid_prob_zero(self):
-        self.assertEqual(self.kelly(prob=0.0, price=0.5, balance=100.0), 0.0)
+        self.assertEqual(self.kelly(model_prob=0.0, price=0.5, balance=100.0), 0.0)
 
     def test_invalid_prob_one(self):
-        self.assertEqual(self.kelly(prob=1.0, price=0.5, balance=100.0), 0.0)
+        self.assertEqual(self.kelly(model_prob=1.0, price=0.5, balance=100.0), 0.0)
 
     def test_invalid_price_zero(self):
-        self.assertEqual(self.kelly(prob=0.8, price=0.0, balance=100.0), 0.0)
+        self.assertEqual(self.kelly(model_prob=0.8, price=0.0, balance=100.0), 0.0)
 
     def test_stake_proportional_to_balance(self):
         """Stake deve ser maior com balance maior."""
-        s1 = self.kelly(prob=0.8, price=0.5, balance=100.0)
-        s2 = self.kelly(prob=0.8, price=0.5, balance=1000.0)
+        s1 = self.kelly(model_prob=0.8, price=0.5, balance=100.0)
+        s2 = self.kelly(model_prob=0.8, price=0.5, balance=1000.0)
         # s2 pode ser limitado por MAX_POSITION mas nao deve ser menor que s1
         self.assertGreaterEqual(s2, s1)
 
