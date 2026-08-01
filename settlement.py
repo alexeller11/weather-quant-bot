@@ -2,19 +2,20 @@
 """
 settlement.py — Liquidação de trades
 
-CORRIGIDO v5: suporte ao tipo range2.
-CORREÇÕES (auditoria): timezone, atomicidade, payout, fee, ML.
+settle_all() é o único ponto de entrada: busca as temperaturas fora do
+lock (chamadas de rede lentas) e aplica tudo numa única seção crítica.
 
-AUDITORIA SENIOR:
-- settle_trade() (legacy) marcado como DEPRECATED. Operava fora de lock
-  e podia causar race condition. Use settle_all().
+ATENÇÃO — limitação conhecida: o resultado é decidido pela temperatura do
+Open-Meteo na coordenada da cidade, que NÃO é necessariamente a fonte que
+resolve o mercado na Polymarket. Enquanto isso for verdade, o histórico
+mede a coerência interna do bot, não o mercado (ver reliquidar.py e
+station_lat/station_lon em cities.json).
 """
 
 import logging
 import json
 import os
 import time
-import warnings
 import requests
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional, Tuple
@@ -109,10 +110,15 @@ def _fetch_actual_temperature(lat: float, lon: float, date: str) -> Optional[flo
 
 def _get_city_coordinates(city_name: str) -> tuple:
     """
-    Busca coordenadas em cities.json pelo slug, display ou aliases
-    (match case-insensitive).  O JSON antigo usava a chave "name",
-    mas o formato atual usa "slug" + "display" + "aliases".
+    Coordenadas de RESOLUÇÃO da cidade (slug, display ou alias).
+
+    Usa station_lat/station_lon quando definidas — a liquidação tem de
+    usar o mesmo ponto que o forecast, e esse ponto tem de ser a estação
+    que resolve o mercado. Cidades inativas continuam pesquisáveis aqui
+    de propósito: trades já abertos precisam liquidar.
     """
+    from config import resolution_coords
+
     name_lower = city_name.strip().lower()
 
     def _match(city: dict) -> bool:
@@ -133,15 +139,15 @@ def _get_city_coordinates(city_name: str) -> tuple:
             cities = json.load(f)
         for city in cities:
             if _match(city):
-                return city["lat"], city["lon"]
+                return resolution_coords(city)
     except Exception as e:
         logger.warning(f"cities.json: {e}")
 
     try:
-        from config import CITIES
-        for city in CITIES:
+        from config import ALL_CITIES
+        for city in ALL_CITIES:
             if _match(city):
-                return city["lat"], city["lon"]
+                return resolution_coords(city)
     except Exception:
         pass
 
@@ -215,6 +221,11 @@ def _compute_settlement(trade: Dict, actual_temp_c: float) -> Dict:
     else:  # EXACT
         won = abs(actual_temp_c - target_c) <= half_exact
 
+    # market_yes = o MERCADO resolveu YES (independente do lado apostado).
+    # É esta a grandeza que treina o ml_adjuster; `won` é o resultado do
+    # trade e, para o lado NO, é o oposto.
+    market_yes = bool(won)
+
     if side == "NO":
         won = not won
 
@@ -251,34 +262,18 @@ def _compute_settlement(trade: Dict, actual_temp_c: float) -> Dict:
     settled["pnl"]         = pnl
     settled["fee"]         = fee
     settled["real_temp_c"] = actual_temp_c
+    settled["market_yes"]  = market_yes
     settled["exit_time"]   = datetime.now(timezone.utc).isoformat()
     settled["_settlement_credit"] = settlement_credit
     return settled
 
 
 def settle_trade(trade: Dict, bankroll_data: Dict) -> Dict:
-    """
-    DEPRECATED — use settle_all() em vez desta função.
-
-    Esta função carrega e modifica o bankroll FORA de lock, podendo
-    causar race condition quando chamada por subprocessos (Telegram,
-    scripts manuais) concorrentemente com o loop principal.
-
-    Mantida apenas para compatibilidade retroativa. Será removida
-    numa versão futura.
-    """
-    warnings.warn(
-        "settle_trade() esta deprecated e opera fora de lock. "
-        "Use settle_all() para liquidacao segura e atomica.",
-        DeprecationWarning,
-        stacklevel=2,
+    """REMOVIDA — operava o bankroll fora de lock. Use settle_all()."""
+    raise NotImplementedError(
+        "settle_trade() foi removida: operava o bankroll fora de lock e "
+        "podia corromper o saldo em execucao concorrente. Use settle_all()."
     )
-    logger.error(
-        "settle_trade() DEPRECATED chamada detectada. "
-        "Migre para settle_all(). Abortando para evitar race condition."
-    )
-    # Retorna o trade sem alterar para evitar race condition silenciosa.
-    return trade
 
 
 def settle_all():
@@ -426,27 +421,34 @@ def settle_all():
             f"real={actual_temp_c:.1f}C PnL={pnl:+.2f}"
         )
 
+        # Treino do ML: depende só de model_prob e do resultado do mercado.
+        # Estava dentro do `if forecast_c is not None ...` junto com a
+        # calibração de sigma, o que descartava do treino todo trade sem
+        # forecast_c gravado (26 no histórico).
+        if settled.get("model_prob") is not None:
+            try:
+                # AUDITORIA bug #12 (leakage): treinar o SGD ANTES de
+                # alimentar o calibrator com o erro deste trade, senão o
+                # `get_recent_errors` da própria feature já veria o erro do
+                # trade que está a ser rotulado (auto-reforço).
+                _ml_adjuster.update(
+                    model_prob=model_prob, day_offset=day_offset,
+                    city=city, calibrator=_calibrator,
+                    market_resolved_yes=bool(settled.get("market_yes", won)),
+                    hour_utc=_entry_hour_utc(settled),
+                )
+            except Exception as e:
+                logger.warning(f"ML update: {e}")
+
         if forecast_c is not None and actual_temp_c is not None:
             # AUDITORIA bug #1: usar forecast PURO para calibrar sigma.
-            # Antes usava `forecast_c` (já corrigido pelo bias), o que
-            # convergia o ajuste do sigma para o resíduo pós-correção
-            # — uma grandeza diferente da incerteza de forecast.
+            # `forecast_c` já vem corrigido pelo bias; calibrar com ele
+            # convergiria o sigma para o resíduo pós-correção, grandeza
+            # diferente da incerteza de forecast.
             raw_forecast = settled.get("forecast_c_raw")
             if raw_forecast is None:
                 raw_forecast = forecast_c
             try:
-                # AUDITORIA bug #12 (leakage): ANTES, `record_trade_result`
-                # gravava o erro deste trade no calibrator, e o `update`
-                # seguinte chamava `get_recent_errors` que via o MESMO erro
-                # — input rotulado com a própria saída do trade que acabou
-                # de ser decidido (auto-reforço). Ordem invertida: treinar
-                # o SGD ANTES de alimentar o calibrator com o erro deste
-                # trade.
-                _ml_adjuster.update(
-                    model_prob=model_prob, day_offset=day_offset,
-                    city=city, calibrator=_calibrator, trade_success=won,
-                    hour_utc=_entry_hour_utc(settled),
-                )
                 _calibrator.record_trade_result(
                     city=city, day_offset=day_offset,
                     predicted_temp=float(raw_forecast),

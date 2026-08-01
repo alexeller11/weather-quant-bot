@@ -469,59 +469,410 @@ class TestTradingCooldown(unittest.TestCase):
 
 
 class TestSigmaShrinkage(unittest.TestCase):
-    """Testa shrinkage em SigmaCalibrator.get_adjusted_sigma()."""
+    """
+    Testa a estimativa de sigma em SigmaCalibrator.get_adjusted_sigma().
+
+    O sigma é agora ESTIMADO a partir dos resíduos, com shrinkage para o
+    sigma base. A versão anterior somava um "adjustment" que só sabia
+    aumentar (max(0, media_abs - 2.0) * 0.6): com o erro real de 1.5°C o
+    ajuste era sempre 0 e o sigma nunca saía do chute inicial.
+    """
 
     def setUp(self):
         from sigma_calibrator import SigmaCalibrator
         self.cal = SigmaCalibrator()
 
-    def test_no_adjustment_without_data(self):
-        """Sem dados: sigma = base_sigma (adjustment = 0)."""
+    def _entries(self, values, key="residual", n=None):
+        vals = values if isinstance(values, list) else [values] * (n or 1)
+        return [{key: v, "error": abs(v), "timestamp": f"2026-01-{i+1:02d}"}
+                for i, v in enumerate(vals)]
+
+    def test_no_data_keeps_base_sigma(self):
         sigma = self.cal.get_adjusted_sigma("unknown-city", 4.0, "ABOVE")
         self.assertEqual(sigma, 4.0)
 
-    def test_shrinkage_under_5_samples(self):
-        """n < 5: adjustment inteiramente suprimido (0)."""
-        city = "test-shrink"
-        cond = "ABOVE"
-        self.cal.calibration_data[city] = {
-            cond: {
-                "errors": [{"error": 3.0, "timestamp": "2026-01-01"}] * 3,
-                "sigma_adjustment": 1.0,
-            }
+    def test_under_min_samples_keeps_base_sigma(self):
+        """Amostra insuficiente: não inventa estimativa."""
+        self.cal.calibration_data["test-few"] = {
+            "ABOVE": {"errors": self._entries(3.0, n=3)}
         }
-        sigma = self.cal.get_adjusted_sigma(city, 4.0, cond)
-        # n=3 < 5 → adjustment=0 → sigma=4.0
-        self.assertEqual(sigma, 4.0)
+        self.assertEqual(self.cal.get_adjusted_sigma("test-few", 4.0, "ABOVE"), 4.0)
 
-    def test_shrinkage_ramp_5_to_19(self):
-        """5 ≤ n < 20: rampa linear adjustment * (n-5)/15."""
-        city = "test-ramp"
-        cond = "ABOVE"
-        n = 10
-        self.cal.calibration_data[city] = {
-            cond: {
-                "errors": [{"error": 3.0, "timestamp": "2026-01-01"}] * n,
-                "sigma_adjustment": 1.5,
-            }
+    def test_sigma_can_go_DOWN(self):
+        """
+        O caso que a versão antiga era incapaz de tratar: resíduos pequenos
+        têm de REDUZIR o sigma. Aqui os resíduos são ±0.5°C com sigma base
+        de 4.0 — o resultado tem de ficar abaixo de 4.0.
+        """
+        residuals = [0.5, -0.5] * 15
+        self.cal.calibration_data["test-down"] = {
+            "ABOVE": {"errors": self._entries(residuals)}
         }
-        sigma = self.cal.get_adjusted_sigma(city, 4.0, cond)
-        # (10-5)/15 = 5/15 = 1/3; adjustment = 1.5 * 1/3 = 0.5
-        expected = 4.0 + 0.5
-        self.assertAlmostEqual(sigma, expected, places=3)
+        sigma = self.cal.get_adjusted_sigma("test-down", 4.0, "ABOVE")
+        self.assertLess(sigma, 4.0)
+        self.assertGreaterEqual(sigma, 1.0)   # respeita SIGMA_MIN
 
-    def test_full_adjustment_20_plus(self):
-        """n ≥ 20: adjustment aplicado integralmente."""
-        city = "test-full"
-        cond = "ABOVE"
-        self.cal.calibration_data[city] = {
-            cond: {
-                "errors": [{"error": 3.0, "timestamp": "2026-01-01"}] * 25,
-                "sigma_adjustment": 1.5,
-            }
+    def test_sigma_goes_up_with_large_residuals(self):
+        residuals = [6.0, -6.0] * 15
+        self.cal.calibration_data["test-up"] = {
+            "ABOVE": {"errors": self._entries(residuals)}
         }
-        sigma = self.cal.get_adjusted_sigma(city, 4.0, cond)
-        self.assertAlmostEqual(sigma, 5.5, places=3)
+        sigma = self.cal.get_adjusted_sigma("test-up", 4.0, "ABOVE")
+        self.assertGreater(sigma, 4.0)
+
+    def test_shrinkage_weight_grows_with_sample(self):
+        """Amostra maior → estimativa empírica pesa mais que o base."""
+        residuals_small = [1.0, -1.0] * 3     # n=6
+        residuals_big = [1.0, -1.0] * 20      # n=40
+        self.cal.calibration_data["test-w-small"] = {
+            "ABOVE": {"errors": self._entries(residuals_small)}
+        }
+        self.cal.calibration_data["test-w-big"] = {
+            "ABOVE": {"errors": self._entries(residuals_big)}
+        }
+        s_small = self.cal.get_adjusted_sigma("test-w-small", 4.0, "ABOVE")
+        s_big = self.cal.get_adjusted_sigma("test-w-big", 4.0, "ABOVE")
+        # ambos abaixo do base, mas o de amostra grande mais perto do empírico
+        self.assertLess(s_big, s_small)
+
+    def test_legacy_entries_without_residual_still_work(self):
+        """Dados gravados antes da v4 só têm |erro| — usa RMS como proxy."""
+        self.cal.calibration_data["test-legacy"] = {
+            "ABOVE": {"errors": [
+                {"error": 2.0, "timestamp": f"2026-01-{i+1:02d}"} for i in range(10)
+            ]}
+        }
+        sigma = self.cal.get_adjusted_sigma("test-legacy", 4.0, "ABOVE")
+        self.assertLess(sigma, 4.0)
+        self.assertGreater(sigma, 2.0)
+
+    def test_respects_sigma_bounds(self):
+        from config import SIGMA_MIN, SIGMA_MAX
+        self.cal.calibration_data["test-tiny"] = {
+            "ABOVE": {"errors": self._entries([0.01, -0.01] * 20)}
+        }
+        self.cal.calibration_data["test-huge"] = {
+            "ABOVE": {"errors": self._entries([50.0, -50.0] * 20)}
+        }
+        self.assertGreaterEqual(self.cal.get_adjusted_sigma("test-tiny", 4.0, "ABOVE"), SIGMA_MIN)
+        self.assertLessEqual(self.cal.get_adjusted_sigma("test-huge", 4.0, "ABOVE"), SIGMA_MAX)
+
+
+class TestMLAdjusterClamp(unittest.TestCase):
+    """
+    O blend do ML não pode afastar a probabilidade da física além do
+    permitido. Sem esta trava, o SGD saturado em 1.0 transformava
+    P(bucket)=0.002 em 0.30 — o piso do blend, não um sinal.
+    """
+
+    def test_blend_desligado_por_default(self):
+        from config import ML_BLEND_WEIGHT
+        self.assertEqual(ML_BLEND_WEIGHT, 0.0)
+
+    def test_adjust_probability_e_identidade_com_peso_zero(self):
+        from ml_adjuster import MLProbabilityAdjuster
+        adj = MLProbabilityAdjuster()
+        for p in (0.0019, 0.05, 0.5, 0.97):
+            self.assertEqual(adj.adjust_probability(p, 1, "los angeles", None), p)
+
+    def test_clamp_limita_desvio_absoluto(self):
+        from ml_adjuster import MLProbabilityAdjuster
+        from config import ML_MAX_DEVIATION
+        clamp = MLProbabilityAdjuster._clamp_to_physical
+        self.assertAlmostEqual(clamp(0.90, 0.50), 0.50 + ML_MAX_DEVIATION, places=6)
+        self.assertAlmostEqual(clamp(0.10, 0.50), 0.50 - ML_MAX_DEVIATION, places=6)
+
+    def test_clamp_limita_razao_para_prob_pequena(self):
+        """O caso real de Los Angeles: 0.0019 nunca pode virar 0.30."""
+        from ml_adjuster import MLProbabilityAdjuster
+        from config import ML_MAX_RATIO
+        clamp = MLProbabilityAdjuster._clamp_to_physical
+        out = clamp(0.3013, 0.0019)
+        self.assertLessEqual(out, 0.0019 * ML_MAX_RATIO + 1e-9)
+        self.assertLess(out, 0.01)
+
+
+class TestBucketGuardrails(unittest.TestCase):
+    """
+    Gate de sanidade física: comprar YES num bucket exige que a previsão
+    esteja dentro ou perto dele. Reproduz o trade real de Los Angeles de
+    2026-08-01 (previsão 36.22°C, bucket 78-79°F ≈ 25.6-26.1°C).
+    """
+
+    LA_MARKET = {
+        "condition": "RANGE2", "target_temp": 78.5, "price": 0.275,
+        "day_offset": 1, "unit": "F", "target_lo": 78.0, "target_hi": 79.0,
+    }
+
+    def test_yes_bloqueado_quando_forecast_longe_do_bucket(self):
+        from risk import check_guardrails
+        ok, reason = check_guardrails(self.LA_MARKET, 0.3013, 36.22, sigma=4.0, side="YES")
+        self.assertFalse(ok)
+        self.assertEqual(reason, "forecast_fora_do_bucket")
+
+    def test_no_bloqueado_quando_forecast_dentro_do_bucket(self):
+        from risk import check_guardrails
+        market = dict(self.LA_MARKET, price=0.60)
+        # forecast 25.8C está dentro de 78-79F (25.56-26.11C)
+        ok, reason = check_guardrails(market, 0.20, 25.8, sigma=4.0, side="NO")
+        self.assertFalse(ok)
+        self.assertEqual(reason, "forecast_dentro_do_bucket")
+
+    def test_bucket_distance_dentro_e_fora(self):
+        from risk import _bucket_distance
+        inside, dist = _bucket_distance(25.8, "RANGE2", 25.83, "F", 78.0, 79.0)
+        self.assertTrue(inside)
+        inside, dist = _bucket_distance(36.22, "RANGE2", 25.83, "F", 78.0, 79.0)
+        self.assertFalse(inside)
+        self.assertGreater(dist, 9.0)
+
+    def test_edge_alto_demais_em_range2(self):
+        from risk import check_guardrails
+        market = dict(self.LA_MARKET, price=0.05)
+        # prob 0.60 dentro do bucket, mas edge 0.55 > MAX_EDGE_RANGE2
+        ok, reason = check_guardrails(market, 0.60, 25.8, sigma=4.0, side="YES")
+        self.assertFalse(ok)
+        self.assertEqual(reason, "edge_alto_demais")
+
+
+class TestAlreadyTradedPorLado(unittest.TestCase):
+    """
+    Negociar um lado não pode bloquear o outro: _key_variants incluía a
+    chave sem lado nos dois conjuntos, então a interseção na base fazia
+    already_traded("X_YES") casar com um trade "X_NO".
+    """
+
+    HISTORY = [{
+        "market_id": "toronto|2026-06-02|EXACT|25|C_NO",
+        "market_key": "toronto|2026-06-02|EXACT|25|C",
+        "side": "NO", "city": "Toronto", "market_date": "2026-06-02",
+        "type": "EXACT", "unit": "C", "target": 25.0, "result": "LOSS",
+    }]
+    BASE = "toronto|2026-06-02|EXACT|25|C"
+
+    def test_mesmo_lado_e_detectado(self):
+        from bankroll import already_traded
+        self.assertTrue(already_traded(self.HISTORY, self.BASE + "_NO"))
+
+    def test_lado_oposto_nao_e_bloqueado(self):
+        from bankroll import already_traded
+        self.assertFalse(already_traded(self.HISTORY, self.BASE + "_YES"))
+
+    def test_consulta_sem_lado_casa_qualquer_lado(self):
+        from bankroll import already_traded
+        self.assertTrue(already_traded(self.HISTORY, self.BASE))
+
+    def test_trade_legado_sem_side_bloqueia_ambos(self):
+        from bankroll import already_traded
+        legacy = [{"market_id": self.BASE, "market_key": self.BASE, "result": "LOSS"}]
+        self.assertTrue(already_traded(legacy, self.BASE + "_YES"))
+        self.assertTrue(already_traded(legacy, self.BASE + "_NO"))
+
+
+class TestCalibracaoLadoNO(unittest.TestCase):
+    """
+    analytics/statistics emparelhava model_prob (P(YES)) com o resultado do
+    TRADE, invertendo o sinal em todo trade NO — 73% do histórico. Era a
+    origem do ECE de 0.894 que derrubou o health score para 55/RED.
+    """
+
+    def _ds(self, trades):
+        from analytics.dataset import build_dataset_from_history
+        return build_dataset_from_history(trades, start_balance=100.0)
+
+    def test_no_vencedor_com_prob_baixa_tem_brier_baixo(self):
+        from analytics.statistics import brier_score
+        # NO a P(YES)=0.05 que GANHOU: P(lado)=0.95, acertou → erro pequeno
+        ds = self._ds([{"result": "WIN", "side": "NO", "model_prob": 0.05,
+                        "pnl": 1.0, "stake": 1.0}])
+        self.assertLess(brier_score(ds), 0.01)
+
+    def test_yes_vencedor_com_prob_alta_tem_brier_baixo(self):
+        from analytics.statistics import brier_score
+        ds = self._ds([{"result": "WIN", "side": "YES", "model_prob": 0.95,
+                        "pnl": 1.0, "stake": 1.0}])
+        self.assertLess(brier_score(ds), 0.01)
+
+    def test_pares_ficam_alinhados_quando_falta_model_prob(self):
+        from analytics.statistics import probabilities, outcomes
+        ds = self._ds([
+            {"result": "WIN", "side": "NO", "model_prob": 0.05, "pnl": 1.0, "stake": 1.0},
+            {"result": "LOSS", "side": "YES", "pnl": -1.0, "stake": 1.0},   # sem model_prob
+            {"result": "WIN", "side": "YES", "model_prob": 0.90, "pnl": 1.0, "stake": 1.0},
+        ])
+        self.assertEqual(len(probabilities(ds)), len(outcomes(ds)))
+        self.assertEqual(len(probabilities(ds)), 2)
+
+
+class TestBranchDeDeployProtegida(unittest.TestCase):
+    """Backup do bankroll nunca pode ir para a branch de deploy."""
+
+    def test_main_e_recusada(self):
+        from github_sync import _safe_branch
+        self.assertEqual(_safe_branch("main"), "data-backup")
+        self.assertEqual(_safe_branch("master"), "data-backup")
+        self.assertEqual(_safe_branch("MAIN"), "data-backup")
+
+    def test_branch_de_dados_e_aceita(self):
+        from github_sync import _safe_branch
+        self.assertEqual(_safe_branch("data-backup"), "data-backup")
+        self.assertEqual(_safe_branch("bankroll-data"), "bankroll-data")
+
+    def test_vazio_cai_no_default(self):
+        from github_sync import _safe_branch
+        self.assertEqual(_safe_branch(""), "data-backup")
+        self.assertEqual(_safe_branch(None), "data-backup")
+
+
+class TestFiltrosDeMercado(unittest.TestCase):
+    """MIN_MARKET_LIQUIDITY/VOLUME e MAX_IMPLIED_SPREAD nunca eram lidos."""
+
+    def test_spread_alto_rejeitado(self):
+        from gamma_parser import market_is_healthy
+        ok, reason = market_is_healthy(0.50, 0.60)   # soma 1.10
+        self.assertFalse(ok)
+        self.assertIn("spread_alto", reason)
+
+    def test_liquidez_baixa_rejeitada(self):
+        from gamma_parser import market_is_healthy
+        ok, reason = market_is_healthy(0.30, 0.70, {"liquidity": "5"})
+        self.assertFalse(ok)
+        self.assertIn("liquidez_baixa", reason)
+
+    def test_volume_baixo_rejeitado(self):
+        from gamma_parser import market_is_healthy
+        ok, reason = market_is_healthy(0.30, 0.70, {"liquidity": "5000", "volume": "10"})
+        self.assertFalse(ok)
+        self.assertIn("volume_baixo", reason)
+
+    def test_mercado_saudavel_aceito(self):
+        from gamma_parser import market_is_healthy
+        ok, reason = market_is_healthy(0.30, 0.70, {"liquidity": "5000", "volume": "9000"})
+        self.assertTrue(ok)
+
+    def test_liquidez_ausente_nao_bloqueia(self):
+        from gamma_parser import market_is_healthy
+        ok, _ = market_is_healthy(0.30, 0.70, {})
+        self.assertTrue(ok)
+
+    def test_clob_tokens_extraidos(self):
+        from gamma_parser import _parse_clob_tokens
+        yes, no = _parse_clob_tokens({"clobTokenIds": '["111", "222"]'})
+        self.assertEqual((yes, no), ("111", "222"))
+        self.assertEqual(_parse_clob_tokens({}), ("", ""))
+
+
+class TestExecucaoRealNaoImplementada(unittest.TestCase):
+    """O stub anterior devolvia ok=True e o bankroll registrava posições
+    que não existiam."""
+
+    def test_levanta_not_implemented(self):
+        from real_execution import execute_real_trade
+        with self.assertRaises(NotImplementedError):
+            execute_real_trade({"yes_token_id": "1"}, "YES", 4.0)
+
+
+class TestCidadesAtivas(unittest.TestCase):
+    """Cidade inativa não gera entrada mas continua liquidável."""
+
+    def test_la_fora_de_cities(self):
+        from config import CITIES, ALL_CITIES
+        slugs = {c["slug"] for c in CITIES}
+        all_slugs = {c["slug"] for c in ALL_CITIES}
+        self.assertNotIn("los-angeles", slugs)
+        self.assertIn("los-angeles", all_slugs)
+
+    def test_la_ainda_tem_coordenadas_para_settlement(self):
+        from settlement import _get_city_coordinates
+        lat, lon = _get_city_coordinates("Los Angeles")
+        self.assertIsNotNone(lat)
+        self.assertIsNotNone(lon)
+
+    def test_station_coords_tem_prioridade(self):
+        from config import resolution_coords
+        city = {"lat": 34.0522, "lon": -118.2437,
+                "station_lat": 33.9416, "station_lon": -118.4085}
+        self.assertEqual(resolution_coords(city), (33.9416, -118.4085))
+        self.assertEqual(resolution_coords({"lat": 1.0, "lon": 2.0}), (1.0, 2.0))
+
+
+class TestEstacoesDoAno(unittest.TestCase):
+    def test_hemisferio_norte(self):
+        from analytics.dataset import _season
+        self.assertEqual(_season(7), "SUMMER")
+        self.assertEqual(_season(1), "WINTER")
+        self.assertEqual(_season(4), "SPRING")
+        self.assertEqual(_season(10), "AUTUMN")
+
+
+class TestSettleTradeRemovida(unittest.TestCase):
+    def test_levanta_not_implemented(self):
+        from settlement import settle_trade
+        with self.assertRaises(NotImplementedError):
+            settle_trade({}, {})
+
+
+class TestHealthStaleness(unittest.TestCase):
+    """Um health.json velho não pode continuar a governar o kelly_factor."""
+
+    def test_health_velho_e_ignorado(self):
+        import json, tempfile, os
+        from pathlib import Path
+        import analytics.storage as storage
+
+        original = storage.HEALTH_FILE
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "health.json"
+            path.write_text(json.dumps({
+                "schema": 1,
+                "generated_at": "2020-01-01T00:00:00+00:00",
+                "checksum": "x",
+                "payload": {"kelly_factor": 0.2},
+            }), encoding="utf-8")
+            storage.HEALTH_FILE = path
+            try:
+                self.assertIsNone(storage.load_health())
+            finally:
+                storage.HEALTH_FILE = original
+
+    def test_factor_neutro_sem_health(self):
+        from risk import apply_health_factor
+        import analytics.storage as storage
+        original = storage.HEALTH_FILE
+        storage.HEALTH_FILE = storage.BASE / "__inexistente__.json"
+        try:
+            stake, reason = apply_health_factor(4.0)
+            self.assertEqual(stake, 4.0)
+        finally:
+            storage.HEALTH_FILE = original
+
+
+class TestSemBoostPorCidade(unittest.TestCase):
+    """O boost hardcoded de Seoul/Tokyo/Madrid foi removido."""
+
+    def test_city_nao_altera_o_fator(self):
+        from risk import apply_health_factor
+        for city in ("Seoul", "Tokyo", "Madrid", "Chicago", None):
+            self.assertEqual(
+                apply_health_factor(4.0, city=city),
+                apply_health_factor(4.0),
+            )
+
+    def test_fator_nao_passa_de_1(self):
+        import analytics.storage as storage
+        from risk import apply_health_factor
+        original = storage.load_health
+        storage.load_health = lambda *a, **k: {"kelly_factor": 1.5}
+        # risk importou load_health por nome — corrige o binding local
+        import risk
+        risk_original = risk.load_health
+        risk.load_health = storage.load_health
+        try:
+            stake, reason = apply_health_factor(4.0)
+            self.assertLessEqual(stake, 4.0)
+        finally:
+            storage.load_health = original
+            risk.load_health = risk_original
 
 
 class TestSettlementCityLookup(unittest.TestCase):

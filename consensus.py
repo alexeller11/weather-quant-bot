@@ -2,24 +2,29 @@
 """
 consensus.py — Motor de Consenso Multi-Fonte
 
-MELHORIAS v2:
-- WeatherAPI ativa quando WEATHERAPI_KEY configurada
-- Open-Meteo como fonte primária sempre
-- Threshold adaptativo: mais rigoroso para EXACT (2.5°C) que ABOVE/BELOW (3°C)
-- Log detalhado de divergência por cidade para diagnóstico
+Open-Meteo é a fonte primária; WeatherAPI é a confirmação, quando há
+WEATHERAPI_KEY. Os thresholds vêm de config (CONSENSUS_MAX_DIFF_*).
 
-AJUSTE v2.1 (2026-06-17):
-- EXACT: 1.5°C → 2.5°C (mercados atuais têm divergência natural maior)
-- RANGE2: 2.0°C → 3.5°C (buckets de 2°F precisam de margem maior)
-- ABOVE/BELOW: mantido em 3.0°C
+O threshold de RANGE2 estava em 3.5°C — mais de 3x a largura de um bucket
+de 2°F (1.11°C), ou seja, não filtrava nada relevante justamente no tipo
+de mercado mais sensível. Agora 1.5°C por default.
+
+Sem a 2ª fonte, `consensus` continua True por omissão (é o que acontecia
+em todo o histórico, por falta de chave), mas `temp_secondary` fica None
+para o caller poder exigir confirmação via REQUIRE_CONSENSUS.
 """
 
 import os
 import logging
-from datetime import datetime
 from typing import Optional, Dict
 
 import requests
+
+from config import (
+    CONSENSUS_MAX_DIFF_RANGE2,
+    CONSENSUS_MAX_DIFF_EXACT,
+    CONSENSUS_MAX_DIFF_DEFAULT,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -71,19 +76,16 @@ class ConsensusEngine:
         """
         Verifica consenso entre Open-Meteo e WeatherAPI.
 
-        threshold adaptativo (v2.1):
-          EXACT   → 2.5°C  (ajustado de 1.5 — divergência natural maior em verão)
-          RANGE2  → 3.5°C  (ajustado de 2.0 — buckets de 2°F precisam de margem)
-          ABOVE/BELOW → 3.0°C  (mantido)
+        Thresholds de config: CONSENSUS_MAX_DIFF_EXACT / _RANGE2 / _DEFAULT.
         """
         if threshold is None:
             cond = condition.upper()
             if cond == "EXACT":
-                threshold = 2.5
+                threshold = CONSENSUS_MAX_DIFF_EXACT
             elif cond == "RANGE2":
-                threshold = 3.5
+                threshold = CONSENSUS_MAX_DIFF_RANGE2
             else:
-                threshold = 3.0
+                threshold = CONSENSUS_MAX_DIFF_DEFAULT
 
         result = {
             "consensus":      True,   # default: passa se WeatherAPI indisponível

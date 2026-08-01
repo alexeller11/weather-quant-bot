@@ -20,17 +20,39 @@ BANKROLL_FILE = "bankroll.json"
 _API = "https://api.github.com"
 
 
+# Branches de deploy: um push aqui dispara auto-deploy no Render e MATA o
+# processo em execução no meio do ciclo. O default já era "data-backup",
+# mas a env var do Render sobrescrevia com "main" — e o repositório mostra
+# 6.479 commits automáticos de bankroll em main, o último em 2026-08-01,
+# contra UM único em data-backup. A guarda abaixo faz o código recusar a
+# branch de deploy mesmo quando a env var está errada.
+_DEPLOY_BRANCHES = {"main", "master"}
+_DATA_BRANCH_FALLBACK = "data-backup"
+_BRANCH_WARNED = False
+
+
+def _safe_branch(branch: str) -> str:
+    global _BRANCH_WARNED
+    branch = (branch or "").strip() or _DATA_BRANCH_FALLBACK
+    if branch.lower() in _DEPLOY_BRANCHES:
+        if not _BRANCH_WARNED:
+            logger.error(
+                "GITHUB_BRANCH=%s e uma branch de DEPLOY: cada backup do "
+                "bankroll dispararia um redeploy e mataria o processo no meio "
+                "do ciclo. Usando '%s'. Corrija a variavel no painel do Render.",
+                branch, _DATA_BRANCH_FALLBACK,
+            )
+            _BRANCH_WARNED = True
+        return _DATA_BRANCH_FALLBACK
+    return branch
+
+
 def _get_config():
     """Read config from the environment on each call."""
     return {
         "token": os.environ.get("GITHUB_TOKEN", "").strip(),
         "repo": os.environ.get("GITHUB_REPO", "").strip(),
-        # IMPORTANTE: nunca usar a branch de deploy (ex.: "main") aqui.
-        # O Render (e serviços similares) fazem auto-deploy a cada push
-        # nessa branch. Se o backup do bankroll for pra "main", cada
-        # settlement dispara um redeploy que MATA o processo em execução
-        # no meio do ciclo. Usamos uma branch separada só para dados.
-        "branch": os.environ.get("GITHUB_BRANCH", "data-backup").strip(),
+        "branch": _safe_branch(os.environ.get("GITHUB_BRANCH", _DATA_BRANCH_FALLBACK)),
     }
 
 

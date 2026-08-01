@@ -47,13 +47,19 @@ class TradeDataset:
 
 
 def _season(month: int) -> str:
+    """
+    Estação no hemisfério NORTE, onde estão 19 das 22 cidades.
+
+    Estava invertido (junho-julho-agosto rotulado "WINTER"), o que trocava
+    o rótulo de toda análise sazonal do painel.
+    """
     if month in (12, 1, 2):
-        return "SUMMER"
-    if month in (3, 4, 5):
-        return "AUTUMN"
-    if month in (6, 7, 8):
         return "WINTER"
-    return "SPRING"
+    if month in (3, 4, 5):
+        return "SPRING"
+    if month in (6, 7, 8):
+        return "SUMMER"
+    return "AUTUMN"
 
 
 def build_dataset(bankroll: Dict[str, Any]) -> TradeDataset:

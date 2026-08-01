@@ -1,42 +1,18 @@
 #!/usr/bin/env python3
 """
-risk.py — Kelly Criterion e guardrails v5.5
+risk.py — Kelly Criterion e guardrails
 
-v5.4: Suporte a apostas NO (vender YES)
-
-CORREÇÕES (auditoria):
-1. FEE_RATE (2%) entra no Kelly e no EV.
-2. MIN_EV agora é aplicado.
-3. exposure_headroom() e event_headroom(): helpers para o bot.
-
-AUDITORIA SENIOR:
-4. _check_no_guardrails agora recebe forecast_temp, target_c, sigma e
-   day_offset e aplica zscore check identico ao lado YES. Antes era
-   possivel entrar NO quando o forecast estava exatamente no target,
-   onde a incerteza e maxima e o edge pode ser espurio.
-
-AJUSTE v5.5 (2026-06-17):
-5. MIN_PRICE_YES_FOR_NO: 0.55 → 0.45
-   Mercados EXACT atuais têm distribuição espalhada (35-45% por bucket),
-   nenhum passa 0.55. Baixar para 0.45 abre Madrid, Milan, Mexico City
-   mantendo proteção contra mercados onde YES já decidiu (>45%).
-6. Suporte a NO para RANGE2: adicionado.
-   A lógica é idêntica ao EXACT — apostamos que a temperatura NÃO cai
-   no bucket. O zscore check garante que o forecast está suficientemente
-   distante do bucket antes de entrar.
-
-PATCH (correção aplicada nesta versão):
-7. kelly_criterion(): o parâmetro se chamava 'model_prob' mas o corpo da
-   função referenciava a variável inexistente 'prob' em três lugares
-   ('if prob <= 0...', 'q = 1.0 - prob', 'kelly_pct = (prob * b - q) / b').
-   Isso causava NameError em TODA chamada da função — ou seja, nenhum
-   trade do lado YES conseguia ter o stake calculado. Corrigido para usar
-   'model_prob' consistentemente.
+TODOS os parâmetros vêm de config.py. Este módulo redefinia localmente
+MIN_PROB_RANGE2, MIN_EDGE_RANGE2, MIN_EDGE_NO, MAX_PROB_FOR_NO, FEE_RATE,
+MIN_PRICE_YES_FOR_NO e MAX_EVENT_EXPOSURE com valores hardcoded, o que
+fazia qualquer override por variável de ambiente ser silenciosamente
+ignorado. Os re-exports abaixo existem só para não quebrar imports
+antigos (`from risk import MIN_EDGE_NO`).
 """
 
-import os
 import logging
 import time
+
 from config import (
     KELLY_FRACTION,
     MAX_KELLY_FRACTION_CAP,
@@ -55,30 +31,22 @@ from config import (
     MAX_PRICE,
     MAX_OPEN_TRADES,
     MAX_TOTAL_EXPOSURE,
+    # antes hardcoded aqui:
+    MIN_PROB_RANGE2,
+    MIN_EDGE_RANGE2,
+    MIN_EDGE_NO,
+    MAX_PROB_FOR_NO,
+    MAX_PRICE_RANGE2,
+    MAX_EDGE_RANGE2,
+    MIN_PRICE_YES_FOR_NO,
+    MAX_EVENT_EXPOSURE,
+    MAX_BUCKET_ZDIST,
+    FEE_RATE,
 )
 
 from analytics.storage import load_health
 
 logger = logging.getLogger(__name__)
-
-MIN_PROB_RANGE2 = 0.04
-MIN_EDGE_RANGE2 = 0.02
-
-# Parâmetros para apostas NO
-MIN_EDGE_NO          = 0.15
-MAX_PROB_FOR_NO      = 0.35
-
-# AJUSTE v5.5: 0.55 → 0.45
-# Mercados EXACT atuais têm distribuição espalhada; nenhum bucket
-# individual passa 0.55. Com 0.45 abrimos mercados válidos mantendo
-# proteção contra YES já decidido.
-MIN_PRICE_YES_FOR_NO = float(os.getenv("MIN_PRICE_YES_FOR_NO", "0.45"))
-
-# Fee de liquidação — deve ser idêntica à usada em settlement.py.
-FEE_RATE = 0.02
-
-# Limite de stake por EVENTO (cidade + data).
-MAX_EVENT_EXPOSURE = float(os.getenv("MAX_EVENT_EXPOSURE", str(MAX_POSITION)))
 
 
 def consecutive_losses(history: list) -> int:
@@ -128,7 +96,6 @@ def kelly_criterion(
     fraction: float = None,
     city: str = None,
 ) -> float:
-    # PATCH 7: era 'prob' (indefinido) -> 'model_prob' (nome real do parâmetro).
     if model_prob <= 0 or model_prob >= 1 or price <= 0 or price >= 1:
         return 0.0
 
@@ -142,10 +109,10 @@ def kelly_criterion(
 
     frac = fraction if fraction is not None else KELLY_FRACTION
 
-    # Ajuste por Health Factor (Score de performance) v5.8
-    stake_adj, reason = apply_health_factor(1.0, city=city)
+    # Ajuste por Health Factor (Score de performance)
+    stake_adj, reason = apply_health_factor(1.0)
     frac = frac * stake_adj
-    if stake_adj < 1.0:
+    if stake_adj != 1.0:
         logger.info(f"Kelly ajustado por saúde: {reason}")
 
     stake_pct = kelly_pct * frac
@@ -161,6 +128,40 @@ def _max_edge_for_prob(prob: float) -> float:
     if prob >= 0.90:
         return 0.25
     return 0.70
+
+
+def _bucket_bounds_c(condition: str, target_c: float, unit: str,
+                     target_lo_raw=None, target_hi_raw=None):
+    """Limites do bucket em °C. Retorna (lo_c, hi_c)."""
+    from model import delta_to_celsius, to_celsius
+
+    cond = str(condition).upper()
+    if cond == "RANGE2" and target_lo_raw is not None and target_hi_raw is not None:
+        lo_c = to_celsius(float(target_lo_raw), unit)
+        hi_c = to_celsius(float(target_hi_raw), unit)
+    else:
+        half = delta_to_celsius(0.5 if cond == "EXACT" else 1.0, unit)
+        lo_c, hi_c = target_c - half, target_c + half
+    if lo_c > hi_c:
+        lo_c, hi_c = hi_c, lo_c
+    return lo_c, hi_c
+
+
+def _bucket_distance(forecast_c: float, condition: str, target_c: float,
+                     unit: str = "C", target_lo_raw=None, target_hi_raw=None):
+    """
+    Retorna (dentro_do_bucket, distancia_em_C_a_borda_mais_proxima).
+
+    Quando a previsão está dentro do bucket, a distância é a menor das
+    duas bordas (útil para medir "no meio do bucket"). Quando está fora, é
+    a distância até a borda mais próxima.
+    """
+    lo_c, hi_c = _bucket_bounds_c(condition, target_c, unit, target_lo_raw, target_hi_raw)
+    if forecast_c < lo_c:
+        return False, lo_c - forecast_c
+    if forecast_c > hi_c:
+        return False, forecast_c - hi_c
+    return True, min(forecast_c - lo_c, hi_c - forecast_c)
 
 
 def check_guardrails(
@@ -192,6 +193,9 @@ def check_guardrails(
             target_c=target_c,
             sigma=sigma,
             day_offset=day_offset,
+            unit=unit,
+            target_lo=market.get("target_lo"),
+            target_hi=market.get("target_hi"),
         )
 
     # === LÓGICA YES ===
@@ -224,17 +228,34 @@ def check_guardrails(
         if z_score < MIN_TARGET_ZSCORE:
             return False, "zscore_baixo"
 
-    elif condition == "EXACT":
-        if edge < MIN_EDGE_EXACT:
-            return False, "edge_insuficiente"
+    elif condition in ("EXACT", "RANGE2"):
+        min_edge = MIN_EDGE_EXACT if condition == "EXACT" else MIN_EDGE_RANGE2
 
-    elif condition == "RANGE2":
         if model_prob < MIN_PROB_RANGE2:
             return False, "prob_baixa"
-        if edge < MIN_EDGE_RANGE2:
+        if edge < min_edge:
             return False, "edge_insuficiente"
-        if price_yes > 0.70:
+        # MAX_EDGE_RANGE2 estava definido só em comentário: um edge grande
+        # num bucket estreito é sinal de erro de modelo ou de dado, não de
+        # oportunidade.
+        if edge > MAX_EDGE_RANGE2:
+            return False, "edge_alto_demais"
+        if price_yes > MAX_PRICE_RANGE2:
             return False, "preco_alto"
+
+        # Sanidade física: comprar YES num bucket exige que a previsão
+        # esteja DENTRO ou perto dele. Sem este gate, o bot comprou 22
+        # buckets de 74-85°F em Los Angeles com previsão de 90-100°F —
+        # 0 acertos. É a proteção que não depende de o modelo estar certo.
+        if sigma is None or sigma <= 0:
+            sigma = {1: 4.0, 2: 4.5, 3: 5.0}.get(day_offset, 5.0)
+        sigma = min(sigma, SIGMA_CAP_EXACT)
+        inside, edge_dist = _bucket_distance(
+            forecast_temp, condition, target_c, unit,
+            market.get("target_lo"), market.get("target_hi"),
+        )
+        if not inside and (edge_dist / sigma) > MAX_BUCKET_ZDIST:
+            return False, "forecast_fora_do_bucket"
 
     elif condition == "RANGE":
         return False, "tipo_nao_suportado"
@@ -253,11 +274,15 @@ def _check_no_guardrails(
     target_c: float = None,
     sigma: float = None,
     day_offset: int = 1,
+    unit: str = "C",
+    target_lo=None,
+    target_hi=None,
 ) -> tuple:
     """
     Guardrails para apostas NO.
     Retorna (bool ok, str reason).
     """
+    condition = str(condition).upper()
     if condition not in ("ABOVE", "BELOW", "EXACT", "RANGE2"):
         return False, "condicao_nao_suportada"
 
@@ -279,12 +304,23 @@ def _check_no_guardrails(
     if ev_no < MIN_EV:
         return False, "ev_insuficiente"
 
-    # Zscore check
+    # Zscore check — a distância relevante é até a BORDA do bucket, não
+    # até o centro. Para EXACT/RANGE2 o centro fica 0.28°C a 0.56°C dentro
+    # do bucket, então medir do centro superestimava a distância e deixava
+    # passar NO com a previsão dentro do bucket (onde NO tende a perder).
     if forecast_temp is not None and target_c is not None:
         eff_sigma = sigma if (sigma and sigma > 0) else {1: 4.0, 2: 4.5, 3: 5.0}.get(day_offset, 5.0)
-        eff_sigma = min(eff_sigma, SIGMA_CAP_ABOVE_BELOW)
-        z_score = abs(forecast_temp - target_c) / eff_sigma
-        if z_score < MIN_TARGET_ZSCORE:
+        if condition in ("EXACT", "RANGE2"):
+            eff_sigma = min(eff_sigma, SIGMA_CAP_EXACT)
+            inside, dist = _bucket_distance(
+                forecast_temp, condition, target_c, unit, target_lo, target_hi
+            )
+            if inside:
+                return False, "forecast_dentro_do_bucket"
+        else:
+            eff_sigma = min(eff_sigma, SIGMA_CAP_ABOVE_BELOW)
+            dist = abs(forecast_temp - target_c)
+        if (dist / eff_sigma) < MIN_TARGET_ZSCORE:
             return False, "zscore_baixo"
 
     return True, "ok"
@@ -313,10 +349,9 @@ def kelly_criterion_no(
     frac = fraction if fraction is not None else KELLY_FRACTION
 
     # Ajuste por Health Factor (Score de performance)
-    # Nota: No v5.8 o city_slug é passado para permitir boosts específicos
-    stake_adj, reason = apply_health_factor(1.0) # City pass-through via wrapper se necessário
+    stake_adj, reason = apply_health_factor(1.0)
     frac = frac * stake_adj
-    if stake_adj < 1.0:
+    if stake_adj != 1.0:
         logger.info(f"Kelly NO ajustado por saúde: {reason}")
 
     stake_pct = kelly_pct * frac
@@ -537,8 +572,17 @@ def _nearest_edge_distance(
 
 def apply_health_factor(stake: float, city: str = None):
     """
-    Ajusta o stake usando o Analytics Health Engine (v5.8).
-    Agora com boost para cidades lucrativas (Seoul, Tokyo, Madrid).
+    Ajusta o stake usando o Analytics Health Engine.
+
+    O parâmetro `city` é aceito por compatibilidade e IGNORADO. Existia um
+    boost que forçava factor >= 0.85 para Seoul, Tokyo e Madrid, ou seja,
+    desarmava o freio global exatamente nas três cidades escolhidas por
+    terem ganhado — com n=7, n=8 e n=9 trades. Isso é seleção pelo
+    resultado passado, sem teste de significância, e foi removido.
+
+    O factor também é limitado a 1.0: o cap anterior de 1.2 ("20% de
+    alavancagem extra") aumenta a probabilidade de ruína sem aumentar o
+    retorno esperado de longo prazo — Kelly acima de 1x é dominado.
     """
     try:
         health = load_health()
@@ -549,15 +593,9 @@ def apply_health_factor(stake: float, city: str = None):
             return 0.0, "Health: STOP TRADING"
 
         factor = float(health.get("kelly_factor", 1.0))
+        factor = max(0.0, min(1.0, factor))
 
-        # Boost v5.8: Se a cidade for top performer, ignoramos o fator redutor global
-        if city and city.lower() in ["seoul", "tokyo", "madrid"]:
-            factor = max(factor, 0.85) # Nunca menos de 85% para cidades elite
-            logger.info(f"Boost aplicado para {city}: fator {factor:.2f}")
-
-        factor = max(0.0, min(1.2, factor)) # Permitimos até 20% de alavancagem extra
-
-        return round(stake * factor, 2), f"Kelly x {factor:.2f}"
+        return round(stake * factor, 4), f"Kelly x {factor:.2f}"
 
     except Exception as exc:
         logger.exception("Erro carregando Health: %s", exc)

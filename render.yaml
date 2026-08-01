@@ -29,8 +29,15 @@ services:
       - key: GITHUB_REPO
         sync: false
 
+      # CRITICO: nao usar a branch de deploy. Estava em "main", e cada
+      # backup do bankroll disparava auto-deploy, matando o processo no
+      # meio do ciclo (6.479 commits automaticos em main entre 2026-05 e
+      # 2026-08, contra 1 em data-backup).
+      # ATENCAO: render.yaml so define o valor na PRIMEIRA sincronizacao.
+      # Se o serviço já existe, é preciso corrigir tambem no painel do
+      # Render — Environment > GITHUB_BRANCH.
       - key: GITHUB_BRANCH
-        value: main
+        value: data-backup
 
       - key: GROQ_API_KEY
         sync: false

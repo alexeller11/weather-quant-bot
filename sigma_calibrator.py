@@ -2,22 +2,35 @@
 """
 sigma_calibrator.py — Calibração de Sigma por Cidade
 
-MELHORIAS v2:
-- Sigma separado por tipo (ABOVE/BELOW vs EXACT vs RANGE2)
-- Decaimento temporal: erros recentes pesam mais que antigos
-- Limite de ajuste: sigma não pode ficar abaixo de 2.0 nem acima de 8.0
-- Log de evolução para diagnóstico
+v4 — o sigma agora é ESTIMADO, não "ajustado para cima".
 
-CORREÇÕES v3 (auditoria):
-- record_trade_result aceita market_date e deduplica amostras: vários trades
-  liquidados sobre o MESMO (cidade, condição, dia) não inflam mais a
-  estatística de erro com observações repetidas (pseudo-replicação).
-- Novo helper get_recent_errors(city, condition=None) — fonte de dados
-  correta para o ml_adjuster (a estrutura interna é
-  calibration_data[city][COND]["errors"], e o ML lia o nível errado).
+A versão anterior calculava
+    adjustment = max(0.0, (media_ponderada_do_erro_absoluto - 2.0) * 0.6)
+e somava ao sigma base. Duas consequências:
+
+  1. O ajuste era unilateral: `max(0.0, ...)` só sabia AUMENTAR o sigma.
+  2. Com o erro absoluto médio observado de 1.50°C (102 pares
+     forecast/real), `media - 2.0` é sempre negativo → adjustment = 0
+     sempre. Em 132 trades o sigma gravado foi 4.0 (51x), 4.5 (51x),
+     5.0 (3x) e 4.3 (1x): o calibrador nunca mexeu em nada.
+
+Resultado: o modelo operou com sigma de 4.0–6.0°C quando o desvio-padrão
+real dos resíduos era 1.72°C — 2.3x a 3.5x mais largo. Sigma inflado
+achata a probabilidade dos buckets estreitos perto da previsão e engorda
+a cauda distante, que é exatamente o viés que empurra o bot a vender
+buckets prováveis e comprar buckets improváveis.
+
+Agora guardamos o resíduo COM SINAL e estimamos sigma = desvio-padrão
+ponderado dos resíduos, com shrinkage para o sigma base:
+
+    peso  = n / (n + SIGMA_SHRINK_K)
+    sigma = peso * sigma_empirico + (1 - peso) * sigma_base
+
+Isto converge para o erro real e pode ajustar em ambas as direções.
 """
 
 import json
+import math
 import os
 import logging
 import time
@@ -25,7 +38,7 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional
 import unicodedata
 
-from config import SIGMA_MIN, SIGMA_MAX
+from config import SIGMA_MIN, SIGMA_MAX, SIGMA_MIN_SAMPLES, SIGMA_SHRINK_K
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +56,47 @@ def _strip_accents(text: str) -> str:
         return ""
     normalized = unicodedata.normalize("NFKD", str(text))
     return "".join(ch for ch in normalized if not unicodedata.combining(ch))
+
+
+def _decay_weights(n: int, decay: float = 0.9) -> List[float]:
+    """Observações recentes pesam mais."""
+    return [decay ** (n - 1 - i) for i in range(n)]
+
+
+def _empirical_sigma(entries: List[dict]):
+    """
+    Desvio-padrão ponderado dos resíduos de previsão, em °C.
+
+    Retorna (sigma, n) ou (None, n) quando há amostra insuficiente.
+
+    Prefere o resíduo COM SINAL ("residual"). Registos gravados antes da
+    v4 só têm o erro absoluto: nesse caso usa o RMS de |erro|, que é um
+    limite SUPERIOR do desvio-padrão — conservador, e converge para o
+    valor correto conforme entram observações novas.
+    """
+    signed = [e for e in entries if isinstance(e, dict) and e.get("residual") is not None]
+    if len(signed) >= SIGMA_MIN_SAMPLES:
+        vals = [float(e["residual"]) for e in signed]
+        n = len(vals)
+        w = _decay_weights(n)
+        w_sum = sum(w)
+        mean = sum(wi * v for wi, v in zip(w, vals)) / w_sum
+        var = sum(wi * (v - mean) ** 2 for wi, v in zip(w, vals)) / w_sum
+        if n > 1:
+            var *= n / (n - 1.0)   # correção de viés para amostra pequena
+        return math.sqrt(var), n
+
+    vals = [
+        abs(float(e["error"])) for e in entries
+        if isinstance(e, dict) and e.get("error") is not None
+    ]
+    n = len(vals)
+    if n < SIGMA_MIN_SAMPLES:
+        return None, n
+    w = _decay_weights(n)
+    w_sum = sum(w)
+    rms = math.sqrt(sum(wi * v * v for wi, v in zip(w, vals)) / w_sum)
+    return rms, n
 
 
 class SigmaCalibrator:
@@ -160,7 +214,11 @@ class SigmaCalibrator:
         # AUDITORIA bug #10: normalizacao com strip de acentos — igual
         # ao get_adjusted_sigma e ao bankroll.normalize_city_slug.
         city_key = _strip_accents(city).strip().lower().replace(" ", "-")
-        error    = abs(predicted_temp - actual_temp)
+        # residuo COM SINAL (previsto - real). O absoluto continua gravado
+        # em "error" para compatibilidade com dados antigos e com o
+        # ml_adjuster, mas a estimativa de sigma usa o residuo assinado.
+        residual = float(predicted_temp) - float(actual_temp)
+        error    = abs(residual)
         cond_key = condition.upper()
 
         if city_key not in self.calibration_data:
@@ -169,7 +227,7 @@ class SigmaCalibrator:
         if cond_key not in self.calibration_data[city_key]:
             self.calibration_data[city_key][cond_key] = {
                 "errors": [],
-                "sigma_adjustment": 0.0,
+                "sigma_empirical": None,
             }
 
         errors_list = self.calibration_data[city_key][cond_key]["errors"]
@@ -188,6 +246,7 @@ class SigmaCalibrator:
         entry = {
             "day_offset": day_offset,
             "error":      round(error, 2),
+            "residual":   round(residual, 2),
             "timestamp":  datetime.now(timezone.utc).isoformat(),
         }
         if market_date:
@@ -197,24 +256,14 @@ class SigmaCalibrator:
         # Janela máxima de 40 observações
         self.calibration_data[city_key][cond_key]["errors"] = errors_list[-40:]
 
-        # Recalcula ajuste com decaimento temporal
+        # Recalcula o sigma empírico com decaimento temporal
         errors_list = self.calibration_data[city_key][cond_key]["errors"]
-        n = len(errors_list)
-        if n >= 3:
-            # Peso exponencial: erros mais recentes têm mais peso
-            weights = [0.9 ** (n - 1 - i) for i in range(n)]
-            w_sum   = sum(weights)
-            w_mean  = sum(w * e["error"] for w, e in zip(weights, errors_list)) / w_sum
-
-            # Ajuste: se erro médio ponderado > 2°C, aumenta sigma
-            # EXACT usa base de 1.5°C (mais sensível)
-            base_erro = 1.5 if cond_key == "EXACT" else 2.0
-            adjustment = max(0.0, (w_mean - base_erro) * 0.6)
-            self.calibration_data[city_key][cond_key]["sigma_adjustment"] = round(adjustment, 3)
-
+        sigma_emp, n = _empirical_sigma(errors_list)
+        if sigma_emp is not None:
+            self.calibration_data[city_key][cond_key]["sigma_empirical"] = round(sigma_emp, 3)
             logger.info(
                 f"[sigma] {city_key}/{cond_key} d{day_offset}: "
-                f"err={error:.1f}°C w_mean={w_mean:.2f}°C adj=+{adjustment:.2f}°C (n={n})"
+                f"residuo={residual:+.1f}°C sigma_empirico={sigma_emp:.2f}°C (n={n})"
             )
 
         self._save()
@@ -238,21 +287,17 @@ class SigmaCalibrator:
             .get(city_key, {})
             .get(cond_key, {})
         )
-        raw_adjustment = cond_data.get("sigma_adjustment", 0.0)
 
-        # Shrinkage: amostras poucas → ajuste pouco confiável.
-        # n < 5  : adj = 0  (insuficiente)
-        # 5–19   : adj * (n-5)/15  (rampa linear)
-        # n >= 20: adj completo
-        n = len(cond_data.get("errors", []))
-        if n < 5:
-            adjustment = 0.0
-        elif n < 20:
-            adjustment = raw_adjustment * (n - 5) / 15.0
+        sigma_emp, n = _empirical_sigma(cond_data.get("errors", []))
+
+        if sigma_emp is None:
+            # Amostra insuficiente: fica no sigma base, sem inventar.
+            sigma = float(base_sigma)
         else:
-            adjustment = raw_adjustment
+            # Shrinkage para o base: peso cresce com a amostra.
+            weight = n / (n + SIGMA_SHRINK_K)
+            sigma = weight * sigma_emp + (1.0 - weight) * float(base_sigma)
 
-        sigma = base_sigma + adjustment
         sigma = max(SIGMA_MIN, min(SIGMA_MAX, sigma))
         return round(sigma, 4)
 
@@ -292,12 +337,16 @@ class SigmaCalibrator:
         linhas = []
         for city, conds in sorted(self.calibration_data.items()):
             for cond, data in conds.items():
-                n   = len(data.get("errors", []))
-                adj = data.get("sigma_adjustment", 0.0)
-                if n > 0:
-                    erros = [e["error"] for e in data["errors"]]
-                    media = sum(erros) / len(erros)
-                    linhas.append(
-                        f"  {city}/{cond}: n={n} err_med={media:.1f}°C adj=+{adj:.2f}°C"
-                    )
+                entries = data.get("errors", [])
+                n = len(entries)
+                if not n:
+                    continue
+                erros = [e["error"] for e in entries if e.get("error") is not None]
+                media = sum(erros) / len(erros) if erros else 0.0
+                sigma_emp, n_used = _empirical_sigma(entries)
+                sigma_txt = f"{sigma_emp:.2f}°C" if sigma_emp is not None else "n/d"
+                linhas.append(
+                    f"  {city}/{cond}: n={n} err_med={media:.1f}°C "
+                    f"sigma_empirico={sigma_txt} (n_util={n_used})"
+                )
         return "\n".join(linhas) if linhas else "  sem dados ainda"
