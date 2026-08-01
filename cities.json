@@ -4,225 +4,316 @@
     "display": "New York",
     "lat": 40.7128,
     "lon": -74.006,
+    "station_lat": null,
+    "station_lon": null,
+    "station_note": "[CONFIRMAR] estacao de resolucao do mercado",
     "tz": "America/New_York",
     "aliases": [
       "nyc",
       "new-york",
       "new-york-city"
-    ]
+    ],
+    "active": true
   },
   {
     "slug": "london",
     "display": "London",
     "lat": 51.5074,
     "lon": -0.1278,
+    "station_lat": null,
+    "station_lon": null,
+    "station_note": "[CONFIRMAR] estacao de resolucao do mercado",
     "tz": "Europe/London",
     "aliases": [
       "london"
-    ]
+    ],
+    "active": true
   },
   {
     "slug": "paris",
     "display": "Paris",
     "lat": 48.8566,
     "lon": 2.3522,
+    "station_lat": null,
+    "station_lon": null,
+    "station_note": "[CONFIRMAR] estacao de resolucao do mercado",
     "tz": "Europe/Paris",
     "aliases": [
       "paris"
-    ]
+    ],
+    "active": true
   },
   {
     "slug": "hong-kong",
     "display": "Hong Kong",
     "lat": 22.3193,
     "lon": 114.1694,
+    "station_lat": null,
+    "station_lon": null,
+    "station_note": "[CONFIRMAR] estacao de resolucao do mercado",
     "tz": "Asia/Hong_Kong",
     "aliases": [
       "hong-kong",
       "hongkong"
-    ]
+    ],
+    "active": false,
+    "inactive_reason": "erro medio historico de 11C (ver station_data.UNRELIABLE_CITIES)"
   },
   {
     "slug": "tokyo",
     "display": "Tokyo",
     "lat": 35.6762,
     "lon": 139.6503,
+    "station_lat": null,
+    "station_lon": null,
+    "station_note": "[CONFIRMAR] estacao de resolucao do mercado",
     "tz": "Asia/Tokyo",
     "aliases": [
       "tokyo"
-    ]
+    ],
+    "active": true
   },
   {
     "slug": "seoul",
     "display": "Seoul",
     "lat": 37.5665,
     "lon": 126.978,
+    "station_lat": null,
+    "station_lon": null,
+    "station_note": "[CONFIRMAR] estacao de resolucao do mercado",
     "tz": "Asia/Seoul",
     "aliases": [
       "seoul"
-    ]
+    ],
+    "active": true
   },
   {
     "slug": "beijing",
     "display": "Beijing",
     "lat": 39.9042,
     "lon": 116.4074,
+    "station_lat": null,
+    "station_lon": null,
+    "station_note": "[CONFIRMAR] estacao de resolucao do mercado",
     "tz": "Asia/Shanghai",
     "aliases": [
       "beijing"
-    ]
+    ],
+    "active": false,
+    "inactive_reason": "erro medio historico de 25.5C (ver station_data.UNRELIABLE_CITIES)"
   },
   {
     "slug": "sao-paulo",
     "display": "São Paulo",
     "lat": -23.5505,
     "lon": -46.6333,
+    "station_lat": null,
+    "station_lon": null,
+    "station_note": "[CONFIRMAR] estacao de resolucao do mercado",
     "tz": "America/Sao_Paulo",
     "aliases": [
       "sao-paulo",
       "são-paulo"
-    ]
+    ],
+    "active": true
   },
   {
     "slug": "milan",
     "display": "Milan",
     "lat": 45.4642,
     "lon": 9.19,
+    "station_lat": null,
+    "station_lon": null,
+    "station_note": "[CONFIRMAR] estacao de resolucao do mercado",
     "tz": "Europe/Rome",
     "aliases": [
       "milan"
-    ]
+    ],
+    "active": true
   },
   {
     "slug": "los-angeles",
     "display": "Los Angeles",
     "lat": 34.0522,
     "lon": -118.2437,
+    "station_lat": null,
+    "station_lon": null,
+    "station_note": "[CONFIRMAR] estacao de resolucao do mercado",
     "tz": "America/Los_Angeles",
     "aliases": [
       "los-angeles",
       "la"
-    ]
+    ],
+    "active": false,
+    "inactive_reason": "gap medio de +12.3F entre o ponto de grade do centro e a temperatura implicita nos precos (12 dias, min +4.0 max +18.7). Reativar apenas com station_lat/station_lon da estacao de resolucao."
   },
   {
     "slug": "houston",
     "display": "Houston",
     "lat": 29.7604,
     "lon": -95.3698,
+    "station_lat": null,
+    "station_lon": null,
+    "station_note": "[CONFIRMAR] estacao de resolucao do mercado",
     "tz": "America/Chicago",
     "aliases": [
       "houston"
-    ]
+    ],
+    "active": true
   },
   {
     "slug": "austin",
     "display": "Austin",
     "lat": 30.2672,
     "lon": -97.7431,
+    "station_lat": null,
+    "station_lon": null,
+    "station_note": "[CONFIRMAR] estacao de resolucao do mercado",
     "tz": "America/Chicago",
     "aliases": [
       "austin"
-    ]
+    ],
+    "active": true
   },
   {
     "slug": "denver",
     "display": "Denver",
     "lat": 39.7392,
     "lon": -104.9903,
+    "station_lat": null,
+    "station_lon": null,
+    "station_note": "[CONFIRMAR] estacao de resolucao do mercado",
     "tz": "America/Denver",
     "aliases": [
       "denver"
-    ]
+    ],
+    "active": true
   },
   {
     "slug": "seattle",
     "display": "Seattle",
     "lat": 47.6062,
     "lon": -122.3321,
+    "station_lat": null,
+    "station_lon": null,
+    "station_note": "[CONFIRMAR] estacao de resolucao do mercado",
     "tz": "America/Los_Angeles",
     "aliases": [
       "seattle"
-    ]
+    ],
+    "active": true
   },
   {
     "slug": "chicago",
     "display": "Chicago",
     "lat": 41.8781,
     "lon": -87.6298,
+    "station_lat": null,
+    "station_lon": null,
+    "station_note": "[CONFIRMAR] estacao de resolucao do mercado",
     "tz": "America/Chicago",
     "aliases": [
       "chicago"
-    ]
+    ],
+    "active": true
   },
   {
     "slug": "phoenix",
     "display": "Phoenix",
     "lat": 33.4484,
     "lon": -112.074,
+    "station_lat": null,
+    "station_lon": null,
+    "station_note": "[CONFIRMAR] estacao de resolucao do mercado",
     "tz": "America/Phoenix",
     "aliases": [
       "phoenix"
-    ]
+    ],
+    "active": true
   },
   {
     "slug": "miami",
     "display": "Miami",
     "lat": 25.7617,
     "lon": -80.1918,
+    "station_lat": null,
+    "station_lon": null,
+    "station_note": "[CONFIRMAR] estacao de resolucao do mercado",
     "tz": "America/New_York",
     "aliases": [
       "miami"
-    ]
+    ],
+    "active": true
   },
   {
     "slug": "atlanta",
     "display": "Atlanta",
     "lat": 33.749,
     "lon": -84.388,
+    "station_lat": null,
+    "station_lon": null,
+    "station_note": "[CONFIRMAR] estacao de resolucao do mercado",
     "tz": "America/New_York",
     "aliases": [
       "atlanta"
-    ]
+    ],
+    "active": true
   },
   {
     "slug": "boston",
     "display": "Boston",
     "lat": 42.3601,
     "lon": -71.0589,
+    "station_lat": null,
+    "station_lon": null,
+    "station_note": "[CONFIRMAR] estacao de resolucao do mercado",
     "tz": "America/New_York",
     "aliases": [
       "boston"
-    ]
+    ],
+    "active": true
   },
   {
     "slug": "toronto",
     "display": "Toronto",
     "lat": 43.6532,
     "lon": -79.3832,
+    "station_lat": null,
+    "station_lon": null,
+    "station_note": "[CONFIRMAR] estacao de resolucao do mercado",
     "tz": "America/Toronto",
     "aliases": [
       "toronto"
-    ]
+    ],
+    "active": true
   },
   {
     "slug": "madrid",
     "display": "Madrid",
     "lat": 40.4168,
     "lon": -3.7038,
+    "station_lat": null,
+    "station_lon": null,
+    "station_note": "[CONFIRMAR] estacao de resolucao do mercado",
     "tz": "Europe/Madrid",
     "aliases": [
       "madrid"
-    ]
+    ],
+    "active": true
   },
   {
     "slug": "mexico-city",
     "display": "Mexico City",
     "lat": 19.4326,
     "lon": -99.1332,
+    "station_lat": null,
+    "station_lon": null,
+    "station_note": "[CONFIRMAR] estacao de resolucao do mercado",
     "tz": "America/Mexico_City",
     "aliases": [
       "mexico-city",
       "mexico city"
-    ]
+    ],
+    "active": true
   }
 ]

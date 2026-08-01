@@ -8,17 +8,45 @@ from .dataset import TradeDataset
 
 def _resolved(ds): return ds.wins+ds.losses
 
-def probabilities(ds):
-    vals=[]
+
+def _pairs(ds):
+    """
+    Pares (probabilidade prevista para O LADO APOSTADO, ganhou?).
+
+    `model_prob` é P(mercado resolve YES). `result` é o resultado DO TRADE.
+    Emparelhar os dois direto inverte o sinal em todo trade NO — 93 dos 128
+    trades fechados do histórico, 73%. Era a origem do ECE de 0.894 e do
+    alerta "Calibração ruim (10.63%)" que derrubaram o health score para 55
+    (RED) e cortaram o kelly_factor a 0.2. Com o sinal correto, o Brier do
+    mesmo histórico é 0.1043 contra 0.2205 de uma taxa constante.
+
+    Só entram trades que têm `model_prob`; os pares ficam alinhados por
+    construção (antes, probabilities() e outcomes() tinham comprimentos
+    diferentes quando faltava model_prob, e zip() truncava silenciosamente
+    emparelhando trades errados).
+    """
+    out = []
     for t in _resolved(ds):
-        p=t.get("model_prob") or t.get("probability") or t.get("prob") or t.get("prediction")
-        if p is None: continue
-        try: vals.append(float(p))
-        except: pass
-    return vals
+        p = t.get("model_prob")
+        if p is None:
+            p = t.get("probability") or t.get("prob") or t.get("prediction")
+        if p is None:
+            continue
+        try:
+            p = float(p)
+        except (TypeError, ValueError):
+            continue
+        side = str(t.get("side") or "YES").upper()
+        p_side = p if side == "YES" else 1.0 - p
+        out.append((p_side, 1.0 if t.get("result") == "WIN" else 0.0))
+    return out
+
+
+def probabilities(ds):
+    return [p for p, _ in _pairs(ds)]
 
 def outcomes(ds):
-    return [1.0 if t.get("result")=="WIN" else 0.0 for t in _resolved(ds)]
+    return [y for _, y in _pairs(ds)]
 
 def brier_score(ds):
     p=probabilities(ds); y=outcomes(ds)

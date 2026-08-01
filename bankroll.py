@@ -193,13 +193,23 @@ def trade_unique_key(trade: Dict[str, Any]) -> str:
     return base
 
 
-def _key_variants(key: Any) -> set:
+def _key_variants(key: Any, include_base: bool = True) -> set:
+    """
+    Variantes textuais de uma chave de trade.
+
+    include_base=False omite a chave SEM lado. Isso importa: com a base
+    incluída em ambos os conjuntos, already_traded("X_YES") casava com um
+    trade "X_NO" pela interseção em "X" — ou seja, negociar um lado
+    bloqueava o outro e o gate por lado de bot.py era código morto.
+    """
     text = str(key or "").strip()
     if not text:
         return set()
 
     base, side = _split_trade_id(text)
-    variants = {text, base}
+    variants = {text}
+    if include_base and base:
+        variants.add(base)
 
     if base and side in ("YES", "NO"):
         variants.add(f"{base}|{side}")
@@ -215,6 +225,15 @@ def _key_variants(key: Any) -> set:
         variants.add(text[:-3] + "_NO")
 
     return {v for v in variants if v}
+
+
+def trade_side(trade: Dict[str, Any]) -> Optional[str]:
+    """Lado do trade (YES/NO), inferido do campo ou do market_id."""
+    side = str(trade.get("side") or "").strip().upper()
+    if side in ("YES", "NO"):
+        return side
+    _, parsed = _split_trade_id(trade.get("market_id"))
+    return parsed if parsed in ("YES", "NO") else None
 
 
 def dedupe_history_by_market(history: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -237,6 +256,17 @@ def dedupe_history_by_market(history: Iterable[Dict[str, Any]]) -> List[Dict[str
 
 
 def already_traded(history, market_id):
+    """
+    True se ESTE mercado E ESTE LADO já foram negociados.
+
+    Quando `market_id` traz o lado (sufixo _YES/_NO ou |YES/|NO), a
+    comparação é feita por lado: negociar o NO de um mercado não bloqueia
+    mais o YES do mesmo mercado. Sem lado no argumento, mantém o
+    comportamento antigo (casa qualquer lado).
+    """
+    _, query_side = _split_trade_id(market_id)
+    sided = query_side in ("YES", "NO")
+
     query_variants = _key_variants(market_id)
     if not query_variants:
         return False
@@ -244,6 +274,13 @@ def already_traded(history, market_id):
     for trade in history or []:
         if not isinstance(trade, dict):
             continue
+
+        # Filtra por lado ANTES de comparar chaves. Trades legados sem
+        # `side` identificável não são filtrados (bloqueiam os dois lados,
+        # que é o comportamento conservador).
+        if sided and trade_side(trade) not in (None, query_side):
+            continue
+
         trade_variants = set()
         for candidate in (
             trade.get("market_id"),

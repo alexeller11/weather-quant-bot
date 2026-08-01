@@ -1,47 +1,13 @@
 #!/usr/bin/env python3
 """
-bot.py — Weather Quant Bot v5.6
+bot.py — Weather Quant Bot
 
-v5.6: Correções estruturais
-- Chaves canônicas para evitar duplicidade de mercados e trades
-- Slug de cidade normalizado
-- Day offset corrigido
-- Deduplicao de mercados e histórico
+Loop principal: para cada cidade ATIVA de cities.json, busca os mercados
+D+0/D+1 na Gamma API, calcula probabilidade, passa pelos guardrails de
+risco e registra o trade (ou o sinal, quando TRADING_ENABLED=0).
 
-AUDITORIA SENIOR:
-- check_balance_invariant() agora chamado no inicio de cada ciclo.
-  Detecta divergencias entre saldo e historico antes de operar.
-
-PATCH (aplicado nesta versão):
-1) scheduled_trading(): o bloco 'for city in cities: process_city(city)...'
-   estava SEM indentação, ou seja, fora da função (rodava só uma vez, na
-   importação do módulo, e nunca era re-executado pelo scheduler). Reindentado
-   para dentro da função.
-2) run(): o bloco 'schedule.every(...)... / while True: schedule.run_pending()'
-   também estava SEM indentação, fora da função. Isso fazia esse loop infinito
-   rodar no nível do módulo, ANTES do "if __name__ == '__main__': run()" ser
-   alcançado — ou seja, run() (que inicia a thread do servidor HTTP do
-   dashboard) nunca era chamado. Essa é a causa raiz do timeout de porta no
-   Render. Reindentado para dentro da função.
-3) process_city(): 'market_date[:10]' (variável que só existe no 2º loop) foi
-   trocado por 'date_str[:10]' no loop de pré-carga do forecast_cache, que
-   causava UnboundLocalError.
-4) _execute_trade(): 'PAPER_EXECUTION_ENABLED' (nome inexistente) trocado por
-   'PAPER_EXECUTION_REQUIRED' (nome importado de config.py).
-
-PATCH v5.7 (aplicado nesta correção):
-5) process_city() / scheduled_trading(): 'city["name"]' e
-   "city.get('name','?')" trocados por 'city["display"]' e
-   "city.get('display','?')". cities.json usa o schema {slug, display, lat,
-   lon, tz, aliases} — não existe chave "name". Isso fazia todo item de
-   cities levantar KeyError dentro do try/except de scheduled_trading(),
-   silenciosamente, em TODO ciclo — ou seja, nenhuma cidade (nem as
-   antigas, nem as novas) era processada de fato.
-6) run(): faltava 'import requests' — o teste de bloqueio geográfico
-   ('requests.get(...)') levantava NameError e derrubava run() antes de
-   chegar no schedule.every(...)/while True, o que por si só já impedia
-   qualquer ciclo de trading de rodar. Import adicionado no topo do
-   arquivo.
+Só cidades ativas geram novas entradas; a liquidação continua a cobrir
+todas (ver config.build_city_maps).
 """
 
 import logging
@@ -92,9 +58,13 @@ from config import (
     MAX_OPEN_TRADES,
     MAX_TOTAL_EXPOSURE,
     MAX_POSITION,
+    MAX_FORECAST_DAY,
     MIN_EDGE_NO,
+    MIN_TRADE_STAKE,
+    REQUIRE_CONSENSUS,
     CITIES,
 )
+from config import resolution_coords
 from decision_log import record_decision
 from analytics.manager import analytics_manager
 from analytics.reports import text as analytics_report_text
@@ -113,7 +83,7 @@ if not cities:
     sys.exit(1)
 
 logger.info(
-    f"Weather Quant Bot v5.6 | {len(cities)} cidades | "
+    f"Weather Quant Bot | {len(cities)} cidades ativas | "
     f"Trading: {'ON' if TRADING_ENABLED else 'OFF (observação)'}"
 )
 
@@ -173,10 +143,8 @@ def process_city(city: Dict):
         date_str = str(m.get("market_date", ""))
         from datetime import date as _dt
         try:
-            # PATCH 3: era 'market_date[:10]' -> 'date_str[:10]'
             _md = _dt.fromisoformat(date_str[:10])
             if _md < _dt.today():
-                # PATCH 3: era 'market_date=market_date' -> 'market_date=date_str'
                 record_decision("blocked", "market_expired", city=name, market_date=date_str)
                 continue
         except (ValueError, TypeError):
@@ -274,6 +242,12 @@ def process_city(city: Dict):
             stake_cap = min(total_headroom, ev_headroom)
 
             forecast_day = _forecast_day_for_market(market_date, city_slug)
+            # MAX_FORECAST_DAY existia em config mas nunca era verificado.
+            if forecast_day > MAX_FORECAST_DAY:
+                record_decision("blocked", "forecast_day_alem_do_horizonte",
+                                city=name, market=m, forecast_day=forecast_day)
+                continue
+
             forecast_result = forecast_cache.get(forecast_day)
             if forecast_result is None or forecast_result[0] is None:
                 record_decision("blocked", "forecast_unavailable", city=name, market=m, forecast_day=forecast_day)
@@ -282,13 +256,23 @@ def process_city(city: Dict):
 
             forecast_c, sigma, bias, forecast_c_raw = forecast_result
 
+            # Consenso na MESMA coordenada usada para forecast e liquidação.
+            cons_lat, cons_lon = resolution_coords(city)
             cons = consensus_engine.consensus_temperature(
-                city["lat"], city["lon"], market_date, forecast_c_raw,
+                cons_lat, cons_lon, market_date, forecast_c_raw,
                 condition=condition,
             )
             if not cons["consensus"]:
                 record_decision("blocked", "consensus_failed", city=name, market=m, detail=cons.get("reason"))
                 logger.info(f"{name}: {cons['reason']}")
+                continue
+            # REQUIRE_CONSENSUS=1 exige confirmação de 2ª fonte. Sem isto o
+            # consenso passava por omissão em todo o histórico (nunca houve
+            # WEATHERAPI_KEY configurada), o que tornava o motor decorativo.
+            if REQUIRE_CONSENSUS and cons.get("temp_secondary") is None:
+                record_decision("blocked", "consensus_indisponivel", city=name, market=m,
+                                detail=cons.get("reason"))
+                logger.info(f"{name}: 2a fonte indisponivel e REQUIRE_CONSENSUS=1 — pulando")
                 continue
 
             yes_price = float(m.get("yes_price", 0))
@@ -339,11 +323,6 @@ def process_city(city: Dict):
 
             # --- AVALIAR YES ---
             if edge_yes > 0 and not yes_traded:
-                # PATCH: check_guardrails() retorna (bool, motivo). O código
-                # anterior fazia 'if check_guardrails(...):' direto — uma
-                # tupla não-vazia é sempre truthy em Python, então o guardrail
-                # do lado YES nunca bloqueava nada, mesmo retornando
-                # (False, "prob_baixa") etc. Corrigido para desempacotar.
                 ok, reason = check_guardrails(market_dict, prob, forecast_c, sigma=sigma, side="YES")
                 if ok:
                     kf = dynamic_kelly_fraction(history_view)
@@ -368,10 +347,6 @@ def process_city(city: Dict):
 
             # --- AVALIAR NO ---
             if edge_no > 0 and not no_traded:
-                # Confirmado: check_guardrails() retorna (bool ok, str reason)
-                # de fato nesta versão de risk.py — o desempacotamento abaixo
-                # está correto (ver também o mesmo padrão aplicado ao lado
-                # YES, que antes ignorava o retorno).
                 ok, reason = check_guardrails(market_dict, prob, forecast_c, sigma=sigma, side="NO")
                 if ok:
                     kf = dynamic_kelly_fraction(history_view)
@@ -419,22 +394,44 @@ def _execute_trade(
         record_decision("blocked", "stake_zero", city=name, market=m, side=side, prob=prob, edge=edge, stake=stake)
         return
 
+    # Sem piso, o truncamento de shares mais abaixo produzia posições de
+    # $0.20 (15 no histórico) que só poluem a estatística.
+    if stake < MIN_TRADE_STAKE:
+        record_decision(
+            "blocked", "stake_abaixo_do_minimo", city=name, market=m, side=side,
+            prob=prob, edge=edge, stake=stake, minimo=MIN_TRADE_STAKE,
+        )
+        logger.info(f"Stake ${stake:.2f} < minimo ${MIN_TRADE_STAKE:.2f} — pulando")
+        return
+
     execution = None
 
-    # Se PAPER_EXECUTION_REQUIRED for 0 e houver uma chave privada, tentamos o REAL
+    # Execução real: só com POLY_PRIV_KEY definida E execução real
+    # implementada. Hoje real_execution levanta NotImplementedError de
+    # propósito — antes era um stub que devolvia ok=True e o bankroll
+    # registrava posições que não existiam.
     is_real_mode = not PAPER_EXECUTION_REQUIRED and os.getenv("POLY_PRIV_KEY")
 
     if is_real_mode:
         from real_execution import execute_real_trade
-        res = execute_real_trade(m, side, stake)
+        try:
+            res = execute_real_trade(m, side, stake)
+        except NotImplementedError as exc:
+            record_decision("error", "real_execution_nao_implementada", city=name,
+                            market=m, side=side, detail=str(exc))
+            logger.error(
+                "POLY_PRIV_KEY definida mas execucao real nao implementada — "
+                "trade NAO registrado. Use PAPER_EXECUTION_REQUIRED=1."
+            )
+            return
         if res["ok"]:
             entry_price = res["avg_price"]
             shares = res["shares"]
             stake = res["filled_cost"]
-            logger.info(f"✅ TRADE REAL EXECUTADO: {side} @ {entry_price}")
+            logger.info(f"TRADE REAL EXECUTADO: {side} @ {entry_price}")
         else:
             record_decision("blocked", "real_execution_failed", detail=res["reason"])
-            logger.error(f"❌ FALHA NO TRADE REAL: {res['reason']}")
+            logger.error(f"FALHA NO TRADE REAL: {res['reason']}")
             return
 
     elif PAPER_EXECUTION_REQUIRED:
@@ -479,6 +476,17 @@ def _execute_trade(
 
     if stake <= 0:
         record_decision("blocked", "stake_zero_after_execution", city=name, market=m, side=side, prob=prob, edge=edge)
+        return
+
+    if stake < MIN_TRADE_STAKE:
+        record_decision(
+            "blocked", "stake_abaixo_do_minimo_pos_execucao", city=name, market=m,
+            side=side, prob=prob, edge=edge, stake=stake, minimo=MIN_TRADE_STAKE,
+        )
+        logger.info(
+            f"Stake efetivo ${stake:.2f} < minimo ${MIN_TRADE_STAKE:.2f} "
+            f"({shares} shares a {entry_price:.3f}) — pulando"
+        )
         return
 
     market_key = trade_id
@@ -601,12 +609,8 @@ def scheduled_trading():
     logger.info(f"Ciclo de trading: {datetime.now():%H:%M:%S}")
 
     # Verifica invariante de bankroll antes de operar.
-    # AUDITORIA bug #15: docstring original dizia "loga se > $0.05" mas
-    # o gate real era $0.50 — divergências entre $0.05 e $0.50 eram
-    # silenciadas nesta camada. Agora consistente com o default de
-    # check_balance_invariant (tol=0.05), que internamente já loga WARN
-    # acima desse limiar; aqui só escalamos para WARNING crítico se a
-    # divergência for material ($0.50+).
+    # check_balance_invariant já loga WARN acima de $0.05; aqui só
+    # escalamos quando a divergência é material ($0.50+).
     try:
         data = load_bankroll()
         diff = check_balance_invariant(data)
@@ -628,7 +632,6 @@ def scheduled_trading():
     except Exception as e:
         logger.warning(f"trading_cooldown check: {e}")
 
-    # PATCH 1: este bloco estava SEM indentação (fora da função) no original.
     for i, city in enumerate(cities):
         try:
             process_city(city)
@@ -649,14 +652,17 @@ def scheduled_trading():
 # ── Dashboard HTTP server (satisfaz Render + serve dashboard) ────
 _dashboard_httpd = None
 _dashboard_error = None
+# Sinalizado quando o listener está de pé OU falhou. Sem isto, run() lia
+# _dashboard_error imediatamente após thread.start() — nunca estaria
+# preenchido, e a verificação não verificava nada.
+_dashboard_ready = threading.Event()
 
 
 def _start_dashboard_server():
     """Arranca o servidor HTTP do dashboard em porta dinâmica (Render)."""
     global _dashboard_httpd, _dashboard_error
     try:
-        from dashboard import Handler, HTML, load_data, build_stats
-        import json
+        from dashboard import Handler
 
         PORT = int(os.environ.get("PORT", "10000"))
 
@@ -674,29 +680,38 @@ def _start_dashboard_server():
 
         _dashboard_httpd = HTTPServer(("0.0.0.0", PORT), _CombinedHandler)
         logger.info(f"Dashboard HTTP listener na porta {PORT}")
+        _dashboard_ready.set()
         _dashboard_httpd.serve_forever()
     except Exception as exc:
         _dashboard_error = exc
         logger.warning(f"[dashboard] erro no servidor HTTP: {exc}")
+        _dashboard_ready.set()
 
 
 def run():
     # Arranca dashboard em thread separada (satisfaz port scan + serve UI)
     t = threading.Thread(target=_start_dashboard_server, daemon=True)
     t.start()
-    if _dashboard_error:
+    # Espera o listener subir (ou falhar) antes de decidir.
+    if not _dashboard_ready.wait(timeout=20):
+        logger.warning("[dashboard] listener não sinalizou em 20s — seguindo")
+    elif _dashboard_error:
         raise RuntimeError(f"[dashboard] nao foi possivel iniciar: {_dashboard_error}")
-    logger.info("Dashboard + health-check HTTP listener iniciado")
+    else:
+        logger.info("Dashboard + health-check HTTP listener iniciado")
 
-    # Teste de Bloqueio Geográfico (v5.8.2)
+    # Teste de bloqueio geográfico da Polymarket
     try:
         r_geo = requests.get("https://clob.polymarket.com/markets/0x123", timeout=5)
         if r_geo.status_code == 403:
-            logger.error("🚨 BLOQUEIO GEOGRÁFICO: O IP deste servidor está bloqueado pela Polymarket.")
+            logger.error("BLOQUEIO GEOGRÁFICO: o IP deste servidor está bloqueado pela Polymarket.")
             from notificador import enviar_mensagem
-            enviar_mensagem("⚠️ <b>ALERTA:</b> O servidor está em uma região bloqueada pela Polymarket (EUA/Brasil). O bot não conseguirá operar sem um Proxy.")
+            enviar_mensagem(
+                "<b>ALERTA:</b> o servidor está numa região bloqueada pela "
+                "Polymarket. O bot não conseguirá operar sem proxy."
+            )
         else:
-            logger.info("✅ Conexão com Polymarket validada (sem bloqueio geográfico).")
+            logger.info("Conexão com Polymarket validada (sem bloqueio geográfico).")
     except Exception as e:
         logger.warning(f"Teste de geobloqueio falhou: {e}")
 
@@ -706,8 +721,6 @@ def run():
     except Exception as e:
         logger.warning(f"Listener Telegram não iniciado: {e}")
 
-    # PATCH 2: todo este bloco (até o while True) estava SEM indentação
-    # (fora da função) no original — por isso run() nunca era alcançado.
     schedule.every(1).hours.do(scheduled_trading)
     schedule.every(1).hours.do(settlement_cycle)
     schedule.every().sunday.at("08:00").do(weekly_report_cycle)
@@ -744,5 +757,5 @@ def analytics_report():
     return analytics_report_text(analytics_manager.report())
 
 if __name__ == "__main__":
-    logger.info("Weather Quant Bot v5.6")
+    logger.info("Weather Quant Bot — arrancando")
     run()

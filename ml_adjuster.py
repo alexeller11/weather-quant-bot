@@ -2,26 +2,30 @@
 """
 ml_adjuster.py — Aprendizado online por cidade (SGD Logístico)
 
-MELHORIAS v2:
-- Modelo separado por cidade
-- Features enriquecidas
-- Feedback loop: Brier score
-- Fallback para cidade sem dados
+O blend está DESLIGADO por default (ML_BLEND_WEIGHT=0). Motivo:
 
-CORREÇÕES v3 (auditoria):
-1. get_recent_errors() corrigido
-2. n_trades persistido no DB
-3. Features normalizadas
-4. hour_utc real do trade
+  o blend era `0.7*prob_fisica + 0.3*saida_do_SGD`, sem nenhuma trava
+  relativa à probabilidade física. Com o SGD a devolver ~1.0, qualquer
+  mercado passava a valer >= 0.30 independentemente da previsão. Caso
+  real de 2026-08-01: Los Angeles, previsão de 36.2°C (97.2°F), bucket
+  78-79°F, P(bucket) pela Normal = 0.0019 → model_prob gravado 0.3013,
+  contra preço de 0.275, gerando "edge" de +0.026 e abrindo trade.
 
-AUDITORIA SENIOR:
-5. Cache TTL de 1h: _get_model invalida o cache e recarrega do DB
-   apos _MODEL_CACHE_TTL segundos. bot.py e settlement.py rodam como
-   processos separados; sem TTL, bot usava modelo stale do startup.
+  No histórico: 29 trades com |model_prob − prob_física| > 0.08 e
+  −$44.19 realizados; das 23 entradas em lados que o modelo dava
+  10–40% de chance, 23 perderam.
+
+Além do peso, há agora duas travas duras (ML_MAX_DEVIATION e
+ML_MAX_RATIO): o ajuste nunca pode afastar-se da física além do
+permitido, mesmo que o peso seja reativado.
+
+O alvo de treino é `market_resolved_yes` (o mercado resolveu YES?), não
+`trade_success` (o trade ganhou?). Para trades NO os dois são opostos, e
+a saída do modelo é misturada em `model_prob`, que é P(YES) — treinar
+com trade_success punia o modelo por acertar.
 """
 
 import os
-import io
 import json
 import pickle
 import logging
@@ -31,6 +35,13 @@ from typing import Optional, Dict
 
 import numpy as np
 
+from config import (
+    ML_BLEND_WEIGHT,
+    ML_MAX_DEVIATION,
+    ML_MAX_RATIO,
+    ML_MIN_TRADES,
+)
+
 try:
     from sklearn.linear_model import SGDClassifier
 except Exception:
@@ -39,7 +50,9 @@ except Exception:
 logger = logging.getLogger(__name__)
 
 MODEL_FILE   = "ml_adjuster.pkl"
-_DB_KEY_PFX  = "ml_model_v3_"
+# v4: alvo de treino mudou de trade_success para market_resolved_yes.
+# Chave nova para nao reutilizar pesos treinados com o rotulo errado.
+_DB_KEY_PFX  = "ml_model_v4_"
 _DB_KEY_PERF = "ml_performance"
 _MODEL_CACHE_TTL = 3600  # segundos; recarrega do DB apos 1h
 
@@ -251,6 +264,23 @@ class MLProbabilityAdjuster:
             logger.debug(f"[ml] {city_key}: modelo carregado/recarregado (age={age:.0f}s)")
         return self._models[city_key]
 
+    @staticmethod
+    def _clamp_to_physical(adjusted: float, model_prob: float) -> float:
+        """
+        Impede o ajuste de se afastar da probabilidade física além do
+        permitido. Sem isto, um SGD saturado em 1.0 transformava uma
+        probabilidade de 0.002 em 0.30 — que é o piso do blend, não um
+        sinal, e foi o que abriu 23 trades perdedores seguidos.
+        """
+        lo = max(0.0, model_prob - ML_MAX_DEVIATION)
+        hi = min(1.0, model_prob + ML_MAX_DEVIATION)
+        if ML_MAX_RATIO > 1.0:
+            lo = max(lo, model_prob / ML_MAX_RATIO)
+            hi = min(hi, model_prob * ML_MAX_RATIO)
+        if lo > hi:
+            return model_prob
+        return max(lo, min(hi, adjusted))
+
     def adjust_probability(
         self,
         model_prob: float,
@@ -260,21 +290,26 @@ class MLProbabilityAdjuster:
         hour_utc: int = 12,
         temp_trend: float = 0.0,
     ) -> float:
+        if ML_BLEND_WEIGHT <= 0:
+            return model_prob
+
         city_key = city.strip().lower()
 
         model = self._get_model(city_key)
         errors = _errors_for_city(calibrator, city_key)
         n = self._n_trades.get(city_key, 0)
 
-        if n < 5:
+        if n < ML_MIN_TRADES:
             return model_prob
 
         X = compute_features(model_prob, day_offset, errors, hour_utc, temp_trend=temp_trend)
         try:
             proba = model.predict_proba(X)[0][1]
-            peso_ml = min(0.30, n * 0.02)
+            # Peso cresce com a amostra mas nunca passa de ML_BLEND_WEIGHT.
+            peso_ml = min(ML_BLEND_WEIGHT, n * 0.02)
             adjusted = (1 - peso_ml) * model_prob + peso_ml * proba
-            return float(max(0.01, min(0.99, adjusted)))
+            adjusted = self._clamp_to_physical(adjusted, model_prob)
+            return float(max(0.0, min(1.0, adjusted)))
         except Exception as e:
             logger.debug(f"[ml] predict {city_key}: {e}")
             return model_prob
@@ -285,15 +320,22 @@ class MLProbabilityAdjuster:
         day_offset: int,
         city: str,
         calibrator,
-        trade_success: bool,
+        market_resolved_yes: bool,
         hour_utc: int = 12,
         temp_trend: float = 0.0,
     ):
+        """
+        Treina com o resultado DO MERCADO, não com o resultado do trade.
+
+        `model_prob` é P(mercado resolve YES); o rótulo tem de ser a mesma
+        grandeza. Treinar com trade_success invertia o sinal em todos os
+        trades NO — 73% do histórico.
+        """
         city_key = city.strip().lower()
         errors = _errors_for_city(calibrator, city_key)
         model = self._get_model(city_key)
         X = compute_features(model_prob, day_offset, errors, hour_utc, temp_trend=temp_trend)
-        y = np.array([1 if trade_success else 0])
+        y = np.array([1 if market_resolved_yes else 0])
         try:
             model.partial_fit(X, y)
             self._models[city_key] = model

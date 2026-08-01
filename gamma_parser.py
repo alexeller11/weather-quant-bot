@@ -34,10 +34,45 @@ from datetime import datetime, timedelta
 import requests
 
 from bankroll import canonical_market_base, normalize_city_slug
-from config import CITY_SLUG_ALIASES
+from config import (
+    CITY_SLUG_ALIASES,
+    MIN_MARKET_LIQUIDITY,
+    MIN_MARKET_VOLUME,
+    MAX_IMPLIED_SPREAD,
+)
 from forecast import city_today
 
 logger = logging.getLogger(__name__)
+
+
+def _to_float(value, default=None):
+    try:
+        if value in (None, ""):
+            return default
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _parse_clob_tokens(market: dict):
+    """
+    Extrai (yes_token_id, no_token_id) de clobTokenIds.
+
+    Sem isto, market["yes_token_id"] chegava vazio e simulate_paper_buy()
+    devolvia sempre "token CLOB ausente" — ou seja, a execução simulada
+    contra order book real NUNCA rodou (só 22 dos 132 trades do histórico
+    têm campos de book) e a execução real também não teria como rodar.
+    """
+    raw = market.get("clobTokenIds") or market.get("clob_token_ids")
+    if not raw:
+        return "", ""
+    try:
+        ids = json.loads(raw) if isinstance(raw, str) else list(raw)
+    except Exception:
+        return "", ""
+    if not isinstance(ids, (list, tuple)) or len(ids) < 2:
+        return "", ""
+    return str(ids[0] or ""), str(ids[1] or "")
 
 
 BASE_URL = "https://gamma-api.polymarket.com"
@@ -152,29 +187,46 @@ def parse_question(question):
     return None
 
 
-def market_is_healthy(yes_price, no_price):
+def market_is_healthy(yes_price, no_price, market=None):
     """
-    Piso de 0.03 para aceitar buckets de 2°F que legitimamente têm
-    preços baixos. O filtro real de entrada é MIN_PRICE em risk.py.
+    Retorna (bool ok, str reason).
+
+    Aplica MIN_MARKET_LIQUIDITY, MIN_MARKET_VOLUME e MAX_IMPLIED_SPREAD —
+    os três existiam em config.py e em .env.example desde o início, mas
+    nenhum módulo os lia: o único filtro real era preço entre 0.03 e 0.97
+    com tolerância de spread de 15pp. Foi assim que entraram compras a
+    $0.074–$0.105 que somam 43% de todo o lucro do histórico e que, num
+    book real, provavelmente não teriam preenchido.
+
+    Liquidez/volume ausentes na resposta da Gamma não bloqueiam (campo
+    opcional na API), mas ficam registrados para a telemetria.
     """
     try:
         yes_price = float(yes_price)
         no_price  = float(no_price)
     except Exception:
-        return False
+        return False, "precos_invalidos"
 
     if yes_price <= 0 or yes_price >= 1:
-        return False
+        return False, "preco_fora_de_0_1"
 
-    # Rejeita apenas mercados completamente resolvidos
+    # Rejeita mercados completamente resolvidos
     if yes_price < 0.03 or yes_price > 0.97:
-        return False
+        return False, "mercado_resolvido"
 
-    # Tolerância de spread de 15pp
-    if abs((yes_price + no_price) - 1.0) > 0.15:
-        return False
+    spread = abs((yes_price + no_price) - 1.0)
+    if spread > MAX_IMPLIED_SPREAD:
+        return False, f"spread_alto({spread:.3f})"
 
-    return True
+    if market:
+        liquidity = _to_float(market.get("liquidity") or market.get("liquidityNum"))
+        volume = _to_float(market.get("volume") or market.get("volumeNum"))
+        if liquidity is not None and liquidity < MIN_MARKET_LIQUIDITY:
+            return False, f"liquidez_baixa({liquidity:.0f})"
+        if volume is not None and volume < MIN_MARKET_VOLUME:
+            return False, f"volume_baixo({volume:.0f})"
+
+    return True, "ok"
 
 
 def _slug_variants(city, d):
@@ -275,8 +327,12 @@ def fetch_markets(city):
                     yes_price = float(prices[0])
                     no_price  = float(prices[1])
 
-                    if not market_is_healthy(yes_price, no_price):
-                        logger.info(f"  Market unhealthy (yes={yes_price:.3f} no={no_price:.3f})")
+                    healthy, health_reason = market_is_healthy(yes_price, no_price, market)
+                    if not healthy:
+                        logger.info(
+                            f"  Market rejeitado ({health_reason}) "
+                            f"yes={yes_price:.3f} no={no_price:.3f}"
+                        )
                         continue
 
                     parsed = parse_question(question)
@@ -296,6 +352,8 @@ def fetch_markets(city):
                         continue
                     seen_market_keys.add(market_key)
 
+                    yes_token_id, no_token_id = _parse_clob_tokens(market)
+
                     entry = {
                         "market_id":      market_key,
                         "market_key":     market_key,
@@ -310,6 +368,11 @@ def fetch_markets(city):
                         "unit":           parsed["unit"],
                         "yes_price":      yes_price,
                         "no_price":       no_price,
+                        "yes_token_id":   yes_token_id,
+                        "no_token_id":    no_token_id,
+                        "liquidity":      _to_float(market.get("liquidity") or market.get("liquidityNum")),
+                        "volume":         _to_float(market.get("volume") or market.get("volumeNum")),
+                        "spread":         round(abs((yes_price + no_price) - 1.0), 4),
                     }
                     if parsed["condition"] == "range2":
                         entry["target_lo"] = parsed["target_lo"]

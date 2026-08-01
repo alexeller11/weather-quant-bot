@@ -20,16 +20,21 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 from dataclasses import asdict, is_dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+logger = logging.getLogger(__name__)
+
 # ============================================================
 # Config
 # ============================================================
 
-BASE = Path("analytics")
+# Ancorado no próprio pacote, não no cwd: rodar `python settlement.py`
+# de outra pasta escrevia analytics/ num lugar diferente do que bot.py lê.
+BASE = Path(__file__).resolve().parent
 
 ANALYTICS_FILE = BASE / "analytics.json"
 
@@ -137,21 +142,25 @@ def atomic_write(path: Path, payload):
     )
 
 
-def atomic_read(path: Path):
+def read_wrapper(path: Path):
+    """Retorna o envelope completo (com generated_at), não só o payload."""
 
     if not path.exists():
 
         return None
 
-    with open(
+    with open(path, encoding="utf8") as f:
 
-        path,
+        return json.load(f)
 
-        encoding="utf8"
 
-    ) as f:
+def atomic_read(path: Path):
 
-        wrapper = json.load(f)
+    wrapper = read_wrapper(path)
+
+    if wrapper is None:
+
+        return None
 
     encoded = json.dumps(
 
@@ -215,13 +224,46 @@ def save_health(health):
     )
 
 
-def load_health():
+def load_health(max_age_hours: float = None):
+    """
+    Carrega health.json, ignorando snapshots velhos.
 
-    return atomic_read(
+    O health vive no filesystem efêmero do Render. Um snapshot antigo
+    (o versionado no repositório estava congelado há 15 dias) continuava a
+    governar o kelly_factor a cada restart do processo. Acima de
+    HEALTH_MAX_AGE_HOURS o health é descartado e o caller cai no
+    comportamento neutro (factor 1.0), em vez de operar com um veredito
+    de saúde obsoleto.
+    """
+    if max_age_hours is None:
+        try:
+            from config import HEALTH_MAX_AGE_HOURS
+            max_age_hours = HEALTH_MAX_AGE_HOURS
+        except Exception:
+            max_age_hours = 48.0
 
-        HEALTH_FILE
+    wrapper = read_wrapper(HEALTH_FILE)
+    if wrapper is None:
+        return None
 
-    )
+    if max_age_hours and max_age_hours > 0:
+        raw_ts = wrapper.get("generated_at")
+        if raw_ts:
+            try:
+                generated = datetime.fromisoformat(str(raw_ts).replace("Z", "+00:00"))
+                if generated.tzinfo is None:
+                    generated = generated.replace(tzinfo=timezone.utc)
+                age_h = (datetime.now(timezone.utc) - generated).total_seconds() / 3600.0
+                if age_h > max_age_hours:
+                    logger.warning(
+                        "health.json com %.1fh (> %.1fh) — ignorado, usando fator neutro",
+                        age_h, max_age_hours,
+                    )
+                    return None
+            except Exception as exc:
+                logger.debug("health.json generated_at ilegivel: %s", exc)
+
+    return atomic_read(HEALTH_FILE)
 
 
 # ============================================================
