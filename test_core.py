@@ -847,6 +847,69 @@ class TestHealthStaleness(unittest.TestCase):
             storage.HEALTH_FILE = original
 
 
+class TestValidacaoPosCorte(unittest.TestCase):
+    """
+    O histórico anterior ao fix de fonte de dados (coordenada de LA) não
+    pode contar para a validação — validacao.py agora filtra por
+    entry_time >= VALIDATION_CUTOFF_ISO.
+    """
+
+    def test_trade_antigo_excluido(self):
+        from validacao import _pos_corte
+        antigo = {"entry_time": "2026-06-01T10:00:00+00:00"}
+        self.assertFalse(_pos_corte(antigo))
+
+    def test_trade_novo_incluido(self):
+        from validacao import _pos_corte
+        novo = {"entry_time": "2026-08-02T10:00:00+00:00"}
+        self.assertTrue(_pos_corte(novo))
+
+    def test_sem_entry_time_e_excluido_por_seguranca(self):
+        from validacao import _pos_corte
+        self.assertFalse(_pos_corte({}))
+
+    def test_criterios_batem_com_o_readme(self):
+        from validacao import N_MIN_VALIDACAO, CI_LOWER_MIN, MIN_RANGE2_TRADES
+        self.assertEqual(N_MIN_VALIDACAO, 110)
+        self.assertEqual(CI_LOWER_MIN, 0.52)
+        self.assertEqual(MIN_RANGE2_TRADES, 10)
+
+    def test_veredito_reprovado_por_n_baixo_mesmo_com_wr_perfeito(self):
+        """109 vitórias em 109 não aprova — falta amostra (README exige 110)."""
+        from validacao import _veredito, N_MIN_VALIDACAO
+        veredito, detalhe = _veredito(
+            n=N_MIN_VALIDACAO - 1, wins=N_MIN_VALIDACAO - 1,
+            brier=0.10, edge_realizado_pct=5.0, n_range2=10,
+        )
+        self.assertIn("REPROVADO", veredito)
+
+    def test_veredito_reprovado_por_poucos_range2(self):
+        from validacao import _veredito, N_MIN_VALIDACAO
+        veredito, detalhe = _veredito(
+            n=N_MIN_VALIDACAO, wins=int(N_MIN_VALIDACAO * 0.6),
+            brier=0.10, edge_realizado_pct=5.0, n_range2=3,
+        )
+        self.assertIn("REPROVADO", veredito)
+        self.assertIn("RANGE2", detalhe)
+
+    def test_veredito_aprovado_quando_todos_criterios_batem(self):
+        from validacao import _veredito, N_MIN_VALIDACAO
+        veredito, detalhe = _veredito(
+            n=N_MIN_VALIDACAO, wins=int(N_MIN_VALIDACAO * 0.65),
+            brier=0.15, edge_realizado_pct=3.0, n_range2=15,
+        )
+        self.assertIn("APROVADO", veredito)
+
+    def test_relatorio_atual_mostra_zero_pos_corte(self):
+        """No bankroll real (132 trades, todos pré-fix), o relatório tem
+        que dar 0 fechados pós-corte, não os 128 antigos."""
+        from validacao import gerar_relatorio
+        r = gerar_relatorio(enviar_telegram=False)
+        self.assertIn("Fechados: <b>0</b>/110", r)
+        self.assertIn("AGUARDANDO", r)
+        self.assertIn("excluídos", r)
+
+
 class TestSemBoostPorCidade(unittest.TestCase):
     """O boost hardcoded de Seoul/Tokyo/Madrid foi removido."""
 

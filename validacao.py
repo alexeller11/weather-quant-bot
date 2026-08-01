@@ -18,9 +18,50 @@ CORREÇÕES (auditoria):
    apostada é (1 − model_prob). Comparar model_prob com WIN do trade NO
    invertia o sinal das duas métricas — com 18 dos 28 trades reais sendo
    NO, as métricas agregadas eram lixo.
+
+CORREÇÃO 2026-08-01 (pós-auditoria de fonte de dados):
+3. O histórico anterior a este corte está contaminado: Los Angeles (39%
+   dos trades fechados) foi liquidado com uma coordenada que divergia em
+   +12.3°F em média da temperatura implícita nos preços do mercado.
+   gerar_relatorio() agora conta APENAS trades abertos a partir de
+   VALIDATION_CUTOFF_ISO (deploy do fix, PR #9, confirmado nos logs do
+   Render) para decidir o veredito. O histórico completo continua
+   disponível via `incluir_pre_corte=True`, mas nunca conta pra aprovação.
+4. Critérios de aprovação alinhados ao README: min N_MIN_VALIDACAO=110
+   trades (era 20, arbitrário), CI95% inferior >= CI_LOWER_MIN=0.52 (era
+   0.50 — o README sempre exigiu 52%, o código usava um número diferente
+   do que o projeto documentava), e MIN_RANGE2_TRADES=10 fechados desse
+   tipo (README: "pelo menos 10 trades RANGE2 para calibrar sigma").
 """
 
 from datetime import timezone, datetime
+
+# Deploy do PR #9 (fix/auditoria-2026-08), confirmado no log do Render:
+# "2026-08-01 19:32:49 [INFO] bot: Weather Quant Bot | 19 cidades ativas".
+# Trades com entry_time anterior a isto foram decididos pelo código antigo
+# (coordenada de LA errada, ML sem trava, sigma que nunca convergia) e não
+# contam para a validação de ir a capital real.
+VALIDATION_CUTOFF_ISO = "2026-08-01T19:30:00+00:00"
+
+N_MIN_VALIDACAO   = 110    # README: mínimo de trades fechados
+CI_LOWER_MIN      = 0.52   # README: IC 95% inferior do win rate
+MIN_RANGE2_TRADES = 10     # README: trades RANGE2 fechados para calibrar sigma
+BRIER_MAX         = 0.25
+
+
+def _pos_corte(trade, cutoff_iso=VALIDATION_CUTOFF_ISO) -> bool:
+    """True se o trade foi ABERTO depois do corte de validação."""
+    raw = trade.get("entry_time") or ""
+    try:
+        dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        cutoff = datetime.fromisoformat(cutoff_iso)
+        return dt >= cutoff
+    except Exception:
+        # Sem entry_time parseável (trades muito antigos, pré-schema
+        # atual): tratado como pré-corte — não conta para validação.
+        return False
 
 
 # ── Compatibilidade — settlement ainda chama isso ────────────────────────────
@@ -74,19 +115,27 @@ def _confianca_binomial(n, wins, confidence=0.95):
 
 # ── Veredito ─────────────────────────────────────────────────────────────────
 
-def _veredito(n, wins, brier, edge_realizado_pct):
+def _veredito(n, wins, brier, edge_realizado_pct, n_range2=None):
     if n < 5:
-        return "AGUARDANDO", f"Apenas {n} trades resolvidos — mínimo 5 para diagnóstico inicial"
+        return "AGUARDANDO", (
+            f"Apenas {n} trades pós-correção resolvidos de {N_MIN_VALIDACAO} — "
+            f"mínimo 5 só para diagnóstico inicial, nada aprovável ainda"
+        )
 
-    status = "DADOS INSUFICIENTES" if n < 20 else "CONFIÁVEL"
-    msg    = f"{n}/20 trades — veredito provisório" if n < 20 else f"{n} trades — estatística robusta"
+    status = "DADOS INSUFICIENTES" if n < N_MIN_VALIDACAO else "CONFIÁVEL"
+    msg    = (
+        f"{n}/{N_MIN_VALIDACAO} trades pós-correção — veredito provisório"
+        if n < N_MIN_VALIDACAO else f"{n} trades pós-correção — estatística robusta"
+    )
 
     ci_lower, ci_upper = _confianca_binomial(n, wins)
 
     aprovado = (
-        ci_lower is not None and ci_lower >= 0.50
-        and brier is not None and brier < 0.25
+        n >= N_MIN_VALIDACAO
+        and ci_lower is not None and ci_lower >= CI_LOWER_MIN
+        and brier is not None and brier < BRIER_MAX
         and edge_realizado_pct is not None and edge_realizado_pct > 0
+        and (n_range2 is None or n_range2 >= MIN_RANGE2_TRADES)
     )
 
     ci_str = f"CI 95%: [{ci_lower*100:.1f}%, {ci_upper*100:.1f}%]" if ci_lower is not None else ""
@@ -95,12 +144,16 @@ def _veredito(n, wins, brier, edge_realizado_pct):
         return f"APROVADO ({status})", f"{msg} — {ci_str}"
 
     razoes = []
-    if ci_lower is None or ci_lower < 0.50:
-        razoes.append(f"WR {ci_str} insuficiente")
-    if brier is not None and brier >= 0.25:
-        razoes.append(f"Brier {brier:.4f} ≥ 0.25")
+    if n < N_MIN_VALIDACAO:
+        razoes.append(f"n={n} < {N_MIN_VALIDACAO}")
+    if ci_lower is None or ci_lower < CI_LOWER_MIN:
+        razoes.append(f"WR {ci_str} < {CI_LOWER_MIN*100:.0f}%")
+    if brier is not None and brier >= BRIER_MAX:
+        razoes.append(f"Brier {brier:.4f} ≥ {BRIER_MAX}")
     if edge_realizado_pct is not None and edge_realizado_pct <= 0:
         razoes.append(f"Edge realizado {edge_realizado_pct:+.1f}% ≤ 0")
+    if n_range2 is not None and n_range2 < MIN_RANGE2_TRADES:
+        razoes.append(f"RANGE2: {n_range2} < {MIN_RANGE2_TRADES}")
 
     return f"REPROVADO ({status})", " | ".join(razoes) if razoes else msg
 
@@ -110,11 +163,15 @@ def _veredito(n, wins, brier, edge_realizado_pct):
 def gerar_relatorio(enviar_telegram=False):
     from bankroll import load_bankroll
 
-    history  = load_bankroll().get("history", [])
+    history_completo = load_bankroll().get("history", [])
+    history  = [t for t in history_completo if _pos_corte(t)]
+    n_pre_corte = len(history_completo) - len(history)
+
     fechados = [t for t in history if t.get("result") in ("WIN", "LOSS")]
     abertos  = [t for t in history if t.get("result") == "OPEN"]
     wins     = [t for t in fechados if t.get("result") == "WIN"]
     losses   = [t for t in fechados if t.get("result") == "LOSS"]
+    n_range2 = sum(1 for t in fechados if str(t.get("type", "")).upper() == "RANGE2")
 
     n        = len(fechados)
     win_rate = len(wins) / n if n > 0 else 0
@@ -177,22 +234,24 @@ def gerar_relatorio(enviar_telegram=False):
         wr_c    = s["wins"] / total_c * 100 if total_c else 0
         cidade_lines += f"\n  {city:15} {s['wins']}W/{s['losses']}L ({wr_c:.0f}%) ${s['pnl']:+.2f}"
 
-    veredito, detalhe = _veredito(n, len(wins), brier, edge_realizado_pct)
+    veredito, detalhe = _veredito(n, len(wins), brier, edge_realizado_pct, n_range2)
 
     emoji_pnl   = "🟢" if pnl_total >= 0 else "🔴"
-    emoji_brier = "✅" if brier is not None and brier < 0.25 else "⚠️"
+    emoji_brier = "✅" if brier is not None and brier < BRIER_MAX else "⚠️"
     emoji_edge  = "✅" if edge_realizado_pct is not None and edge_realizado_pct > 0 else "⚠️"
 
     relatorio = (
-        f"<b>📊 VALIDAÇÃO DO MODELO</b>\n\n"
-        f"Fechados: <b>{n}</b> ({len(wins)}W / {len(losses)}L) | Abertos: {len(abertos)}\n"
+        f"<b>📊 VALIDAÇÃO PÓS-CORREÇÃO (desde {VALIDATION_CUTOFF_ISO[:10]})</b>\n\n"
+        f"Fechados: <b>{n}</b>/{N_MIN_VALIDACAO} ({len(wins)}W / {len(losses)}L) | "
+        f"Abertos: {len(abertos)} | RANGE2 fechados: {n_range2}/{MIN_RANGE2_TRADES}\n"
         f"Win rate: <b>{win_rate*100:.1f}%</b>\n"
         f"{emoji_pnl} PnL: <b>${pnl_total:+.2f}</b>\n\n"
         f"Brier score: <b>{brier:.4f}</b> {emoji_brier}\n"
         f"Edge realizado: <b>{edge_realizado_pct:+.1f}%</b> {emoji_edge}\n"
         if brier is not None and edge_realizado_pct is not None else
-        f"<b>📊 VALIDAÇÃO DO MODELO</b>\n\n"
-        f"Fechados: <b>{n}</b> ({len(wins)}W / {len(losses)}L) | Abertos: {len(abertos)}\n"
+        f"<b>📊 VALIDAÇÃO PÓS-CORREÇÃO (desde {VALIDATION_CUTOFF_ISO[:10]})</b>\n\n"
+        f"Fechados: <b>{n}</b>/{N_MIN_VALIDACAO} ({len(wins)}W / {len(losses)}L) | "
+        f"Abertos: {len(abertos)} | RANGE2 fechados: {n_range2}/{MIN_RANGE2_TRADES}\n"
         f"Win rate: <b>{win_rate*100:.1f}%</b>\n"
         f"{emoji_pnl} PnL: <b>${pnl_total:+.2f}</b>\n\n"
         f"Brier: N/A | Edge realizado: N/A\n"
@@ -205,6 +264,12 @@ def gerar_relatorio(enviar_telegram=False):
         relatorio += f"\n<b>Top cidades:</b>{cidade_lines}\n"
 
     relatorio += f"\n<b>Veredito: {veredito}</b>\n<i>{detalhe}</i>"
+
+    if n_pre_corte:
+        relatorio += (
+            f"\n\n<i>({n_pre_corte} trades anteriores ao fix de fonte de dados "
+            f"(coordenada de Los Angeles) excluídos — não contam para este veredito.)</i>"
+        )
 
     if enviar_telegram:
         try:
