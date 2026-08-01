@@ -910,6 +910,127 @@ class TestValidacaoPosCorte(unittest.TestCase):
         self.assertIn("excluídos", r)
 
 
+class TestDashboardPosCorte(unittest.TestCase):
+    """
+    dashboard.py tinha sua própria lógica de "Real Money Readiness"
+    independente de validacao.py, calculada sobre TODO o histórico. Ela
+    chegava a mostrar 71%/VALIDATING usando os 127 trades contaminados
+    pela coordenada errada de Los Angeles, enquanto /validacao (corrigido
+    antes) já reportava corretamente 0/110 — duas fontes de verdade
+    divergentes na mesma aplicação, com a mais visível (o dashboard)
+    sendo a errada.
+    """
+
+    def setUp(self):
+        # atributo de INSTANCIA: unittest cria uma instancia nova por
+        # metodo de teste, entao isto reseta a cada teste. Usar atributo
+        # de classe aqui fazia o contador vazar entre testes e gerar
+        # datas acidentalmente pos-corte.
+        self._seq = 0
+
+    def _bankroll(self, history, balance=622.36, start=200.0):
+        return {"balance": balance, "start_balance": start, "history": history}
+
+    _CITIES = ["Los Angeles", "Miami", "Chicago", "Denver", "Toronto"]
+
+    def _next_market_pre_corte(self):
+        # Varia (data dentro de jun/jul, cidade, target) para gerar
+        # ate ~4000 combinacoes unicas sem nunca cruzar o corte de
+        # 2026-08-01 — a chave de dedup e' (city, market_date, type,
+        # target, unit), entao repetir so a data nao basta.
+        self._seq += 1
+        day = 1 + (self._seq % 55)
+        month, dom = (6, day) if day <= 30 else (7, day - 30)
+        d = f"2026-{month:02d}-{dom:02d}"
+        city = self._CITIES[self._seq % len(self._CITIES)]
+        target = 20.0 + (self._seq % 15)
+        return d, city, target
+
+    def _trade_pre_corte(self, result="WIN", pnl=5.0, model_prob=0.9, side="YES", tipo="EXACT"):
+        d, city, target = self._next_market_pre_corte()
+        return {
+            "market_id": f"pre-{d}-{city}-{result}-{pnl}-{side}", "city": city,
+            "market_date": d, "entry_time": f"{d}T10:00:00+00:00",
+            "exit_time": f"{d}T11:00:00+00:00", "result": result,
+            "pnl": pnl, "stake": 4.0, "model_prob": model_prob, "side": side,
+            "type": tipo, "unit": "C", "target": target,
+        }
+
+    def _trade_pos_corte(self, result="WIN", pnl=5.0, model_prob=0.9, side="YES", tipo="EXACT"):
+        return {
+            "market_id": f"pos-{result}-{pnl}-{side}", "city": "Madrid",
+            "market_date": "2026-08-05", "entry_time": "2026-08-05T10:00:00+00:00",
+            "exit_time": "2026-08-06T10:00:00+00:00", "result": result,
+            "pnl": pnl, "stake": 4.0, "model_prob": model_prob, "side": side,
+            "type": tipo, "unit": "C", "target": 25.0,
+        }
+
+    def test_kpis_ignoram_historico_pre_corte(self):
+        """127 trades pré-fix vencedores não podem aparecer como win_rate/pnl atuais."""
+        from dashboard import build_stats
+        history = [self._trade_pre_corte(result="WIN", pnl=5.0) for _ in range(20)]
+        stats = build_stats(self._bankroll(history))
+        self.assertEqual(stats["total_closed"], 0)
+        self.assertEqual(stats["pnl"], 0)
+        self.assertEqual(stats["win_rate"], 0)
+        self.assertIsNone(stats["brier"])
+        self.assertEqual(stats["n_pre_corte"], 20)
+        self.assertEqual(stats["total_closed_completo"], 20)
+
+    def test_saldo_continua_sendo_o_real_completo(self):
+        """Saldo é fato financeiro real — não filtra por corte."""
+        from dashboard import build_stats
+        history = [self._trade_pre_corte()]
+        stats = build_stats(self._bankroll(history, balance=622.36))
+        self.assertEqual(stats["balance"], 622.36)
+
+    def test_tabela_trades_fechados_mostra_historico_completo(self):
+        """A tabela de auditoria continua mostrando o passado, só os KPIs mudam."""
+        from dashboard import build_stats
+        history = [self._trade_pre_corte(result="WIN") for _ in range(5)]
+        stats = build_stats(self._bankroll(history))
+        self.assertEqual(len(stats["closed_trades"]), 5)
+
+    def test_trade_pos_corte_conta_para_kpis(self):
+        from dashboard import build_stats
+        history = [self._trade_pre_corte(result="WIN")] + [self._trade_pos_corte(result="WIN", pnl=3.0)]
+        stats = build_stats(self._bankroll(history))
+        self.assertEqual(stats["total_closed"], 1)
+        self.assertEqual(stats["pnl"], 3.0)
+        self.assertEqual(stats["n_pre_corte"], 1)
+        self.assertEqual(stats["total_closed_completo"], 2)
+
+    def test_readiness_nao_aprova_so_com_historico_contaminado(self):
+        """
+        Reproduz o bug real: 100+ trades pré-fix com win rate alto NÃO
+        podem produzir um score/level de "quase pronto" — antes dava
+        71%/VALIDATING; agora tem de ficar preso em AGUARDANDO.
+        """
+        from dashboard import build_stats
+        history = [self._trade_pre_corte(result="WIN", pnl=3.0) for _ in range(90)]
+        history += [self._trade_pre_corte(result="LOSS", pnl=-3.0) for _ in range(37)]
+        stats = build_stats(self._bankroll(history))
+        self.assertEqual(stats["readiness"]["n_pos_corte"], 0)
+        self.assertEqual(stats["readiness"]["level"], "AGUARDANDO DADOS PÓS-CORREÇÃO")
+
+    def test_readiness_usa_mesmos_limiares_do_validacao(self):
+        from dashboard import N_MIN_VALIDACAO as D_N, CI_LOWER_MIN as D_CI, MIN_RANGE2_TRADES as D_R2
+        from validacao import N_MIN_VALIDACAO as V_N, CI_LOWER_MIN as V_CI, MIN_RANGE2_TRADES as V_R2
+        self.assertEqual(D_N, V_N)
+        self.assertEqual(D_CI, V_CI)
+        self.assertEqual(D_R2, V_R2)
+
+    def test_dashboard_e_validacao_concordam_no_bankroll_real(self):
+        """As duas telas (dashboard e /validacao) tem que reportar o
+        mesmo n pos-corte para o mesmo bankroll — nunca mais divergir."""
+        from dashboard import build_stats
+        from validacao import gerar_relatorio
+        from bankroll import load_bankroll
+        stats = build_stats(load_bankroll())
+        relatorio = gerar_relatorio(enviar_telegram=False)
+        self.assertIn(f"Fechados: <b>{stats['total_closed']}</b>/", relatorio)
+
+
 class TestSemBoostPorCidade(unittest.TestCase):
     """O boost hardcoded de Seoul/Tokyo/Madrid foi removido."""
 

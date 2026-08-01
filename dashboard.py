@@ -2,6 +2,26 @@
 DASHBOARD — WEATHER QUANT BOT v2 FUTURISTIC
 Backend idêntico ao original + novos dados: heatmap, scatter, rolling WR, radar.
 HTML completamente reescrito com visual nível hard.
+
+CORREÇÃO 2026-08-01 (pós-auditoria de fonte de dados):
+O dashboard calculava win rate / PnL / Brier / Profit Factor / Sharpe /
+Real Money Readiness sobre TODO o histórico, incluindo os trades
+liquidados com a coordenada errada de Los Angeles (+12.3°F de divergência
+média vs. a temperatura implícita nos preços — 39% dos trades fechados).
+O card "Real Money Readiness" chegava a mostrar 71%/VALIDATING usando
+esse histórico contaminado, enquanto validacao.py (corrigido antes)
+já reportava corretamente 0/110 pós-correção — duas fontes de verdade
+divergentes na mesma aplicação.
+
+Agora as métricas de DECISÃO (win rate, PnL fechado, Brier, Profit
+Factor, Sharpe, drawdown, equity curve, calibração, Real Money
+Readiness) usam apenas trades abertos depois de VALIDATION_CUTOFF_ISO
+— a mesma constante de validacao.py, importada daqui para nunca mais
+divergir. Saldo, exposição e posições abertas continuam refletindo a
+conta real (todo o histórico) — são fatos financeiros, não alegações
+de performance do modelo. O histórico completo continua visível nos
+gráficos exploratórios (heatmap, scatter, tabela de fechados),
+claramente rotulado como tal.
 """
 
 import os, json, base64
@@ -14,6 +34,15 @@ except ImportError:
 
 from bankroll import dedupe_history_by_market, check_balance_invariant
 from decision_log import load_decisions, summarize_decisions, trade_execution_summary
+from validacao import (
+    VALIDATION_CUTOFF_ISO,
+    N_MIN_VALIDACAO,
+    CI_LOWER_MIN,
+    MIN_RANGE2_TRADES,
+    BRIER_MAX,
+    _pos_corte,
+    _confianca_binomial,
+)
 try:
     from config import START_BALANCE
 except Exception:
@@ -156,13 +185,50 @@ def _scatter_trades(history):
         })
     return pts
 
-def _readiness_report(history, open_t, balance_divergence, execution):
+def _readiness_report(history, open_t, balance_divergence, execution, closed_pos_corte):
+    """
+    Score de prontidão para capital real.
+
+    Os checks de execução (orderbook paper, slippage, fill ratio) medem a
+    qualidade do MOTOR DE EXECUÇÃO — não são afetados pelo bug de
+    coordenada climática, então continuam sobre o histórico completo.
+
+    Os checks de MODELO (amostra pós-correção, win rate, Brier, RANGE2)
+    usam os mesmos limiares de validacao.py e SÓ contam trades abertos
+    após VALIDATION_CUTOFF_ISO. Sem isto, o score misturava as duas
+    coisas e aprovava o sistema (71%/VALIDATING) usando um histórico que
+    sabemos estar contaminado.
+    """
     orderbook=int(execution.get("paper_orderbook") or 0)
     closed_orderbook=int(execution.get("closed_orderbook") or 0)
     avg_fill=execution.get("avg_fill_ratio")
     avg_slip=execution.get("avg_slippage")
     tiny=int(execution.get("tiny_orderbook_trades") or 0)
+
+    n_pos = len(closed_pos_corte)
+    wins_pos = sum(1 for t in closed_pos_corte if t.get("result") == "WIN")
+    n_range2_pos = sum(1 for t in closed_pos_corte if str(t.get("type", "")).upper() == "RANGE2")
+    ci_lower, ci_upper = _confianca_binomial(n_pos, wins_pos) if n_pos else (None, None)
+    brier_vals = []
+    for t in closed_pos_corte:
+        p = t.get("model_prob")
+        if p is None:
+            continue
+        p = float(p)
+        if (t.get("side") or "YES").upper() == "NO":
+            p = 1.0 - p
+        brier_vals.append((p - (1.0 if t.get("result") == "WIN" else 0.0)) ** 2)
+    brier_pos = round(sum(brier_vals) / len(brier_vals), 4) if brier_vals else None
+
     checks=[
+        {"label":f"{N_MIN_VALIDACAO}+ trades PÓS-CORREÇÃO (fonte de dados)","ok":n_pos>=N_MIN_VALIDACAO,
+         "value":f"{n_pos}/{N_MIN_VALIDACAO}"},
+        {"label":f"win rate CI95 inferior >= {CI_LOWER_MIN*100:.0f}%","ok":ci_lower is not None and ci_lower>=CI_LOWER_MIN,
+         "value":("N/A" if ci_lower is None else f"{ci_lower*100:.1f}%")},
+        {"label":f"Brier < {BRIER_MAX}","ok":brier_pos is not None and brier_pos<BRIER_MAX,
+         "value":("N/A" if brier_pos is None else f"{brier_pos:.4f}")},
+        {"label":f"{MIN_RANGE2_TRADES}+ trades RANGE2 pós-correção","ok":n_range2_pos>=MIN_RANGE2_TRADES,
+         "value":f"{n_range2_pos}/{MIN_RANGE2_TRADES}"},
         {"label":"30+ orderbook-paper trades","ok":orderbook>=30,
          "value":f"{orderbook}/30"},
         {"label":"10+ settled orderbook-paper trades","ok":closed_orderbook>=10,
@@ -180,7 +246,11 @@ def _readiness_report(history, open_t, balance_divergence, execution):
     ]
     passed=sum(1 for c in checks if c["ok"])
     score=round(passed/len(checks)*100)
-    if score>=100:
+    # Gate duro: sem amostra pós-correção mínima, nunca "quase pronto" —
+    # nenhuma combinação dos outros checks deve compensar amostra zero.
+    if n_pos < N_MIN_VALIDACAO:
+        level = "AGUARDANDO DADOS PÓS-CORREÇÃO"
+    elif score>=100:
         level="READY FOR SMALL LIVE PILOT"
     elif score>=75:
         level="ALMOST READY"
@@ -188,23 +258,34 @@ def _readiness_report(history, open_t, balance_divergence, execution):
         level="VALIDATING"
     else:
         level="NOT VALIDATED"
-    return {"score":score,"level":level,"checks":checks}
+    return {"score":score,"level":level,"checks":checks,"n_pos_corte":n_pos}
 
 def build_stats(data):
     raw_history=data.get("history",[])
-    history=dedupe_history_by_market(raw_history)
+    history=dedupe_history_by_market(raw_history)   # histórico COMPLETO — contexto/auditoria
+    n_pre_corte = sum(1 for t in history if not _pos_corte(t))
+
     balance=data.get("balance",0); start=data.get("start_balance",START_BALANCE)
     try: balance_divergence=check_balance_invariant(data)
     except Exception: balance_divergence=0.0
-    closed=sorted([t for t in history if t.get("result") in ("WIN","LOSS")],
-                  key=lambda x:x.get("exit_time","") or "")
+
+    # Posições abertas e exposição são fatos financeiros da conta AGORA —
+    # continuam refletindo TODO o histórico, aberto antes ou depois do fix.
     open_t=[t for t in history if t.get("result")=="OPEN"]
+    exposure=sum(float(t.get("stake") or 0) for t in open_t)
+
+    # Métricas de DECISÃO (win rate, PnL, Brier, Sharpe, equity curve...)
+    # só contam trades abertos após o fix de fonte de dados — ver
+    # VALIDATION_CUTOFF_ISO em validacao.py.
+    closed=sorted([t for t in history if t.get("result") in ("WIN","LOSS") and _pos_corte(t)],
+                  key=lambda x:x.get("exit_time","") or "")
     wins=[t for t in closed if t.get("result")=="WIN"]
     losses=[t for t in closed if t.get("result")=="LOSS"]
     pnl=sum(float(t.get("pnl") or 0) for t in closed)
-    exposure=sum(float(t.get("stake") or 0) for t in open_t)
     win_rate=round(len(wins)/len(closed)*100,1) if closed else 0
 
+    # city_stats/type_stats permanecem sobre o histórico COMPLETO (globo e
+    # gráficos exploratórios de contexto histórico).
     city_stats={}
     for t in history:
         c=t.get("city","?")
@@ -244,6 +325,12 @@ def build_stats(data):
     sharpe=_sharpe(closed)
     city_heatmap,heatmap_dates=_city_date_heatmap(history)
 
+    # Tabela "TRADES FECHADOS" mostra o histórico COMPLETO (contexto/
+    # auditoria) — closed acima já está filtrado por pós-corte para as
+    # métricas de decisão, então usamos uma lista separada aqui.
+    closed_completo=sorted([t for t in history if t.get("result") in ("WIN","LOSS")],
+                           key=lambda x:x.get("exit_time","") or "")
+
     from collections import Counter
     day_counts=Counter()
     for t in closed:
@@ -251,7 +338,7 @@ def build_stats(data):
         if d: day_counts[d]+=1
     execution=trade_execution_summary(history)
     decision_log=summarize_decisions(load_decisions())
-    readiness=_readiness_report(history, open_t, balance_divergence, execution)
+    readiness=_readiness_report(history, open_t, balance_divergence, execution, closed)
 
     return {
         "balance":round(float(balance),2),
@@ -261,6 +348,9 @@ def build_stats(data):
         "win_rate":win_rate,
         "win_rate_10":_rolling_winrate(closed,10),
         "total_closed":len(closed),"wins":len(wins),"losses":len(losses),
+        "total_closed_completo":len(closed_completo),
+        "n_pre_corte":n_pre_corte,
+        "validation_cutoff":VALIDATION_CUTOFF_ISO,
         "open_count":len(open_t),"exposure":round(exposure,2),
         "brier":brier,"avg_edge":avg_edge,"max_drawdown":mdd,
         "profit_factor":_profit_factor(wins,losses),"sharpe":sharpe,
@@ -270,7 +360,7 @@ def build_stats(data):
         "drawdown_curve":[{"date":equity_curve[i]["date"],"dd":dd_series[i+1]} for i in range(len(equity_curve))],
         "calibration":_calibration_bins(closed),
         "open_trades":open_t,
-        "closed_trades":list(reversed(closed))[:50],
+        "closed_trades":list(reversed(closed_completo))[:50],
         "all_trades":history,
         "city_heatmap":city_heatmap,
         "heatmap_dates":heatmap_dates[-14:],
@@ -409,6 +499,7 @@ tr:hover td{background:rgba(0,212,255,.02)}
 </head>
 <body>
 <div id=\"wbar\" class=\"wbar\"></div>
+<div id=\"cutoffBar\" class=\"wbar\" style=\"display:block;background:rgba(0,212,255,.05);border-color:rgba(0,212,255,.2);color:var(--cyan)\"></div>
 <div class=\"wrapper\">
 <header>
   <div class=\"logo\">\u26a1 WEATHER<em>QUANT</em></div>
@@ -423,16 +514,16 @@ tr:hover td{background:rgba(0,212,255,.02)}
   <div class=\"ii\">Abertos: <strong id=\"iO\">\u2014</strong></div><div class=\"idiv\"></div>
   <div class=\"ii\">Exposi\u00e7\u00e3o: <strong id=\"iE\">\u2014</strong></div><div class=\"idiv\"></div>
   <div class=\"ii\">Edge m\u00e9dio: <strong id=\"iEd\">\u2014</strong></div><div class=\"idiv\"></div>
-  <div class=\"ii\">Brier: <strong id=\"iB\">\u2014</strong></div><div class=\"idiv\"></div>
-  <div class=\"ii\">WR \u00faltimos 10: <strong id=\"iW\">\u2014</strong></div>
+  <div class=\"ii\">Brier (p\u00f3s-fix): <strong id=\"iB\">\u2014</strong></div><div class=\"idiv\"></div>
+  <div class=\"ii\">WR \u00faltimos 10 (p\u00f3s-fix): <strong id=\"iW\">\u2014</strong></div>
 </div>
 <div class=\"krow\">
-  <div class=\"kpi\" style=\"--acc:var(--cyan)\"><div class=\"kl\">Saldo</div><div class=\"kv\" id=\"kBal\">\u2014</div><div class=\"ks\" id=\"kBalS\">\u2014</div></div>
-  <div class=\"kpi\" style=\"--acc:var(--green)\"><div class=\"kl\">PnL Total</div><div class=\"kv\" id=\"kPnl\">\u2014</div><div class=\"ks\" id=\"kPnlS\">\u2014</div></div>
-  <div class=\"kpi\" style=\"--acc:var(--purple)\"><div class=\"kl\">Win Rate</div><div class=\"kv\" id=\"kWR\">\u2014</div><div class=\"ks\" id=\"kWRS\">\u2014</div></div>
-  <div class=\"kpi\" style=\"--acc:var(--amber)\"><div class=\"kl\">Profit Factor</div><div class=\"kv\" id=\"kPF\">\u2014</div><div class=\"ks\">&ge;1.5 = excelente</div></div>
-  <div class=\"kpi\" style=\"--acc:var(--red)\"><div class=\"kl\">Max Drawdown</div><div class=\"kv\" id=\"kMDD\">\u2014</div><div class=\"ks\">queda m\u00e1x do pico</div></div>
-  <div class=\"kpi\" style=\"--acc:#4dd0e1\"><div class=\"kl\">Sharpe Ratio</div><div class=\"kv\" id=\"kSh\">\u2014</div><div class=\"ks\">&gt;1 = bom</div></div>
+  <div class=\"kpi\" style=\"--acc:var(--cyan)\"><div class=\"kl\">Saldo (hist\u00f3rico completo)</div><div class=\"kv\" id=\"kBal\">\u2014</div><div class=\"ks\" id=\"kBalS\">\u2014</div></div>
+  <div class=\"kpi\" style=\"--acc:var(--green)\"><div class=\"kl\">PnL (p\u00f3s-fix)</div><div class=\"kv\" id=\"kPnl\">\u2014</div><div class=\"ks\" id=\"kPnlS\">\u2014</div></div>
+  <div class=\"kpi\" style=\"--acc:var(--purple)\"><div class=\"kl\">Win Rate (p\u00f3s-fix)</div><div class=\"kv\" id=\"kWR\">\u2014</div><div class=\"ks\" id=\"kWRS\">\u2014</div></div>
+  <div class=\"kpi\" style=\"--acc:var(--amber)\"><div class=\"kl\">Profit Factor (p\u00f3s-fix)</div><div class=\"kv\" id=\"kPF\">\u2014</div><div class=\"ks\">&ge;1.5 = excelente</div></div>
+  <div class=\"kpi\" style=\"--acc:var(--red)\"><div class=\"kl\">Max Drawdown (p\u00f3s-fix)</div><div class=\"kv\" id=\"kMDD\">\u2014</div><div class=\"ks\">queda m\u00e1x do pico</div></div>
+  <div class=\"kpi\" style=\"--acc:#4dd0e1\"><div class=\"kl\">Sharpe Ratio (p\u00f3s-fix)</div><div class=\"kv\" id=\"kSh\">\u2014</div><div class=\"ks\">&gt;1 = bom</div></div>
 </div>
 <div class=\"g3\">
   <div class=\"card\"><div class=\"ct\">ORDERBOOK PAPER EXECUTION</div><div class=\"mini\" id=\"execPanel\"></div></div>
@@ -512,7 +603,7 @@ tr:hover td{background:rgba(0,212,255,.02)}
 </div>
 <div class=\"tcard\">
   <div class=\"thead2\">
-    <div class=\"ct\" style=\"margin:0\">&#128203; TRADES FECHADOS</div>
+    <div class=\"ct\" style=\"margin:0\">&#128203; TRADES FECHADOS (histórico completo, inclui pré-fix)</div>
     <span id=\"cC\" style=\"color:var(--muted);font-size:10px\"></span>
   </div>
   <div class=\"twrap\"><table><thead><tr>
@@ -527,7 +618,7 @@ async function fetchData(){try{const r=await fetch('/api/stats');if(!r.ok)throw 
 fetchData();setInterval(fetchData,20000);
 let _firstRender=true;
 function render(){if(!D)return;
-  wbar();kpis();infoBar();ticker();opsPanels();buildChips();
+  wbar();cutoffBar();kpis();infoBar();ticker();opsPanels();buildChips();
   equity();drawdown();heatmap();gauge();
   cityChart();typeChart();calibration();rollingWR();edgeChart();density();radar();scatter();
   tables();globe();
@@ -548,6 +639,16 @@ function mkC(id,cfg){
 }
 function sg(v){return v>=0?'+':''}
 function wbar(){const b=$('wbar');if(D.warning){b.style.display='block';b.textContent=D.warning}else b.style.display='none'}
+function cutoffBar(){
+  const b=$('cutoffBar');const cutoff=(D.validation_cutoff||'').slice(0,10);
+  const nPre=D.n_pre_corte||0, nCompleto=D.total_closed_completo||0, nPos=D.total_closed||0;
+  b.innerHTML=`&#9888; Correção de fonte de dados em ${cutoff}: KPIs de topo, Real Money Readiness, `+
+    `equity curve e calibração contam SOMENTE trades abertos depois disso `+
+    `(<strong>${nPos} fechados pós-fix</strong>). `+
+    `${nPre} trades anteriores (de ${nCompleto} no total) estão excluídos por estarem `+
+    `liquidados com a coordenada antiga de Los Angeles — seguem visíveis apenas na `+
+    `tabela \"TRADES FECHADOS\" e no heatmap, como histórico.`;
+}
 function ticker(){
   const items=(D.closed_trades||[]).slice(0,10).map(t=>{
     const c=t.result==='WIN'?'tw':'tl';const s=t.result==='WIN'?'\u25b2':'\u25bc';
