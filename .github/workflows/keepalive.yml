@@ -1,0 +1,35 @@
+name: Keep Render instance awake
+
+# O plano Free do Render suspende o serviço apos ~15 min sem trafego HTTP
+# externo. O bot roda um loop interno (schedule.every(1).hours) que o
+# Render nao enxerga — sem visitas ao dashboard, o processo dorme e
+# ciclos de trading inteiros sao pulados. Confirmado nos logs de
+# 2026-08-01/02: gaps de 3h01min e 5h05min entre ciclos, exatamente
+# quando ninguem acessou o dashboard por um tempo.
+#
+# Este workflow bate no endpoint de health check a cada 10 minutos —
+# confortavelmente abaixo do limite de inatividade do Render — para o
+# servico nunca dormir.
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping /healthz (com retry para cold start)
+        run: |
+          URL="https://weather-quant-bot.onrender.com/healthz"
+          for i in 1 2; do
+            if curl -fsS --max-time 60 "$URL"; then
+              echo "ok — instancia respondeu"
+              exit 0
+            fi
+            echo "tentativa $i falhou, nova tentativa em 10s (pode ser cold start)..."
+            sleep 10
+          done
+          echo "::error::Health check falhou duas vezes seguidas — instancia pode estar fora do ar, nao so dormindo"
+          exit 1
