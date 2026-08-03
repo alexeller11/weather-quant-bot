@@ -138,6 +138,23 @@ CONSENSUS_MAX_DIFF_RANGE2 = float(os.getenv("CONSENSUS_MAX_DIFF_RANGE2", "1.5"))
 CONSENSUS_MAX_DIFF_EXACT = float(os.getenv("CONSENSUS_MAX_DIFF_EXACT", "1.5"))
 CONSENSUS_MAX_DIFF_DEFAULT = float(os.getenv("CONSENSUS_MAX_DIFF_DEFAULT", "2.5"))
 
+# Viés sistemático WeatherAPI-menos-OpenMeteo, por cidade. Descoberto em
+# produção em 2026-08-03: WA reporta consistentemente ~2-3°C mais quente
+# que OM (ex.: OM=27.9 WA=32.0, OM=35.2 WA=37.5, OM=38.1 WA=41.2 — sempre
+# WA > OM). Comparar a diferença BRUTA contra CONSENSUS_MAX_DIFF_RANGE2
+# (1.5°C) bloqueava 46% de todas as tentativas de trade por um viés de
+# fonte, não por divergência real de previsão. Agora o viés é estimado
+# por (média móvel de WA-OM por cidade, com shrinkage) e removido antes
+# de comparar ao threshold — mesmo padrão de sigma_calibrator.py.
+CONSENSUS_BIAS_WINDOW = int(os.getenv("CONSENSUS_BIAS_WINDOW", "40"))
+CONSENSUS_BIAS_MIN_SAMPLES = int(os.getenv("CONSENSUS_BIAS_MIN_SAMPLES", "5"))
+# K=3 (não 10, como em sigma_calibrator): o viés observado entre fontes é
+# grande (~2-3°C) e consistente em direção — testado contra as leituras
+# reais de 2026-08-03, K=3 converge para ~2.1°C em 6 amostras e passa a
+# liberar os trades legítimos; K=10 ainda deixava residuo >1.5°C após 9
+# amostras, continuando a bloquear por um viés que já era conhecido.
+CONSENSUS_BIAS_SHRINK_K = float(os.getenv("CONSENSUS_BIAS_SHRINK_K", "3.0"))
+
 # ── Analytics / Health ───────────────────────────────────────────
 # health.json fica no filesystem efemero do Render. Um snapshot velho
 # (o do repositorio estava congelado ha 15 dias) continuava a governar o

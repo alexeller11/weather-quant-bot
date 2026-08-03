@@ -1031,6 +1031,95 @@ class TestDashboardPosCorte(unittest.TestCase):
         self.assertIn(f"Fechados: <b>{stats['total_closed']}</b>/", relatorio)
 
 
+class TestConsensusBias(unittest.TestCase):
+    """
+    Com WEATHERAPI_KEY configurada em producao, o consenso bloqueou 46%
+    das tentativas de trade (229/500) por "sem consenso". Os valores reais
+    mostravam WeatherAPI consistentemente ~2-3°C mais quente que
+    Open-Meteo — vies sistematico entre fontes, nao ruido aleatorio.
+    Comparar a diferenca BRUTA contra o threshold de 1.5°C confundia
+    vies com divergencia real.
+    """
+
+    def setUp(self):
+        import consensus
+        self.consensus = consensus
+        # cada teste comeca com o tracker limpo, sem vazar estado entre
+        # testes (o modulo mantem um _bias_tracker global)
+        self._orig_data = dict(consensus._bias_tracker.data)
+        consensus._bias_tracker.data = {}
+        # nao gravar em arquivo/DB durante os testes
+        consensus._bias_tracker._save = lambda: None
+
+    def tearDown(self):
+        self.consensus._bias_tracker.data = self._orig_data
+
+    def _engine_with_fake_wa(self, readings):
+        """readings: lista de (om, wa) consumida em ordem a cada chamada."""
+        import types
+        from consensus import ConsensusEngine
+        eng = ConsensusEngine(weatherapi_key="fake-key-for-test")
+        state = {"i": 0}
+        def fake_wa(self_, lat, lon, date_str):
+            om, wa = readings[state["i"]]
+            state["i"] += 1
+            return wa
+        eng.get_weatherapi_forecast = types.MethodType(fake_wa, eng)
+        return eng
+
+    def test_sem_amostra_usa_diferenca_bruta(self):
+        """Antes de MIN_SAMPLES, vies=0 — comportamento identico ao antigo."""
+        eng = self._engine_with_fake_wa([(27.9, 32.0)])
+        r = eng.consensus_temperature(1, 1, "2026-08-03", 27.9, condition="RANGE2", city="Madrid")
+        self.assertEqual(r["bias_removed"], 0.0)
+        self.assertEqual(r["raw_diff"], 4.1)
+        self.assertFalse(r["consensus"])
+
+    def test_vies_sistematico_e_removido_apos_amostras(self):
+        """Reproduz os valores reais de producao: apos ~6 leituras
+        consistentes, o residuo cai abaixo do threshold e o consenso passa
+        a ser aceito — sem o vies, tudo isso ficava bloqueado."""
+        readings = [
+            (27.9, 32.0), (35.2, 37.5), (35.3, 37.2), (35.6, 38.6),
+            (36.1, 38.4), (35.3, 38.5), (38.1, 41.2), (37.3, 39.7),
+        ]
+        eng = self._engine_with_fake_wa(readings)
+        results = [
+            eng.consensus_temperature(1, 1, "2026-08-03", om, condition="RANGE2", city="Madrid")
+            for om, wa in readings
+        ]
+        self.assertFalse(results[0]["consensus"])  # cold start: bloqueia igual antes
+        self.assertTrue(results[-1]["consensus"])   # com amostra: vies removido, libera
+        self.assertGreater(results[-1]["bias_removed"], 1.5)
+
+    def test_vies_e_por_cidade_nao_vaza_entre_cidades(self):
+        eng = self._engine_with_fake_wa([(30.0, 33.0)] * 6 + [(30.0, 33.0)])
+        for _ in range(6):
+            eng.consensus_temperature(1, 1, "2026-08-03", 30.0, condition="RANGE2", city="Madrid")
+        r_outra_cidade = eng.consensus_temperature(1, 1, "2026-08-03", 30.0, condition="RANGE2", city="Tokyo")
+        self.assertEqual(r_outra_cidade["bias_removed"], 0.0)
+
+    def test_sem_cidade_usa_chave_global_sem_quebrar(self):
+        eng = self._engine_with_fake_wa([(27.9, 32.0)])
+        r = eng.consensus_temperature(1, 1, "2026-08-03", 27.9, condition="RANGE2")
+        self.assertIsNotNone(r["bias_removed"])
+
+    def test_sem_weatherapi_key_continua_passando_por_omissao(self):
+        from consensus import ConsensusEngine
+        eng = ConsensusEngine(weatherapi_key="")
+        r = eng.consensus_temperature(1, 1, "2026-08-03", 27.9, condition="RANGE2", city="Madrid")
+        self.assertTrue(r["consensus"])
+        self.assertIsNone(r["temp_secondary"])
+
+    def test_get_bias_tem_shrinkage_com_poucas_amostras(self):
+        from consensus import _bias_tracker
+        for d in [3.0, 3.0, 3.0]:  # so 3 amostras, MIN_SAMPLES=5
+            _bias_tracker.record("test-city", d)
+        bias, n = _bias_tracker.get_bias("test-city")
+        self.assertEqual(bias, 0.0)  # abaixo do minimo, sem estimativa ainda
+        self.assertEqual(n, 3)
+
+
 class TestSemBoostPorCidade(unittest.TestCase):
     """O boost hardcoded de Seoul/Tokyo/Madrid foi removido."""
 

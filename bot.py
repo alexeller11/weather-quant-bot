@@ -260,7 +260,7 @@ def process_city(city: Dict):
             cons_lat, cons_lon = resolution_coords(city)
             cons = consensus_engine.consensus_temperature(
                 cons_lat, cons_lon, market_date, forecast_c_raw,
-                condition=condition,
+                condition=condition, city=name,
             )
             if not cons["consensus"]:
                 record_decision("blocked", "consensus_failed", city=name, market=m, detail=cons.get("reason"))

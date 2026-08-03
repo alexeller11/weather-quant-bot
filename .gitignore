@@ -17,6 +17,7 @@ validacao.json
 # Modelos ML locais — persistidos no PostgreSQL
 ml_adjuster.pkl
 sigma_calibration.json
+consensus_bias.json
 *.pkl
 
 # Variáveis de ambiente — NUNCA versionar
