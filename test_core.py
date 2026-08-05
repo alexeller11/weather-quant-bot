@@ -1120,6 +1120,100 @@ class TestConsensusBias(unittest.TestCase):
         self.assertEqual(n, 3)
 
 
+class TestForecastRetry(unittest.TestCase):
+    """
+    Em 2026-08-05, 98.4% das tentativas de trade foram bloqueadas por
+    forecast_unavailable: get_forecast() desistia na primeira falha
+    (429/503), sem nenhuma nova tentativa. O limite documentado da
+    Open-Meteo (600 req/min) e' bem folgado para o volume do bot —
+    confirmado que 11 chamadas em sequencia do IP local passam sem
+    problema — entao a falha e' transitoria (rate limit de IP
+    compartilhado no plano Free do Render), e retry e' a correcao certa.
+    """
+
+    def setUp(self):
+        import forecast
+        forecast._FORECAST_CACHE.clear()
+        forecast._CACHE_TIME.clear()
+        self._sleep_calls = []
+        self._orig_sleep = forecast.time.sleep
+        self._orig_get = forecast.requests.get
+        forecast.time.sleep = lambda s: self._sleep_calls.append(s)
+
+    def tearDown(self):
+        import forecast
+        forecast.time.sleep = self._orig_sleep
+        forecast.requests.get = self._orig_get
+
+    class _FakeResponse:
+        def __init__(self, status_code, payload=None):
+            self.status_code = status_code
+            self._payload = payload or {}
+        def json(self):
+            return self._payload
+
+    def test_recupera_apos_429_transitorio(self):
+        """1a chamada 429, 2a chamada 200 — tem que retornar o resultado
+        da segunda tentativa, nao desistir na primeira."""
+        import forecast
+        calls = {"n": 0}
+        ok_payload = {
+            "current": {"time": "2026-08-05T12:00"},
+            "daily": {"temperature_2m_max": [25.0, 26.0, 27.0]},
+        }
+        def fake_get(url, params=None, timeout=None):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return self._FakeResponse(429)
+            return self._FakeResponse(200, ok_payload)
+        forecast.requests.get = fake_get
+
+        forecast_c, sigma = forecast.get_forecast("new-york", forecast_day=1)
+        self.assertEqual(forecast_c, 25.0)
+        self.assertEqual(calls["n"], 2)
+        self.assertEqual(len(self._sleep_calls), 1)  # 1 backoff entre as 2 tentativas
+
+    def test_desiste_apos_esgotar_tentativas(self):
+        import forecast
+        from config import FORECAST_RETRIES
+        calls = {"n": 0}
+        def fake_get(url, params=None, timeout=None):
+            calls["n"] += 1
+            return self._FakeResponse(503)
+        forecast.requests.get = fake_get
+
+        forecast_c, sigma = forecast.get_forecast("new-york", forecast_day=1)
+        self.assertIsNone(forecast_c)
+        self.assertEqual(calls["n"], FORECAST_RETRIES)
+
+    def test_erro_nao_transitorio_nao_tenta_de_novo(self):
+        """404/400 (erro de verdade, nao rate limit) desiste na hora —
+        retry so faz sentido para falha transitoria."""
+        import forecast
+        calls = {"n": 0}
+        def fake_get(url, params=None, timeout=None):
+            calls["n"] += 1
+            return self._FakeResponse(404)
+        forecast.requests.get = fake_get
+
+        forecast_c, sigma = forecast.get_forecast("new-york", forecast_day=1)
+        self.assertIsNone(forecast_c)
+        self.assertEqual(calls["n"], 1)
+
+    def test_backoff_e_exponencial_e_limitado(self):
+        import forecast
+        calls = {"n": 0}
+        def fake_get(url, params=None, timeout=None):
+            calls["n"] += 1
+            return self._FakeResponse(429)
+        forecast.requests.get = fake_get
+
+        forecast.get_forecast("new-york", forecast_day=1)
+        # backoff = min(2**(attempt+1), 8): 2, 4 (para FORECAST_RETRIES=3,
+        # ha 2 esperas entre as 3 tentativas)
+        self.assertEqual(self._sleep_calls, [2, 4])
+
+
 class TestSemBoostPorCidade(unittest.TestCase):
     """O boost hardcoded de Seoul/Tokyo/Madrid foi removido."""
 

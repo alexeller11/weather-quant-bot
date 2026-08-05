@@ -13,14 +13,19 @@ AUDITORIA SENIOR:
 3. Criterios objetivos para reativar Beijing e Hong Kong adicionados.
    Os erros gigantes (25.5C, 11C) eram artefato do bug de timezone que
    foi corrigido. Documentados aqui para facilitar a reativacao.
+
+CORREÇÃO 2026-08-05:
+4. _fetch_hourly() não tinha retry — mesma falha transitória de
+   forecast.get_forecast() (429/503 da Open-Meteo, provavelmente rate
+   limit de IP compartilhado no plano Free do Render). Reaproveita
+   forecast._request_forecast_with_retry() em vez de duplicar a lógica.
 """
 
-import requests
 import time
 from datetime import datetime, timezone
 
 from config import CITY_COORDS
-from forecast import city_now, city_today
+from forecast import city_now, city_today, _request_forecast_with_retry
 
 _INTRADAY_CACHE = {}
 _INTRADAY_TTL   = 1800
@@ -44,8 +49,8 @@ def _fetch_hourly(lat, lon, local_today: str):
             "start_date":    local_today,
             "end_date":      local_today,
         }
-        r = requests.get(url, params=params, timeout=10)
-        if r.status_code != 200:
+        r = _request_forecast_with_retry(url, params, f"intraday({lat},{lon})")
+        if r is None:
             return None
         data = r.json()
         temps = data.get("hourly", {}).get("temperature_2m", [])

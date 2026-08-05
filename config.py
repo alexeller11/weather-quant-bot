@@ -166,6 +166,18 @@ BIAS_WINDOW_DAYS = int(os.getenv("BIAS_WINDOW_DAYS", "21"))
 BIAS_MIN_SAMPLES = int(os.getenv("BIAS_MIN_SAMPLES", "3"))
 FORECAST_CACHE_TTL = int(os.getenv("FORECAST_CACHE_TTL", "3600"))
 
+# Retry com backoff para 429/502/503/504 da Open-Meteo. Descoberto em
+# 2026-08-05: 98.4% das tentativas de trade bloqueadas por
+# forecast_unavailable — get_forecast() desistia na primeira falha, sem
+# nenhuma nova tentativa. O limite documentado da Open-Meteo (600
+# req/min, 10k/dia) é bem folgado para o volume do bot (confirmado por
+# teste direto: 11 chamadas em sequência do IP local, todas 200) — o mais
+# provável é rate limit por IP de saida COMPARTILHADO do plano Free do
+# Render entre varios clientes, nao volume proprio. Mesmo padrao de
+# retry/backoff ja usado em settlement.get_actual_temperature().
+FORECAST_RETRIES = int(os.getenv("FORECAST_RETRIES", "3"))
+FORECAST_RETRY_STATUS = {429, 500, 502, 503, 504}
+
 # ── Parâmetros antes hardcoded em settlement.py ─────────────────
 MAX_OPEN_TRADE_DAYS = int(os.getenv("MAX_OPEN_TRADE_DAYS", "7"))
 SETTLE_TEMP_RETRIES = int(os.getenv("SETTLE_TEMP_RETRIES", "3"))

@@ -25,7 +25,7 @@ import requests
 import time
 from datetime import datetime, timezone, timedelta
 
-from config import CITY_COORDS, CITY_TZ, CITY_SLUG_NORMALIZE
+from config import CITY_COORDS, CITY_TZ, CITY_SLUG_NORMALIZE, FORECAST_RETRIES, FORECAST_RETRY_STATUS
 
 logger = logging.getLogger(__name__)
 
@@ -182,6 +182,46 @@ CACHE_TTL_SECONDS = 3600
 # FORECAST
 # =========================================================
 
+def _request_forecast_with_retry(url, params, city_slug):
+    """
+    GET com retry/backoff para falhas transitorias (429/502/503/504).
+
+    Sem isto, uma unica falha (rate limit por IP compartilhado no plano
+    Free do Render, ou hiccup momentaneo da Open-Meteo) descartava o
+    mercado inteiro no ciclo — em 2026-08-05 isso chegou a 98.4% das
+    tentativas de trade bloqueadas por "forecast indisponivel". O limite
+    documentado da Open-Meteo (600 req/min) e' bem folgado para o volume
+    do bot, entao a causa mais provavel e' rate limit de IP compartilhado
+    entre outros clientes do Render — transitorio por natureza, o que
+    torna retry a correcao certa (nao adianta trocar de API).
+    """
+    last_status = None
+    for attempt in range(FORECAST_RETRIES):
+        try:
+            r = requests.get(url, params=params, timeout=20)
+        except Exception as e:
+            logger.warning(f"[forecast] {city_slug}: erro de rede (tentativa {attempt+1}/{FORECAST_RETRIES}): {e}")
+            last_status = None
+        else:
+            if r.status_code == 200:
+                return r
+            last_status = r.status_code
+            if r.status_code not in FORECAST_RETRY_STATUS:
+                logger.warning(f"[forecast] {city_slug}: erro status={r.status_code}")
+                return None
+
+        if attempt < FORECAST_RETRIES - 1:
+            backoff = min(2 ** (attempt + 1), 8)
+            logger.info(
+                f"[forecast] {city_slug}: retry {attempt+1}/{FORECAST_RETRIES} "
+                f"em {backoff}s (status={last_status})"
+            )
+            time.sleep(backoff)
+
+    logger.warning(f"[forecast] {city_slug}: esgotou {FORECAST_RETRIES} tentativas (ultimo status={last_status})")
+    return None
+
+
 def get_forecast(city_slug, forecast_day=1):
     """
     Retorna (forecast_c, raw_sigma) sem correção de bias.
@@ -222,14 +262,12 @@ def get_forecast(city_slug, forecast_day=1):
     }
 
     try:
-        r = requests.get(url, params=params, timeout=20)
-
-        if r.status_code != 200:
-            logger.warning(f"[forecast] erro status={r.status_code}")
+        r = _request_forecast_with_retry(url, params, city_slug)
+        if r is None:
             return None, None
 
         data = r.json()
-        
+
         # Verificação de Stale Data (v5.7)
         if "current" in data and "time" in data["current"]:
             try:
