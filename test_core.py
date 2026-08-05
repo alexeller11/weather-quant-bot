@@ -1202,11 +1202,13 @@ class TestForecastRetry(unittest.TestCase):
 
     def test_backoff_e_exponencial_e_limitado(self):
         """
-        EXPERIMENTAL (2026-08-05): backoff subiu de 2s/4s para 10s/20s —
-        2s/4s nao foi suficiente em producao (todas as 19 cidades do ciclo
-        esgotaram as 3 tentativas mesmo assim). Deriva os valores
-        esperados das constantes de config em vez de hardcoded, para o
-        teste continuar valendo se o experimento for revertido.
+        2026-08-05: testado BASE=10/CAP=20 (10s, 20s) contra o rate limit
+        persistente da Open-Meteo — todas as 19 cidades do ciclo esgotaram
+        as 3 tentativas mesmo assim (o bloqueio dura mais que 30s
+        consecutivos). Revertido para 2s/4s: o valor maior so deixava o
+        ciclo bem mais lento sem nenhum ganho. Deriva os valores esperados
+        das constantes de config em vez de hardcoded, para continuar
+        valendo se o valor for ajustado de novo no futuro.
         """
         import forecast
         from config import FORECAST_RETRY_BACKOFF_BASE, FORECAST_RETRY_BACKOFF_CAP, FORECAST_RETRIES
@@ -1222,7 +1224,7 @@ class TestForecastRetry(unittest.TestCase):
             for attempt in range(FORECAST_RETRIES - 1)
         ]
         self.assertEqual(self._sleep_calls, expected)
-        self.assertEqual(expected, [10, 20])  # valores atuais do experimento
+        self.assertEqual(expected, [2, 4])  # valores atuais (revertido do experimento)
 
 
 class TestSemBoostPorCidade(unittest.TestCase):
