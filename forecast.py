@@ -25,7 +25,15 @@ import requests
 import time
 from datetime import datetime, timezone, timedelta
 
-from config import CITY_COORDS, CITY_TZ, CITY_SLUG_NORMALIZE, FORECAST_RETRIES, FORECAST_RETRY_STATUS
+from config import (
+    CITY_COORDS,
+    CITY_TZ,
+    CITY_SLUG_NORMALIZE,
+    FORECAST_RETRIES,
+    FORECAST_RETRY_STATUS,
+    FORECAST_RETRY_BACKOFF_BASE,
+    FORECAST_RETRY_BACKOFF_CAP,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -211,7 +219,7 @@ def _request_forecast_with_retry(url, params, city_slug):
                 return None
 
         if attempt < FORECAST_RETRIES - 1:
-            backoff = min(2 ** (attempt + 1), 8)
+            backoff = min(FORECAST_RETRY_BACKOFF_BASE * (2 ** attempt), FORECAST_RETRY_BACKOFF_CAP)
             logger.info(
                 f"[forecast] {city_slug}: retry {attempt+1}/{FORECAST_RETRIES} "
                 f"em {backoff}s (status={last_status})"

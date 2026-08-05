@@ -1201,7 +1201,15 @@ class TestForecastRetry(unittest.TestCase):
         self.assertEqual(calls["n"], 1)
 
     def test_backoff_e_exponencial_e_limitado(self):
+        """
+        EXPERIMENTAL (2026-08-05): backoff subiu de 2s/4s para 10s/20s —
+        2s/4s nao foi suficiente em producao (todas as 19 cidades do ciclo
+        esgotaram as 3 tentativas mesmo assim). Deriva os valores
+        esperados das constantes de config em vez de hardcoded, para o
+        teste continuar valendo se o experimento for revertido.
+        """
         import forecast
+        from config import FORECAST_RETRY_BACKOFF_BASE, FORECAST_RETRY_BACKOFF_CAP, FORECAST_RETRIES
         calls = {"n": 0}
         def fake_get(url, params=None, timeout=None):
             calls["n"] += 1
@@ -1209,9 +1217,12 @@ class TestForecastRetry(unittest.TestCase):
         forecast.requests.get = fake_get
 
         forecast.get_forecast("new-york", forecast_day=1)
-        # backoff = min(2**(attempt+1), 8): 2, 4 (para FORECAST_RETRIES=3,
-        # ha 2 esperas entre as 3 tentativas)
-        self.assertEqual(self._sleep_calls, [2, 4])
+        expected = [
+            min(FORECAST_RETRY_BACKOFF_BASE * (2 ** attempt), FORECAST_RETRY_BACKOFF_CAP)
+            for attempt in range(FORECAST_RETRIES - 1)
+        ]
+        self.assertEqual(self._sleep_calls, expected)
+        self.assertEqual(expected, [10, 20])  # valores atuais do experimento
 
 
 class TestSemBoostPorCidade(unittest.TestCase):

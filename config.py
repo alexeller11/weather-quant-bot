@@ -178,6 +178,17 @@ FORECAST_CACHE_TTL = int(os.getenv("FORECAST_CACHE_TTL", "3600"))
 FORECAST_RETRIES = int(os.getenv("FORECAST_RETRIES", "3"))
 FORECAST_RETRY_STATUS = {429, 500, 502, 503, 504}
 
+# EXPERIMENTAL (2026-08-05): backoff de 2s/4s (min(2**(n+1), 8)) nao foi
+# suficiente — nos logs de producao, as 19 cidades do ciclo esgotaram as
+# 3 tentativas com 429, mesmo apos os 6s de espera total. Aumentando para
+# 10s/20s para testar se o bloqueio e' mais longo que um soluco de poucos
+# segundos. Sem garantia de que resolve: pode ser que o bloqueio dure
+# minutos, nao segundos, caso em que isto so deixa o ciclo mais lento sem
+# ganho. Ajustavel por env var sem tocar no codigo — reverter para
+# BASE=2/CAP=8 se nao ajudar.
+FORECAST_RETRY_BACKOFF_BASE = int(os.getenv("FORECAST_RETRY_BACKOFF_BASE", "10"))
+FORECAST_RETRY_BACKOFF_CAP = int(os.getenv("FORECAST_RETRY_BACKOFF_CAP", "20"))
+
 # ── Parâmetros antes hardcoded em settlement.py ─────────────────
 MAX_OPEN_TRADE_DAYS = int(os.getenv("MAX_OPEN_TRADE_DAYS", "7"))
 SETTLE_TEMP_RETRIES = int(os.getenv("SETTLE_TEMP_RETRIES", "3"))
