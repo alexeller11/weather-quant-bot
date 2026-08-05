@@ -1227,6 +1227,127 @@ class TestForecastRetry(unittest.TestCase):
         self.assertEqual(expected, [2, 4])  # valores atuais (revertido do experimento)
 
 
+class TestForecastFallbackOpenWeatherMap(unittest.TestCase):
+    """
+    2026-08-05: retry e backoff nao resolveram o rate limit persistente
+    da Open-Meteo (todas as 19 cidades esgotavam as tentativas). O rate
+    limit do OpenWeatherMap e' por CHAVE, nao por IP compartilhado —
+    quando a Open-Meteo esgota as tentativas, cai para o OpenWeatherMap
+    em vez de desistir.
+    """
+
+    def setUp(self):
+        import forecast
+        forecast._FORECAST_CACHE.clear()
+        forecast._CACHE_TIME.clear()
+        self._sleep_calls = []
+        forecast.time.sleep = lambda s: self._sleep_calls.append(s)
+        self._orig_get = forecast.requests.get
+        self._orig_key = forecast.OPENWEATHERMAP_KEY
+
+    def tearDown(self):
+        import forecast
+        forecast.requests.get = self._orig_get
+        forecast.OPENWEATHERMAP_KEY = self._orig_key
+
+    class _FakeResponse:
+        def __init__(self, status_code, payload=None):
+            self.status_code = status_code
+            self._payload = payload or {}
+        def json(self):
+            return self._payload
+
+    def _owm_payload(self, date_str, temps_3h):
+        """Monta uma resposta forecast5 com blocos de 3h no dia dado."""
+        return {
+            "list": [
+                {"dt_txt": f"{date_str} {h:02d}:00:00", "main": {"temp_max": t}}
+                for h, t in zip(range(0, 24, 3), temps_3h)
+            ]
+        }
+
+    def test_sem_chave_fallback_nao_ativa(self):
+        """Sem OPENWEATHERMAP_KEY, comportamento identico a antes: None, None."""
+        import forecast
+        forecast.OPENWEATHERMAP_KEY = ""
+        def fake_get(url, params=None, timeout=None):
+            return self._FakeResponse(429)
+        forecast.requests.get = fake_get
+
+        forecast_c, sigma = forecast.get_forecast("new-york", forecast_day=1)
+        self.assertIsNone(forecast_c)
+
+    def test_com_chave_cai_no_fallback_quando_openmeteo_esgota(self):
+        import forecast
+        forecast.OPENWEATHERMAP_KEY = "fake-key-for-test"
+        target_date = forecast._target_date_for_forecast_day("new-york", 1).isoformat()
+
+        def fake_get(url, params=None, timeout=None):
+            if "open-meteo.com" in url:
+                return self._FakeResponse(429)
+            if "openweathermap.org" in url:
+                self.assertEqual(params.get("appid"), "fake-key-for-test")
+                return self._FakeResponse(200, self._owm_payload(target_date, [20, 22, 25, 24, 21, 19, 18, 17]))
+            raise AssertionError(f"URL inesperada: {url}")
+        forecast.requests.get = fake_get
+
+        forecast_c, sigma = forecast.get_forecast("new-york", forecast_day=1)
+        self.assertEqual(forecast_c, 25.0)  # max dos blocos de 3h
+        self.assertIsNotNone(sigma)
+
+    def test_fallback_ignora_blocos_de_outro_dia(self):
+        import forecast
+        from datetime import timedelta
+        forecast.OPENWEATHERMAP_KEY = "fake-key-for-test"
+        target_date = forecast._target_date_for_forecast_day("new-york", 1)
+        target_str = target_date.isoformat()
+        outro_dia = (target_date + timedelta(days=1)).isoformat()
+
+        payload = {
+            "list": [
+                {"dt_txt": f"{target_str} 12:00:00", "main": {"temp_max": 20.0}},
+                {"dt_txt": f"{outro_dia} 12:00:00", "main": {"temp_max": 99.0}},  # nao deve contar
+            ]
+        }
+
+        def fake_get(url, params=None, timeout=None):
+            if "open-meteo.com" in url:
+                return self._FakeResponse(429)
+            return self._FakeResponse(200, payload)
+        forecast.requests.get = fake_get
+
+        forecast_c, sigma = forecast.get_forecast("new-york", forecast_day=1)
+        self.assertEqual(forecast_c, 20.0)
+
+    def test_resultado_do_fallback_e_cacheado(self):
+        import forecast
+        forecast.OPENWEATHERMAP_KEY = "fake-key-for-test"
+        target_date = forecast._target_date_for_forecast_day("new-york", 1).isoformat()
+        calls = {"n": 0}
+
+        def fake_get(url, params=None, timeout=None):
+            calls["n"] += 1
+            if "open-meteo.com" in url:
+                return self._FakeResponse(429)
+            return self._FakeResponse(200, self._owm_payload(target_date, [20.0]))
+        forecast.requests.get = fake_get
+
+        forecast.get_forecast("new-york", forecast_day=1)
+        n_apos_primeira = calls["n"]
+        forecast.get_forecast("new-york", forecast_day=1)  # deve vir do cache
+        self.assertEqual(calls["n"], n_apos_primeira)
+
+    def test_openweathermap_tambem_falhando_retorna_none(self):
+        import forecast
+        forecast.OPENWEATHERMAP_KEY = "fake-key-for-test"
+        def fake_get(url, params=None, timeout=None):
+            return self._FakeResponse(500)
+        forecast.requests.get = fake_get
+
+        forecast_c, sigma = forecast.get_forecast("new-york", forecast_day=1)
+        self.assertIsNone(forecast_c)
+
+
 class TestSemBoostPorCidade(unittest.TestCase):
     """O boost hardcoded de Seoul/Tokyo/Madrid foi removido."""
 

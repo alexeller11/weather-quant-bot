@@ -33,6 +33,7 @@ from config import (
     FORECAST_RETRY_STATUS,
     FORECAST_RETRY_BACKOFF_BASE,
     FORECAST_RETRY_BACKOFF_CAP,
+    OPENWEATHERMAP_KEY,
 )
 
 logger = logging.getLogger(__name__)
@@ -230,6 +231,73 @@ def _request_forecast_with_retry(url, params, city_slug):
     return None
 
 
+def _target_date_for_forecast_day(city_slug, forecast_day):
+    """Data (dia LOCAL da cidade) correspondente a forecast_day: 1=hoje, 2=amanha..."""
+    local_today = datetime.strptime(city_today(city_slug), "%Y-%m-%d").date()
+    return local_today + timedelta(days=forecast_day - 1)
+
+
+def _get_forecast_openweathermap(city_slug, forecast_day):
+    """
+    Fallback quando a Open-Meteo esgota as tentativas (rate limit de IP
+    compartilhado no plano Free do Render — ver _request_forecast_with_retry).
+
+    Diferente da Open-Meteo, o limite do OpenWeatherMap e' por CHAVE, nao
+    por IP: o problema de IP compartilhado simplesmente nao se aplica.
+    Free tier: 60 chamadas/min, 1M/mes, sem cartao de credito.
+
+    Usa o endpoint forecast5 (blocos de 3h) e agrega o MAXIMO dos blocos
+    que caem no dia-alvo — equivalente ao daily.temperature_2m_max da
+    Open-Meteo. So ativa se OPENWEATHERMAP_KEY estiver configurada.
+    """
+    if not OPENWEATHERMAP_KEY:
+        return None, None
+    if city_slug not in CITY_COORDS:
+        return None, None
+
+    lat, lon = CITY_COORDS[city_slug]
+    target_date = _target_date_for_forecast_day(city_slug, forecast_day)
+    target_str = target_date.isoformat()
+
+    try:
+        r = requests.get(
+            "https://api.openweathermap.org/data/2.5/forecast",
+            params={"lat": lat, "lon": lon, "appid": OPENWEATHERMAP_KEY, "units": "metric"},
+            timeout=20,
+        )
+        if r.status_code != 200:
+            logger.warning(f"[forecast] {city_slug}: fallback OpenWeatherMap erro status={r.status_code}")
+            return None, None
+
+        data = r.json()
+        temps = [
+            float(item["main"]["temp_max"])
+            for item in data.get("list", [])
+            if str(item.get("dt_txt", "")).startswith(target_str)
+            and item.get("main", {}).get("temp_max") is not None
+        ]
+        if not temps:
+            logger.warning(
+                f"[forecast] {city_slug}: fallback OpenWeatherMap sem blocos para {target_str} "
+                f"(fora da janela de 5 dias do endpoint gratuito?)"
+            )
+            return None, None
+
+        forecast_c = max(temps)
+        base_sigma_by_day = {1: 4.0, 2: 4.5, 3: 5.0, 4: 5.5, 5: 6.0}
+        sigma = round(base_sigma_by_day.get(forecast_day, 6.0), 2)
+
+        logger.info(
+            f"[forecast] {city_slug} d{forecast_day}: fallback OpenWeatherMap "
+            f"= {forecast_c:.1f}°C (de {len(temps)} blocos de 3h)"
+        )
+        return forecast_c, sigma
+
+    except Exception as e:
+        logger.warning(f"[forecast] {city_slug}: fallback OpenWeatherMap erro: {e}")
+        return None, None
+
+
 def get_forecast(city_slug, forecast_day=1):
     """
     Retorna (forecast_c, raw_sigma) sem correção de bias.
@@ -272,7 +340,11 @@ def get_forecast(city_slug, forecast_day=1):
     try:
         r = _request_forecast_with_retry(url, params, city_slug)
         if r is None:
-            return None, None
+            fallback = _get_forecast_openweathermap(city_slug, forecast_day)
+            if fallback[0] is not None:
+                _FORECAST_CACHE[cache_key] = fallback
+                _CACHE_TIME[cache_key] = now
+            return fallback
 
         data = r.json()
 

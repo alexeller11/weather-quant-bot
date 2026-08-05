@@ -449,4 +449,12 @@ GITHUB_BRANCH = os.getenv("GITHUB_BRANCH", "main")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 WEATHERAPI_KEY = os.getenv("WEATHERAPI_KEY", "")
+
+# Fallback de forecast quando a Open-Meteo esgota as tentativas (rate
+# limit persistente de IP compartilhado, ver forecast.py). Diferente da
+# Open-Meteo, o limite do OpenWeatherMap e' por CHAVE, nao por IP — o
+# problema de IP compartilhado do Render simplesmente nao se aplica.
+# Free tier: 60 chamadas/min, 1M/mes, sem cartao de credito.
+OPENWEATHERMAP_KEY = os.getenv("OPENWEATHERMAP_KEY", "")
+
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
