@@ -296,6 +296,16 @@ def _check_no_guardrails(
     if no_edge < MIN_EDGE_NO:
         return False, "edge_insuficiente"
 
+    # Teto de edge — o lado YES ja tinha isso (MAX_EDGE_RANGE2 /
+    # _max_edge_for_prob), o NO nao. Edge grande demais e' sinal de erro
+    # de modelo/dado, nao de oportunidade, nos dois lados. Sem este teto,
+    # o trade de Chicago de 2026-08-01 passou com +42% de edge sem
+    # nenhuma checagem (fisicamente coerente naquele caso, mas a proteção
+    # não pode depender de sorte).
+    max_no_edge = MAX_EDGE_RANGE2 if condition in ("EXACT", "RANGE2") else _max_edge_for_prob(1.0 - model_prob)
+    if no_edge > max_no_edge:
+        return False, "edge_alto_demais"
+
     price_no = 1.0 - price_yes
     if price_no < MIN_PRICE:
         return False, "price_no_baixo"

@@ -613,8 +613,10 @@ class TestBucketGuardrails(unittest.TestCase):
     def test_no_bloqueado_quando_forecast_dentro_do_bucket(self):
         from risk import check_guardrails
         market = dict(self.LA_MARKET, price=0.60)
+        # model_prob=0.35: edge=0.25 fica no teto (nao dispara
+        # edge_alto_demais), isolando o que este teste verifica de fato —
         # forecast 25.8C está dentro de 78-79F (25.56-26.11C)
-        ok, reason = check_guardrails(market, 0.20, 25.8, sigma=4.0, side="NO")
+        ok, reason = check_guardrails(market, 0.35, 25.8, sigma=4.0, side="NO")
         self.assertFalse(ok)
         self.assertEqual(reason, "forecast_dentro_do_bucket")
 
@@ -631,6 +633,48 @@ class TestBucketGuardrails(unittest.TestCase):
         market = dict(self.LA_MARKET, price=0.05)
         # prob 0.60 dentro do bucket, mas edge 0.55 > MAX_EDGE_RANGE2
         ok, reason = check_guardrails(market, 0.60, 25.8, sigma=4.0, side="YES")
+        self.assertFalse(ok)
+        self.assertEqual(reason, "edge_alto_demais")
+
+
+class TestNoEdgeCap(unittest.TestCase):
+    """
+    O lado YES já tinha teto de edge (MAX_EDGE_RANGE2 / _max_edge_for_prob);
+    o NO não tinha nenhum. Reproduz o trade real de Chicago de 2026-08-01
+    (RANGE2 NO, edge +42%, passou sem nenhuma checagem de teto — coerente
+    fisicamente naquele caso, mas a proteção não pode depender de sorte).
+    """
+
+    def test_reproduz_chicago_2026_08_01_edge_alto_bloqueia(self):
+        from risk import check_guardrails
+        market = {
+            "condition": "RANGE2", "target_temp": 80.5, "price": 0.55,
+            "day_offset": 2, "unit": "F", "target_lo": 80.0, "target_hi": 81.0,
+        }
+        # model_prob=0.0252, price_yes=0.55 -> no_edge=0.5248 (o caso real)
+        ok, reason = check_guardrails(market, 0.0252, 21.96, sigma=4.5, side="NO")
+        self.assertFalse(ok)
+        self.assertEqual(reason, "edge_alto_demais")
+
+    def test_edge_dentro_do_teto_nao_bloqueia_por_este_motivo(self):
+        from risk import check_guardrails
+        market = {
+            "condition": "RANGE2", "target_temp": 80.5, "price": 0.55,
+            "day_offset": 2, "unit": "F", "target_lo": 80.0, "target_hi": 81.0,
+        }
+        # model_prob=0.32: no_edge=0.23, dentro do teto de 0.25
+        ok, reason = check_guardrails(market, 0.32, 21.96, sigma=4.5, side="NO")
+        self.assertNotEqual(reason, "edge_alto_demais")
+
+    def test_teto_vale_tambem_para_above_below(self):
+        from risk import check_guardrails, _max_edge_for_prob
+        # prob do lado NO (1-model_prob) >= 0.90 -> teto vira 0.25
+        market = {
+            "condition": "ABOVE", "target_temp": 20.0, "price": 0.95,
+            "day_offset": 1, "unit": "C",
+        }
+        # model_prob=0.02 -> prob do NO = 0.98 -> teto 0.25; no_edge = 0.95-0.02=0.93
+        ok, reason = check_guardrails(market, 0.02, 10.0, sigma=4.0, side="NO")
         self.assertFalse(ok)
         self.assertEqual(reason, "edge_alto_demais")
 
