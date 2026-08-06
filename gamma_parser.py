@@ -39,6 +39,7 @@ from config import (
     MIN_MARKET_LIQUIDITY,
     MIN_MARKET_VOLUME,
     MAX_IMPLIED_SPREAD,
+    MAX_FORECAST_DAY,
 )
 from forecast import city_today
 
@@ -269,10 +270,17 @@ def _event_key(event):
 
 def fetch_markets(city):
     """
-    Busca D+0 e D+1 — no calendário LOCAL da cidade.
+    Busca D+0 até D+(MAX_FORECAST_DAY-1) — no calendário LOCAL da cidade.
 
     Retorna lista de mercados válidos com condition, target, unit,
     yes_price. Para buckets range2, inclui target_lo e target_hi.
+
+    CORREÇÃO 2026-08-06: buscava só D+0/D+1 (hardcoded), enquanto o resto
+    do sistema (sigma calibrado por dia, guardrails, MAX_FORECAST_DAY em
+    config) já suporta avaliar até D+3. Isso descartava ~1/3 dos mercados
+    potenciais por um limite desatualizado, sem nenhum ganho de qualidade
+    — reduzindo o volume de candidatos disponível pra validação sem
+    afrouxar nenhum guardrail.
     """
     city_slug = normalize_city_slug(city)
     all_markets = []
@@ -280,7 +288,7 @@ def fetch_markets(city):
 
     local_today = datetime.strptime(city_today(city_slug), "%Y-%m-%d").date()
 
-    for i in range(0, 2):  # D+0 e D+1 locais
+    for i in range(0, MAX_FORECAST_DAY):  # D+0 até D+(MAX_FORECAST_DAY-1) locais
         d = local_today + timedelta(days=i)
 
         events = []

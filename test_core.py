@@ -1600,5 +1600,63 @@ class TestDecisionLog(unittest.TestCase):
         self.assertEqual(summary["avg_fill_ratio"], 1.0)
 
 
+class TestFetchMarketsHorizonte(unittest.TestCase):
+    """
+    2026-08-06: fetch_markets buscava só D+0/D+1 (hardcoded), enquanto
+    sigma calibrado, guardrails e MAX_FORECAST_DAY (config) já suportam
+    D+3 — descartando ~1/3 dos mercados potenciais sem nenhum ganho de
+    qualidade. Confirma que o horizonte de busca agora acompanha
+    MAX_FORECAST_DAY em vez de um valor hardcoded.
+    """
+
+    def setUp(self):
+        import gamma_parser
+        self._orig_sleep = gamma_parser.time.sleep
+        gamma_parser.time.sleep = lambda s: None  # sem esperar de verdade
+
+    def tearDown(self):
+        import gamma_parser
+        gamma_parser.time.sleep = self._orig_sleep
+
+    def test_busca_MAX_FORECAST_DAY_dias_distintos(self):
+        import gamma_parser
+        from config import MAX_FORECAST_DAY
+
+        datas_vistas = set()
+        orig_slug_variants = gamma_parser._slug_variants
+
+        def fake_slug_variants(city_slug, d):
+            datas_vistas.add(d)
+            return orig_slug_variants(city_slug, d)
+
+        gamma_parser._slug_variants = fake_slug_variants
+        gamma_parser.safe_request = lambda url, **kw: None  # sem rede
+        try:
+            gamma_parser.fetch_markets("new-york")
+        finally:
+            gamma_parser._slug_variants = orig_slug_variants
+
+        self.assertEqual(len(datas_vistas), MAX_FORECAST_DAY)
+
+    def test_horizonte_nao_esta_mais_hardcoded_em_dois(self):
+        """Se MAX_FORECAST_DAY mudar, fetch_markets acompanha — sem isto
+        o horizonte real ficava preso em D+0/D+1 para sempre."""
+        import gamma_parser
+        datas_vistas = set()
+        gamma_parser.safe_request = lambda url, **kw: None
+
+        original = gamma_parser.MAX_FORECAST_DAY
+        gamma_parser.MAX_FORECAST_DAY = 4
+        orig_slug_variants = gamma_parser._slug_variants
+        gamma_parser._slug_variants = lambda city_slug, d: (datas_vistas.add(d), orig_slug_variants(city_slug, d))[1]
+        try:
+            gamma_parser.fetch_markets("new-york")
+        finally:
+            gamma_parser.MAX_FORECAST_DAY = original
+            gamma_parser._slug_variants = orig_slug_variants
+
+        self.assertEqual(len(datas_vistas), 4)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
