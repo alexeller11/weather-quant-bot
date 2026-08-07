@@ -1,6 +1,6 @@
 {
-    "seq": 164,
-    "balance": 646.2844,
+    "seq": 165,
+    "balance": 654.1244,
     "history": [
         {
             "pnl": -3.92,
@@ -4271,19 +4271,19 @@
         },
         {
             "ev": 0.8538,
-            "fee": 0.0,
-            "pnl": 0,
+            "fee": 0.16,
+            "pnl": 3.88,
             "city": "Seoul",
             "edge": 0.4414,
             "side": "NO",
             "type": "EXACT",
             "unit": "C",
             "stake": 3.96,
-            "result": "OPEN",
+            "result": "WIN",
             "shares": 8,
             "target": 35.0,
             "question": "Will the highest temperature in Seoul (Incheon) be 35°C on August 7?",
-            "exit_time": null,
+            "exit_time": "2026-08-07T15:26:16.518147+00:00",
             "market_id": "seoul|2026-08-07|EXACT|35|C_NO",
             "target_hi": null,
             "target_lo": null,
@@ -4295,14 +4295,15 @@
             "entry_price": 0.495,
             "market_date": "2026-08-07",
             "no_token_id": "27669750275198779380489276390180675668889333430543537726249958187589556198516",
-            "real_temp_c": null,
+            "real_temp_c": 38.4,
             "sigma_total": 4.5,
             "forecast_day": 2,
             "market_price": 0.505,
             "yes_token_id": "76505798068916218600204029335377044333113810588564780821605042366768900477926",
             "forecast_c_raw": 38.66,
             "gamma_event_id": "799595",
-            "gamma_market_id": "3352340"
+            "gamma_market_id": "3352340",
+            "market_yes": false
         },
         {
             "ev": 0.7425,
@@ -4326,6 +4327,7 @@
             "event_slug": "highest-temperature-in-atlanta-on-august-6-2026",
             "forecast_c": 28.14,
             "market_key": "atlanta|2026-08-06|RANGE2|88-89|F",
+            "market_yes": false,
             "model_prob": 0.0398,
             "entry_price": 0.54,
             "market_date": "2026-08-06",
@@ -4337,8 +4339,7 @@
             "yes_token_id": "63762315227200734920057644806337444198187686532077979671290131737055334108844",
             "forecast_c_raw": 28.14,
             "gamma_event_id": "798963",
-            "gamma_market_id": "3350825",
-            "market_yes": false
+            "gamma_market_id": "3350825"
         },
         {
             "ev": 0.5065,
@@ -4376,7 +4377,7 @@
             "gamma_market_id": "3373041"
         }
     ],
-    "saved_at": "2026-08-07T05:10:23.702042+00:00",
+    "saved_at": "2026-08-07T15:26:16.518204+00:00",
     "created_at": "2026-06-01T00:00:00+00:00",
     "override_note": "Correcao 08/06/2026 — restaura Madrid Jun-8 perdido por override reaplicado",
     "start_balance": 200.0,
