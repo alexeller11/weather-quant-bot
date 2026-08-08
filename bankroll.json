@@ -1,5 +1,5 @@
 {
-    "seq": 165,
+    "seq": 166,
     "balance": 654.1244,
     "history": [
         {
@@ -4291,6 +4291,7 @@
             "event_slug": "highest-temperature-in-seoul-on-august-7-2026",
             "forecast_c": 38.66,
             "market_key": "seoul|2026-08-07|EXACT|35|C",
+            "market_yes": false,
             "model_prob": 0.0636,
             "entry_price": 0.495,
             "market_date": "2026-08-07",
@@ -4302,8 +4303,7 @@
             "yes_token_id": "76505798068916218600204029335377044333113810588564780821605042366768900477926",
             "forecast_c_raw": 38.66,
             "gamma_event_id": "799595",
-            "gamma_market_id": "3352340",
-            "market_yes": false
+            "gamma_market_id": "3352340"
         },
         {
             "ev": 0.7425,
@@ -4344,18 +4344,18 @@
         {
             "ev": 0.5065,
             "fee": 0.0,
-            "pnl": 0,
+            "pnl": -4.0,
             "city": "Chicago",
             "edge": 0.0215,
             "side": "YES",
             "type": "RANGE2",
             "unit": "F",
             "stake": 4.0,
-            "result": "OPEN",
+            "result": "LOSS",
             "shares": 100,
             "target": 88.5,
             "question": "Will the highest temperature in Chicago be between 88-89°F on August 7?",
-            "exit_time": null,
+            "exit_time": "2026-08-08T05:35:12.886531+00:00",
             "market_id": "chicago|2026-08-07|RANGE2|88-89|F_YES",
             "target_hi": 89.0,
             "target_lo": 88.0,
@@ -4367,17 +4367,18 @@
             "entry_price": 0.04,
             "market_date": "2026-08-07",
             "no_token_id": "78907230568193089567089089991231318469814468728526529369233912806178802979849",
-            "real_temp_c": null,
+            "real_temp_c": 28.3,
             "sigma_total": 4.0,
             "forecast_day": 1,
             "market_price": 0.04,
             "yes_token_id": "29715025249815711147046722732994441965768470176151097732971414928636070725489",
             "forecast_c_raw": 29.9,
             "gamma_event_id": "803860",
-            "gamma_market_id": "3373041"
+            "gamma_market_id": "3373041",
+            "market_yes": false
         }
     ],
-    "saved_at": "2026-08-07T15:26:16.518204+00:00",
+    "saved_at": "2026-08-08T05:35:12.886549+00:00",
     "created_at": "2026-06-01T00:00:00+00:00",
     "override_note": "Correcao 08/06/2026 — restaura Madrid Jun-8 perdido por override reaplicado",
     "start_balance": 200.0,
