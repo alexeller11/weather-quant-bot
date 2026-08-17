@@ -37,6 +37,7 @@ from config import (
 )
 
 logger = logging.getLogger(__name__)
+MET_NO_USER_AGENT = "weather-quant-bot/1.0 github.com/alexeller11/weather-quant-bot"
 
 try:
     from zoneinfo import ZoneInfo
@@ -237,6 +238,11 @@ def _target_date_for_forecast_day(city_slug, forecast_day):
     return local_today + timedelta(days=forecast_day - 1)
 
 
+def _base_sigma_for_day(forecast_day):
+    base_sigma_by_day = {1: 4.0, 2: 4.5, 3: 5.0, 4: 5.5, 5: 6.0}
+    return round(base_sigma_by_day.get(forecast_day, 6.0), 2)
+
+
 def _get_forecast_openweathermap(city_slug, forecast_day):
     """
     Fallback quando a Open-Meteo esgota as tentativas (rate limit de IP
@@ -284,8 +290,7 @@ def _get_forecast_openweathermap(city_slug, forecast_day):
             return None, None
 
         forecast_c = max(temps)
-        base_sigma_by_day = {1: 4.0, 2: 4.5, 3: 5.0, 4: 5.5, 5: 6.0}
-        sigma = round(base_sigma_by_day.get(forecast_day, 6.0), 2)
+        sigma = _base_sigma_for_day(forecast_day)
 
         logger.info(
             f"[forecast] {city_slug} d{forecast_day}: fallback OpenWeatherMap "
@@ -295,6 +300,70 @@ def _get_forecast_openweathermap(city_slug, forecast_day):
 
     except Exception as e:
         logger.warning(f"[forecast] {city_slug}: fallback OpenWeatherMap erro: {e}")
+        return None, None
+
+
+def _get_forecast_met_no(city_slug, forecast_day):
+    """
+    Fallback sem chave via MET Norway Locationforecast.
+
+    A API entrega previsao global por coordenada para ate 9 dias. Ela exige
+    User-Agent identificavel; sem isso pode responder 403. O payload compact
+    traz temperaturas instantaneas, entao usamos o maximo dos pontos que caem
+    no dia local do mercado como aproximacao de maxima diaria.
+    """
+    if city_slug not in CITY_COORDS:
+        return None, None
+
+    lat, lon = CITY_COORDS[city_slug]
+    target_date = _target_date_for_forecast_day(city_slug, forecast_day)
+    tz_name = CITY_TZ.get(city_slug)
+
+    try:
+        r = requests.get(
+            "https://api.met.no/weatherapi/locationforecast/2.0/compact",
+            params={"lat": round(float(lat), 4), "lon": round(float(lon), 4)},
+            headers={"User-Agent": MET_NO_USER_AGENT},
+            timeout=20,
+        )
+        if r.status_code != 200:
+            logger.warning(f"[forecast] {city_slug}: fallback MET Norway erro status={r.status_code}")
+            return None, None
+
+        data = r.json()
+        temps = []
+        for item in data.get("properties", {}).get("timeseries", []):
+            try:
+                ts = datetime.fromisoformat(str(item.get("time", "")).replace("Z", "+00:00"))
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                if tz_name and ZoneInfo is not None:
+                    local_date = ts.astimezone(ZoneInfo(tz_name)).date()
+                else:
+                    local_date = ts.astimezone(timezone.utc).date()
+                if local_date != target_date:
+                    continue
+                details = item.get("data", {}).get("instant", {}).get("details", {})
+                temp = details.get("air_temperature")
+                if temp is not None:
+                    temps.append(float(temp))
+            except Exception:
+                continue
+
+        if not temps:
+            logger.warning(f"[forecast] {city_slug}: fallback MET Norway sem pontos para {target_date}")
+            return None, None
+
+        forecast_c = max(temps)
+        sigma = _base_sigma_for_day(forecast_day)
+        logger.info(
+            f"[forecast] {city_slug} d{forecast_day}: fallback MET Norway "
+            f"= {forecast_c:.1f}°C (de {len(temps)} pontos)"
+        )
+        return forecast_c, sigma
+
+    except Exception as e:
+        logger.warning(f"[forecast] {city_slug}: fallback MET Norway erro: {e}")
         return None, None
 
 
@@ -341,6 +410,8 @@ def get_forecast(city_slug, forecast_day=1):
         r = _request_forecast_with_retry(url, params, city_slug)
         if r is None:
             fallback = _get_forecast_openweathermap(city_slug, forecast_day)
+            if fallback[0] is None:
+                fallback = _get_forecast_met_no(city_slug, forecast_day)
             if fallback[0] is not None:
                 _FORECAST_CACHE[cache_key] = fallback
                 _CACHE_TIME[cache_key] = now
@@ -384,9 +455,7 @@ def get_forecast(city_slug, forecast_day=1):
         # Ajustes por cidade sao feitos pelo SigmaCalibrator em model.py.
         # REMOVIDO: blocos hardcoded (+0.40 Houston/Miami, +0.30 Denver/London,
         # +0.50 Chicago) que causavam double-stack com o calibrador online.
-        base_sigma_by_day = {1: 4.0, 2: 4.5, 3: 5.0, 4: 5.5, 5: 6.0}
-        sigma = base_sigma_by_day.get(forecast_day, 6.0)
-        sigma = round(sigma, 2)
+        sigma = _base_sigma_for_day(forecast_day)
 
         logger.debug(
             f"[forecast] {city_slug} "

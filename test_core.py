@@ -1205,7 +1205,7 @@ class TestForecastRetry(unittest.TestCase):
             "current": {"time": "2026-08-05T12:00"},
             "daily": {"temperature_2m_max": [25.0, 26.0, 27.0]},
         }
-        def fake_get(url, params=None, timeout=None):
+        def fake_get(url, params=None, timeout=None, headers=None):
             calls["n"] += 1
             if calls["n"] == 1:
                 return self._FakeResponse(429)
@@ -1221,8 +1221,9 @@ class TestForecastRetry(unittest.TestCase):
         import forecast
         from config import FORECAST_RETRIES
         calls = {"n": 0}
-        def fake_get(url, params=None, timeout=None):
-            calls["n"] += 1
+        def fake_get(url, params=None, timeout=None, headers=None):
+            if "open-meteo.com" in url:
+                calls["n"] += 1
             return self._FakeResponse(503)
         forecast.requests.get = fake_get
 
@@ -1235,8 +1236,9 @@ class TestForecastRetry(unittest.TestCase):
         retry so faz sentido para falha transitoria."""
         import forecast
         calls = {"n": 0}
-        def fake_get(url, params=None, timeout=None):
-            calls["n"] += 1
+        def fake_get(url, params=None, timeout=None, headers=None):
+            if "open-meteo.com" in url:
+                calls["n"] += 1
             return self._FakeResponse(404)
         forecast.requests.get = fake_get
 
@@ -1257,8 +1259,9 @@ class TestForecastRetry(unittest.TestCase):
         import forecast
         from config import FORECAST_RETRY_BACKOFF_BASE, FORECAST_RETRY_BACKOFF_CAP, FORECAST_RETRIES
         calls = {"n": 0}
-        def fake_get(url, params=None, timeout=None):
-            calls["n"] += 1
+        def fake_get(url, params=None, timeout=None, headers=None):
+            if "open-meteo.com" in url:
+                calls["n"] += 1
             return self._FakeResponse(429)
         forecast.requests.get = fake_get
 
@@ -1310,11 +1313,10 @@ class TestForecastFallbackOpenWeatherMap(unittest.TestCase):
             ]
         }
 
-    def test_sem_chave_fallback_nao_ativa(self):
-        """Sem OPENWEATHERMAP_KEY, comportamento identico a antes: None, None."""
+    def test_sem_chave_openweather_e_met_falhando_retorna_none(self):
         import forecast
         forecast.OPENWEATHERMAP_KEY = ""
-        def fake_get(url, params=None, timeout=None):
+        def fake_get(url, params=None, timeout=None, headers=None):
             return self._FakeResponse(429)
         forecast.requests.get = fake_get
 
@@ -1384,12 +1386,75 @@ class TestForecastFallbackOpenWeatherMap(unittest.TestCase):
     def test_openweathermap_tambem_falhando_retorna_none(self):
         import forecast
         forecast.OPENWEATHERMAP_KEY = "fake-key-for-test"
-        def fake_get(url, params=None, timeout=None):
+        def fake_get(url, params=None, timeout=None, headers=None):
             return self._FakeResponse(500)
         forecast.requests.get = fake_get
 
         forecast_c, sigma = forecast.get_forecast("new-york", forecast_day=1)
         self.assertIsNone(forecast_c)
+
+    def test_met_no_fallback_sem_chave_quando_openmeteo_esgota(self):
+        """MET Norway mantém previsao viva mesmo sem chave OpenWeatherMap."""
+        import forecast
+        forecast.OPENWEATHERMAP_KEY = ""
+        target_date = forecast._target_date_for_forecast_day("london", 1).isoformat()
+
+        def fake_get(url, params=None, timeout=None, headers=None):
+            if "open-meteo.com" in url:
+                return self._FakeResponse(429)
+            if "api.met.no" in url:
+                self.assertIn("weather-quant-bot", headers.get("User-Agent", ""))
+                self.assertEqual(params.get("lat"), round(float(forecast.CITY_COORDS["london"][0]), 4))
+                return self._FakeResponse(200, {
+                    "properties": {
+                        "timeseries": [
+                            {
+                                "time": f"{target_date}T12:00:00Z",
+                                "data": {"instant": {"details": {"air_temperature": 18.0}}},
+                            },
+                            {
+                                "time": f"{target_date}T15:00:00Z",
+                                "data": {"instant": {"details": {"air_temperature": 24.0}}},
+                            },
+                        ]
+                    }
+                })
+            raise AssertionError(f"URL inesperada: {url}")
+        forecast.requests.get = fake_get
+
+        forecast_c, sigma = forecast.get_forecast("london", forecast_day=1)
+        self.assertEqual(forecast_c, 24.0)
+        self.assertIsNotNone(sigma)
+
+    def test_met_no_ignora_pontos_de_outro_dia_local(self):
+        import forecast
+        from datetime import timedelta
+        forecast.OPENWEATHERMAP_KEY = ""
+        target_date = forecast._target_date_for_forecast_day("london", 1)
+
+        def fake_get(url, params=None, timeout=None, headers=None):
+            if "open-meteo.com" in url:
+                return self._FakeResponse(429)
+            if "api.met.no" in url:
+                return self._FakeResponse(200, {
+                    "properties": {
+                        "timeseries": [
+                            {
+                                "time": f"{target_date.isoformat()}T12:00:00Z",
+                                "data": {"instant": {"details": {"air_temperature": 21.0}}},
+                            },
+                            {
+                                "time": f"{(target_date + timedelta(days=1)).isoformat()}T12:00:00Z",
+                                "data": {"instant": {"details": {"air_temperature": 99.0}}},
+                            },
+                        ]
+                    }
+                })
+            raise AssertionError(f"URL inesperada: {url}")
+        forecast.requests.get = fake_get
+
+        forecast_c, sigma = forecast.get_forecast("london", forecast_day=1)
+        self.assertEqual(forecast_c, 21.0)
 
 
 class TestSemBoostPorCidade(unittest.TestCase):
@@ -1470,6 +1535,32 @@ class TestConfigParametersFromRisk(unittest.TestCase):
         from risk import MAX_PROB_FOR_NO
         from config import MAX_PROB_FOR_NO as CFG
         self.assertEqual(MAX_PROB_FOR_NO, CFG)
+
+
+class TestDatabaseUrlNormalization(unittest.TestCase):
+    """Evita fallback GitHub por DATABASE_URL copiada com aspas/espaços."""
+
+    def setUp(self):
+        self._orig = os.environ.get("DATABASE_URL")
+
+    def tearDown(self):
+        if self._orig is None:
+            os.environ.pop("DATABASE_URL", None)
+        else:
+            os.environ["DATABASE_URL"] = self._orig
+
+    def test_remove_aspas_e_espacos(self):
+        from bankroll import _normalized_database_url
+        os.environ["DATABASE_URL"] = ' "postgresql://user:pass@example.com/db" '
+        self.assertEqual(
+            _normalized_database_url(),
+            "postgresql://user:pass@example.com/db",
+        )
+
+    def test_rejeita_valor_sem_prefixo_postgres(self):
+        from bankroll import _normalized_database_url
+        os.environ["DATABASE_URL"] = "not-a-postgres-url"
+        self.assertEqual(_normalized_database_url(), "")
 
 
 class TestRuntimeCities(unittest.TestCase):
