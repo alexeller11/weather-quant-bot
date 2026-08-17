@@ -519,7 +519,35 @@ def _write_local(data) -> None:
     os.replace(tmp, BANKROLL_FILE)
 
 
+def _load_from_github_backup() -> Optional[Dict[str, Any]]:
+    try:
+        from github_sync import load_bankroll_backup
+        data = load_bankroll_backup()
+        if data:
+            return _coerce_bankroll_shape(data)
+    except Exception as e:
+        logger.warning(f"  [github] load falhou: {e}")
+    return None
+
+
 def _load_freshest_unlocked() -> Dict[str, Any]:
+    local_data = _read_local()
+
+    if github_persistence_primary():
+        remote_data = _load_from_github_backup()
+        if remote_data is not None:
+            if local_data is not None and int(local_data.get("seq", 0)) > int(remote_data.get("seq", 0)):
+                logger.info(
+                    f"[sync] local seq={local_data.get('seq')} > "
+                    f"github seq={remote_data.get('seq')} — usando local (anti-rollback)"
+                )
+                return local_data
+            logger.info(f"[sync] usando GitHub backup seq={remote_data.get('seq')}")
+            return remote_data
+        if local_data is not None:
+            logger.warning("[sync] GitHub backup indisponivel; usando cache local")
+            return local_data
+
     db_data = None
     conn = _get_db()
     if conn:
@@ -534,8 +562,6 @@ def _load_freshest_unlocked() -> Dict[str, Any]:
                 conn.close()
             except Exception:
                 pass
-
-    local_data = _read_local()
 
     if db_data is not None and local_data is not None:
         if int(local_data.get("seq", 0)) > int(db_data.get("seq", 0)):
@@ -616,8 +642,7 @@ def _persist_unlocked(data) -> None:
     github_success = False
     try:
         from github_sync import commit_bankroll
-        commit_bankroll(data)
-        github_success = True
+        github_success = bool(commit_bankroll(data))
     except Exception as e:
         logger.info(f"  [github] indisponível: {e}")
 

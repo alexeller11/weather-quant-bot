@@ -94,6 +94,28 @@ def _get_sha_atual(token, repo, branch):
     return None
 
 
+def load_bankroll_backup():
+    """Load bankroll.json from the configured GitHub backup branch."""
+    cfg = _get_config()
+    if not cfg["token"] or not cfg["repo"]:
+        return None
+    remote = _get_remote_file(cfg["token"], cfg["repo"], cfg["branch"], BANKROLL_FILE)
+    if not remote:
+        return None
+    try:
+        return json.loads(remote[1])
+    except Exception as exc:
+        logger.warning(f"[github] bankroll remoto ilegivel: {exc}")
+        return None
+
+
+def _seq(data):
+    try:
+        return int((data or {}).get("seq", 0))
+    except Exception:
+        return 0
+
+
 def commit_bankroll(bankroll_data):
     """
     Commit bankroll.json to GitHub.
@@ -128,6 +150,16 @@ def commit_bankroll(bankroll_data):
             remote = _get_remote_file(token, repo, branch, BANKROLL_FILE)
             if remote:
                 sha, remote_content = remote
+                try:
+                    remote_data = json.loads(remote_content)
+                    if _seq(remote_data) > _seq(bankroll_data):
+                        logger.error(
+                            "[github] anti-rollback: remoto seq=%s > local seq=%s; commit recusado",
+                            _seq(remote_data), _seq(bankroll_data),
+                        )
+                        return False
+                except Exception:
+                    pass
                 if remote_content == conteudo:
                     logger.info("[github] bankroll sem alteracoes")
                     return True

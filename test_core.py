@@ -789,6 +789,37 @@ class TestBranchDeDeployProtegida(unittest.TestCase):
         self.assertEqual(_safe_branch(None), "data-backup")
 
 
+class TestGitHubBankrollAntiRollback(unittest.TestCase):
+    def test_commit_bankroll_recusa_seq_menor_que_remoto(self):
+        import github_sync
+
+        old_get_config = github_sync._get_config
+        old_get_remote = github_sync._get_remote_file
+        old_put = github_sync.requests.put
+        try:
+            github_sync._get_config = lambda: {
+                "token": "tok",
+                "repo": "owner/repo",
+                "branch": "data-backup",
+            }
+            github_sync._get_remote_file = lambda token, repo, branch, path: (
+                "sha-remote",
+                '{"seq": 155, "balance": 630.53, "history": []}',
+            )
+            calls = {"put": 0}
+            def fake_put(*args, **kwargs):
+                calls["put"] += 1
+                raise AssertionError("nao deveria tentar sobrescrever seq remoto maior")
+            github_sync.requests.put = fake_put
+
+            self.assertFalse(github_sync.commit_bankroll({"seq": 154, "balance": 634.13, "history": []}))
+            self.assertEqual(calls["put"], 0)
+        finally:
+            github_sync._get_config = old_get_config
+            github_sync._get_remote_file = old_get_remote
+            github_sync.requests.put = old_put
+
+
 class TestFiltrosDeMercado(unittest.TestCase):
     """MIN_MARKET_LIQUIDITY/VOLUME e MAX_IMPLIED_SPREAD nunca eram lidos."""
 
@@ -1626,6 +1657,40 @@ class TestDatabaseUrlNormalization(unittest.TestCase):
         os.environ.pop("PERSISTENCE_MODE", None)
         self.assertEqual(persistence_mode(), "github")
         self.assertTrue(github_persistence_primary())
+
+    def test_modo_github_prefere_backup_remoto_mais_novo(self):
+        import bankroll
+
+        old_loader = bankroll._load_from_github_backup
+        old_reader = bankroll._read_local
+        try:
+            os.environ["PERSISTENCE_MODE"] = "github"
+            bankroll._load_from_github_backup = lambda: {"seq": 155, "balance": 630.53, "history": []}
+            bankroll._read_local = lambda: {"seq": 154, "balance": 634.13, "history": []}
+
+            data = bankroll._load_freshest_unlocked()
+            self.assertEqual(data["seq"], 155)
+            self.assertEqual(data["balance"], 630.53)
+        finally:
+            bankroll._load_from_github_backup = old_loader
+            bankroll._read_local = old_reader
+
+    def test_modo_github_nao_volta_para_remoto_mais_velho(self):
+        import bankroll
+
+        old_loader = bankroll._load_from_github_backup
+        old_reader = bankroll._read_local
+        try:
+            os.environ["PERSISTENCE_MODE"] = "github"
+            bankroll._load_from_github_backup = lambda: {"seq": 154, "balance": 634.13, "history": []}
+            bankroll._read_local = lambda: {"seq": 155, "balance": 630.53, "history": []}
+
+            data = bankroll._load_freshest_unlocked()
+            self.assertEqual(data["seq"], 155)
+            self.assertEqual(data["balance"], 630.53)
+        finally:
+            bankroll._load_from_github_backup = old_loader
+            bankroll._read_local = old_reader
 
 
 class TestRuntimeCities(unittest.TestCase):
