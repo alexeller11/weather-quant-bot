@@ -1185,6 +1185,30 @@ class TestConsensusBias(unittest.TestCase):
         self.assertIn("descartada", r["reason"])
         self.assertEqual(self.consensus._bias_tracker.data, {})
 
+    def test_bucket_consensus_libera_quando_ambas_fontes_fora(self):
+        """Divergencia termica pequena nao importa se ambas dizem NO ao bucket."""
+        eng = self._engine_with_fake_wa([(30.8, 29.1)])
+        r = eng.consensus_temperature(
+            1, 1, "2026-08-17", 30.8,
+            condition="RANGE2", city="New York",
+            target=82.5, unit="F", target_lo=82.0, target_hi=83.0,
+        )
+        self.assertTrue(r["consensus"])
+        self.assertGreater(r["diff"], r["threshold"])
+        self.assertIn("por bucket", r["reason"])
+
+    def test_bucket_consensus_bloqueia_quando_uma_fonte_entra_no_bucket(self):
+        eng = self._engine_with_fake_wa([(30.8, 29.1)])
+        r = eng.consensus_temperature(
+            1, 1, "2026-08-17", 30.8,
+            condition="RANGE2", city="New York",
+            target=84.5, unit="F", target_lo=84.0, target_hi=85.0,
+            threshold=1.5,
+        )
+        # 84-85F = 28.89-29.44C: WA dentro, OM fora.
+        self.assertFalse(r["consensus"])
+        self.assertIn("Sem consenso", r["reason"])
+
     def test_get_bias_tem_shrinkage_com_poucas_amostras(self):
         from consensus import _bias_tracker
         for d in [3.0, 3.0, 3.0]:  # so 3 amostras, MIN_SAMPLES=5
