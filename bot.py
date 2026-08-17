@@ -343,6 +343,8 @@ def process_city(city: Dict):
                     record_decision(
                         "blocked", reason, city=name, market=m, side="YES",
                         prob=prob, edge=edge_yes, yes_price=yes_price, sigma=sigma,
+                        forecast_c=forecast_c, forecast_c_raw=forecast_c_raw,
+                        forecast_day=forecast_day,
                     )
 
             # --- AVALIAR NO ---
@@ -378,6 +380,8 @@ def process_city(city: Dict):
                     record_decision(
                         "blocked", reason, city=name, market=m, side="NO",
                         prob=prob, edge=edge_no, yes_price=yes_price, sigma=sigma,
+                        forecast_c=forecast_c, forecast_c_raw=forecast_c_raw,
+                        forecast_day=forecast_day,
                     )
 
         except Exception as e:

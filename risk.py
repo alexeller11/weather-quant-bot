@@ -39,6 +39,7 @@ from config import (
     MAX_PRICE_RANGE2,
     MAX_EDGE_RANGE2,
     MIN_PRICE_YES_FOR_NO,
+    MIN_PRICE_YES_FOR_NO_RANGE2,
     MAX_EVENT_EXPOSURE,
     MAX_BUCKET_ZDIST,
     FEE_RATE,
@@ -286,7 +287,12 @@ def _check_no_guardrails(
     if condition not in ("ABOVE", "BELOW", "EXACT", "RANGE2"):
         return False, "condicao_nao_suportada"
 
-    if price_yes < MIN_PRICE_YES_FOR_NO:
+    min_price_yes_for_no = (
+        MIN_PRICE_YES_FOR_NO_RANGE2
+        if condition in ("EXACT", "RANGE2")
+        else MIN_PRICE_YES_FOR_NO
+    )
+    if price_yes < min_price_yes_for_no:
         return False, "price_yes_baixo"
 
     if model_prob > MAX_PROB_FOR_NO:
