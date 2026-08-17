@@ -1702,6 +1702,21 @@ class TestSettlementRetryConfig(unittest.TestCase):
         self.assertEqual(SETTLE_TEMP_RETRIES, CFG)
 
 class TestPaperExecution(unittest.TestCase):
+    def test_paper_execution_required_default_fail_closed(self):
+        import importlib
+        import config
+
+        old_value = os.environ.pop("PAPER_EXECUTION_REQUIRED", None)
+        try:
+            reloaded = importlib.reload(config)
+            self.assertTrue(reloaded.PAPER_EXECUTION_REQUIRED)
+        finally:
+            if old_value is None:
+                os.environ.pop("PAPER_EXECUTION_REQUIRED", None)
+            else:
+                os.environ["PAPER_EXECUTION_REQUIRED"] = old_value
+            importlib.reload(config)
+
     def test_simulate_buy_walks_asks_and_computes_average(self):
         from paper_execution import simulate_buy_from_levels
         levels = [

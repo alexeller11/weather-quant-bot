@@ -82,7 +82,9 @@ MAX_IMPLIED_SPREAD = float(os.getenv("MAX_IMPLIED_SPREAD", "0.08"))
 
 # ── Paper execution (simulação contra order book real) ──────────
 ORDERBOOK_TIMEOUT = int(os.getenv("ORDERBOOK_TIMEOUT", "5"))
-PAPER_EXECUTION_REQUIRED = _parse_bool_env("PAPER_EXECUTION_REQUIRED", "0")
+# Default fail-closed: sem esta env no host, o bot ainda exige simulação
+# contra order book real. Use PAPER_EXECUTION_REQUIRED=0 só intencionalmente.
+PAPER_EXECUTION_REQUIRED = _parse_bool_env("PAPER_EXECUTION_REQUIRED", "1")
 PAPER_MAX_SLIPPAGE = float(os.getenv("PAPER_MAX_SLIPPAGE", "0.05"))
 PAPER_MIN_FILL_RATIO = float(os.getenv("PAPER_MIN_FILL_RATIO", "0.80"))
 
