@@ -11,6 +11,11 @@ services:
       - key: PAPER_EXECUTION_REQUIRED
         value: "1"
 
+      # Modo gratuito: o Postgres Free do Render expira. Com github, o bot
+      # usa bankroll.json na branch GITHUB_BRANCH como persistencia principal.
+      - key: PERSISTENCE_MODE
+        value: "github"
+
       - key: PORT
         value: "10000"
 

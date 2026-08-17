@@ -32,7 +32,12 @@ try:
 except ImportError:
     ThreadingHTTPServer = HTTPServer
 
-from bankroll import dedupe_history_by_market, check_balance_invariant, _normalized_database_url
+from bankroll import (
+    dedupe_history_by_market,
+    check_balance_invariant,
+    _normalized_database_url,
+    github_persistence_primary,
+)
 from decision_log import load_decisions, summarize_decisions, trade_execution_summary
 from operational_health import build_operational_health, build_prometheus_metrics
 from validacao import (
@@ -54,7 +59,10 @@ PORT = int(os.environ.get("PORT", 8765))
 def load_data():
     errors = []
     db_url = _normalized_database_url()
-    if db_url and db_url.strip():
+    github_primary = github_persistence_primary()
+    if github_primary:
+        errors.append("PERSISTENCE_MODE=github")
+    elif db_url and db_url.strip():
         try:
             import psycopg2
             conn = psycopg2.connect(db_url, sslmode="require")
@@ -84,6 +92,8 @@ def load_data():
                 params={"ref":branch},timeout=10)
             if r.status_code == 200:
                 data = json.loads(base64.b64decode(r.json()["content"]).decode())
+                if github_primary:
+                    return data, None
                 detail = " | ".join(errors) if errors else "PostgreSQL indispon\u00edvel"
                 return data, f"\u26a0 GitHub fallback ({detail})"
             errors.append(f"GitHub HTTP {r.status_code}")
