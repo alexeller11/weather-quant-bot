@@ -431,6 +431,32 @@ def processar_comando(texto):
         except Exception as e:
             enviar_mensagem(f"Erro na validacao: {e}")
 
+    elif cmd == "/health":
+        try:
+            from dashboard import load_data
+            from operational_health import build_operational_health
+
+            data, warning = load_data()
+            health = build_operational_health(data or {}, warning)
+            counts = health.get("decision_counts", {})
+            enviar_mensagem(
+                "<b>HEALTH OPERACIONAL</b>\n\n"
+                f"Status: <b>{health.get('status')}</b>\n"
+                f"Resumo: {health.get('summary')}\n"
+                f"Bot ativo: {health.get('bot_active')}\n"
+                f"DB ok: {health.get('db_ok')} ({health.get('data_source')})\n"
+                f"Ultima decisao: {health.get('last_decision_ts')}\n"
+                f"Idade decisao: {health.get('last_decision_age_seconds')}s\n"
+                f"Motivo dominante: {health.get('dominant_block_reason')}\n\n"
+                f"Decisoes recentes: {counts.get('total', 0)} | "
+                f"bloqueadas {counts.get('blocked', 0)} | "
+                f"trades {counts.get('recorded', 0)} | "
+                f"sinais {counts.get('signal', 0)} | "
+                f"erros {counts.get('error', 0)}"
+            )
+        except Exception as e:
+            enviar_mensagem(f"Erro ao ler health: {e}")
+
     elif cmd.startswith("/resetbankroll"):
         # AUDITORIA bug #29: antes executava imediato — um botão mal
         # clicado no Telegram removia TODO o histórico. Agora exige
@@ -475,6 +501,7 @@ def processar_comando(texto):
         enviar_mensagem(
             "<b>⚡ WEATHER QUANT BOT — COMANDOS</b>\n\n"
             "/status                  — Saldo e trades abertos\n"
+            "/health                  — Saúde operacional do loop\n"
             "/validacao               — Relatório do modelo\n"
             "/settlement              — Liquidar agora\n"
             "/resetbankroll [valor]   — Resetar saldo (exige CONFIRMAR)\n"

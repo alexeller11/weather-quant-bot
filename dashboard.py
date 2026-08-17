@@ -34,6 +34,7 @@ except ImportError:
 
 from bankroll import dedupe_history_by_market, check_balance_invariant
 from decision_log import load_decisions, summarize_decisions, trade_execution_summary
+from operational_health import build_operational_health, build_prometheus_metrics
 from validacao import (
     VALIDATION_CUTOFF_ISO,
     N_MIN_VALIDACAO,
@@ -955,7 +956,34 @@ window.addEventListener('load',()=>{setTimeout(()=>{if(D)globe();else initGlobe(
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args): pass
     def do_GET(self):
-        if self.path == '/api/stats':
+        path = self.path.split("?", 1)[0]
+        if path == '/api/health':
+            try:
+                data, warning = load_data()
+                if data is None:
+                    health = build_operational_health({}, warning)
+                    status = 503
+                else:
+                    health = build_operational_health(data, warning)
+                    status = 200 if health["status"] not in ("stale", "unknown") else 503
+                body = json.dumps(health, ensure_ascii=False).encode('utf-8')
+                self.send_response(status); self.send_header('Content-Type','application/json; charset=utf-8')
+                self.send_header('Content-Length', len(body)); self.end_headers(); self.wfile.write(body)
+            except Exception as e:
+                err = json.dumps({"status": "error", "error": str(e)}).encode()
+                self.send_response(500); self.send_header('Content-Type','application/json'); self.end_headers(); self.wfile.write(err)
+        elif path == '/metrics':
+            try:
+                data, warning = load_data()
+                health = build_operational_health(data or {}, warning)
+                body = build_prometheus_metrics(health).encode('utf-8')
+                status = 200 if health["status"] not in ("stale", "unknown") else 503
+                self.send_response(status); self.send_header('Content-Type','text/plain; version=0.0.4; charset=utf-8')
+                self.send_header('Content-Length', len(body)); self.end_headers(); self.wfile.write(body)
+            except Exception as e:
+                body = f"# error {str(e)}\n".encode('utf-8')
+                self.send_response(500); self.send_header('Content-Type','text/plain; charset=utf-8'); self.end_headers(); self.wfile.write(body)
+        elif path == '/api/stats':
             try:
                 data, warning = load_data()
                 if data is None:
@@ -973,7 +1001,7 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 err = json.dumps({"error": str(e)}).encode()
                 self.send_response(500); self.send_header('Content-Type','application/json'); self.end_headers(); self.wfile.write(err)
-        elif self.path in ('/', '/index.html'):
+        elif path in ('/', '/index.html'):
             body = HTML.encode('utf-8', errors='replace')
             self.send_response(200); self.send_header('Content-Type','text/html; charset=utf-8')
             self.send_header('Content-Length', len(body)); self.end_headers(); self.wfile.write(body)
