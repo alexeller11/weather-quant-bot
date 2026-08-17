@@ -666,6 +666,27 @@ class TestNoEdgeCap(unittest.TestCase):
         ok, reason = check_guardrails(market, 0.32, 21.96, sigma=4.5, side="NO")
         self.assertNotEqual(reason, "edge_alto_demais")
 
+    def test_no_range2_aceita_yes_abaixo_de_45_quando_resto_passa(self):
+        from risk import check_guardrails
+        market = {
+            "condition": "RANGE2", "target_temp": 78.5, "price": 0.22,
+            "day_offset": 2, "unit": "F", "target_lo": 78.0, "target_hi": 79.0,
+        }
+        # Caso parecido com os bloqueios atuais: bucket raro, YES abaixo de
+        # 0.45, mas NO ainda tem edge razoável e previsão bem fora do bucket.
+        ok, reason = check_guardrails(market, 0.04, 35.0, sigma=4.5, side="NO")
+        self.assertTrue(ok, reason)
+
+    def test_no_above_below_continua_exigindo_yes_45(self):
+        from risk import check_guardrails
+        market = {
+            "condition": "ABOVE", "target_temp": 20.0, "price": 0.22,
+            "day_offset": 1, "unit": "C",
+        }
+        ok, reason = check_guardrails(market, 0.04, 10.0, sigma=4.0, side="NO")
+        self.assertFalse(ok)
+        self.assertEqual(reason, "price_yes_baixo")
+
     def test_teto_vale_tambem_para_above_below(self):
         from risk import check_guardrails, _max_edge_for_prob
         # prob do lado NO (1-model_prob) >= 0.90 -> teto vira 0.25

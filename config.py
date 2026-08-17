@@ -103,6 +103,10 @@ MAX_EDGE_RANGE2 = float(os.getenv("MAX_EDGE_RANGE2", "0.25"))
 # 90-100F — 0 acertos em 22.
 MAX_BUCKET_ZDIST = float(os.getenv("MAX_BUCKET_ZDIST", "1.0"))
 MIN_PRICE_YES_FOR_NO = float(os.getenv("MIN_PRICE_YES_FOR_NO", "0.45"))
+# RANGE2/EXACT sao buckets estreitos; NO neles muitas vezes custa caro
+# mesmo quando YES fica abaixo de 0.45. Mantem ABOVE/BELOW conservador,
+# mas deixa o lado NO de bucket passar para os demais guardrails.
+MIN_PRICE_YES_FOR_NO_RANGE2 = float(os.getenv("MIN_PRICE_YES_FOR_NO_RANGE2", "0.20"))
 MAX_EVENT_EXPOSURE = float(os.getenv("MAX_EVENT_EXPOSURE", str(MAX_POSITION)))
 
 # ── Calibração de sigma ──────────────────────────────────────────
