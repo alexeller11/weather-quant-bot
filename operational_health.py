@@ -7,6 +7,7 @@ the more useful question: did the trading loop recently evaluate markets, is
 the primary data store healthy, and why are entries not being recorded?
 """
 
+import os
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, Optional
 
@@ -14,6 +15,14 @@ from decision_log import load_decisions, summarize_decisions, trade_execution_su
 
 
 STALE_DECISION_SECONDS = 2 * 60 * 60
+
+
+def _github_persistence_primary() -> bool:
+    return os.environ.get("PERSISTENCE_MODE", "github").strip().lower() in {
+        "github",
+        "github_primary",
+        "free",
+    }
 
 
 def _now() -> datetime:
@@ -80,8 +89,13 @@ def build_operational_health(
 
     open_count = sum(1 for t in history if isinstance(t, dict) and t.get("result") == "OPEN")
     execution = trade_execution_summary(history)
-    data_source = "github_fallback" if data_warning else "postgresql"
-    db_ok = not bool(data_warning)
+    github_primary = _github_persistence_primary()
+    if github_primary:
+        data_source = "github"
+        db_ok = not bool(data_warning)
+    else:
+        data_source = "github_fallback" if data_warning else "postgresql"
+        db_ok = not bool(data_warning)
 
     last_decision_age = _age_seconds(last_decision_dt, now)
     stale = last_decision_age is None or last_decision_age > STALE_DECISION_SECONDS
@@ -94,7 +108,7 @@ def build_operational_health(
         summary = "loop sem decisoes recentes"
     elif not db_ok:
         status = "degraded"
-        summary = "loop ativo, mas PostgreSQL indisponivel"
+        summary = "loop ativo, mas armazenamento indisponivel" if github_primary else "loop ativo, mas PostgreSQL indisponivel"
     elif decision_summary.get("recorded_count", 0) == 0 and decision_summary.get("signal_count", 0) == 0:
         status = "ok_no_entries"
         summary = "loop ativo, entradas bloqueadas pelos guardrails"

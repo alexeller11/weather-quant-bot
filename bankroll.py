@@ -5,9 +5,9 @@ BANKROLL — WEATHER QUANT
 Persistência com camadas de segurança:
 
 1. bankroll_override.json — correção manual
-2. PostgreSQL (Railway) — fonte principal
+2. PostgreSQL — fonte principal quando disponivel
 3. bankroll.json local  — cache local
-4. GitHub commit        — backup externo
+4. GitHub commit        — backup externo ou modo gratuito principal
 
 AUDITORIA SENIOR:
 - _save_to_db agora prune linhas antigas (mantendo as 100 mais recentes).
@@ -397,6 +397,25 @@ def _normalized_database_url() -> str:
     return ""
 
 
+def persistence_mode() -> str:
+    """Modo de persistencia: github por padrao, auto ou postgresql."""
+    raw = os.environ.get("PERSISTENCE_MODE", "github").strip().lower()
+    aliases = {
+        "postgres": "postgresql",
+        "postgresql": "postgresql",
+        "db": "postgresql",
+        "github": "github",
+        "github_primary": "github",
+        "free": "github",
+        "auto": "auto",
+    }
+    return aliases.get(raw, "auto")
+
+
+def github_persistence_primary() -> bool:
+    return persistence_mode() == "github"
+
+
 def _ensure_table(conn):
     with conn.cursor() as cur:
         cur.execute("""
@@ -563,41 +582,50 @@ def load_bankroll():
 def _persist_unlocked(data) -> None:
     """
     Persistência Robusta (v5.7):
-    O PostgreSQL é a fonte da verdade. O bankroll.json é apenas um cache de leitura.
+    PostgreSQL é a fonte da verdade no modo padrão. Em PERSISTENCE_MODE=github,
+    o backup GitHub vira a fonte persistente gratuita.
     """
     data = _coerce_bankroll_shape(data)
 
     # 1. PostgreSQL (Prioridade Máxima)
-    conn = _get_db()
     db_success = False
-    if conn:
-        try:
-            _save_to_db(conn, data)
-            logger.info(f"  [db] bankroll salvo — saldo: ${data.get('balance', 0):.2f} seq={data.get('seq')}")
-            db_success = True
-        except Exception as e:
-            logger.error(f"CRÍTICO: Falha ao salvar no PostgreSQL: {e}")
-        finally:
+    if github_persistence_primary():
+        logger.info("  [db] ignorado: PERSISTENCE_MODE=github")
+    else:
+        conn = _get_db()
+        if conn:
             try:
-                conn.close()
-            except Exception:
-                pass
-    
+                _save_to_db(conn, data)
+                logger.info(f"  [db] bankroll salvo — saldo: ${data.get('balance', 0):.2f} seq={data.get('seq')}")
+                db_success = True
+            except Exception as e:
+                logger.error(f"CRÍTICO: Falha ao salvar no PostgreSQL: {e}")
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
     # 2. Local (Cache de Fallback)
     try:
         _write_local(data)
     except Exception as e:
         logger.warning(f"  [local] cache falhou: {e}")
 
-    if not db_success:
-        logger.warning("Bankroll persistido APENAS localmente. Verifique o DATABASE_URL.")
-
-    # 3. GitHub (Backup terciário)
+    # 3. GitHub (Backup externo; fonte principal no modo gratuito)
+    github_success = False
     try:
         from github_sync import commit_bankroll
         commit_bankroll(data)
+        github_success = True
     except Exception as e:
         logger.info(f"  [github] indisponível: {e}")
+
+    if github_persistence_primary():
+        if not github_success:
+            logger.error("CRÍTICO: PERSISTENCE_MODE=github, mas o commit no GitHub falhou.")
+    elif not db_success:
+        logger.warning("Bankroll persistido APENAS localmente/GitHub. Verifique o DATABASE_URL.")
 
 
 def save_bankroll(data):

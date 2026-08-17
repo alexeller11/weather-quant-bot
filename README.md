@@ -57,8 +57,16 @@ pip install -r requirements.txt
 ## Configurar .env
 
 Copie `.env.example` e preencha. As variáveis obrigatórias são
-`TELEGRAM_TOKEN`, `CHAT_ID` e `DATABASE_URL`. Sem `DATABASE_URL` o
-aprendizado (sigma e ML) é perdido a cada restart do processo.
+`TELEGRAM_TOKEN`, `CHAT_ID`, `GITHUB_TOKEN`, `GITHUB_REPO` e
+`GITHUB_BRANCH=data-backup`.
+
+Por padrão, o projeto usa `PERSISTENCE_MODE=github`. Nesse modo o bot usa
+`bankroll.json` na branch `data-backup` como persistência principal gratuita.
+`DATABASE_URL` passa a ser opcional.
+
+Com `PERSISTENCE_MODE=auto` ou `postgresql`, o bot tenta usar `DATABASE_URL`
+como fonte principal. Sem banco persistente, o aprendizado (sigma e ML) pode
+ser perdido a cada restart do processo.
 
 **`GITHUB_BRANCH` nunca pode ser `main`.** Um push na branch de deploy
 dispara auto-deploy no Render e mata o processo no meio do ciclo. O código

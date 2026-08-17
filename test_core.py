@@ -1542,12 +1542,17 @@ class TestDatabaseUrlNormalization(unittest.TestCase):
 
     def setUp(self):
         self._orig = os.environ.get("DATABASE_URL")
+        self._orig_mode = os.environ.get("PERSISTENCE_MODE")
 
     def tearDown(self):
         if self._orig is None:
             os.environ.pop("DATABASE_URL", None)
         else:
             os.environ["DATABASE_URL"] = self._orig
+        if self._orig_mode is None:
+            os.environ.pop("PERSISTENCE_MODE", None)
+        else:
+            os.environ["PERSISTENCE_MODE"] = self._orig_mode
 
     def test_remove_aspas_e_espacos(self):
         from bankroll import _normalized_database_url
@@ -1561,6 +1566,12 @@ class TestDatabaseUrlNormalization(unittest.TestCase):
         from bankroll import _normalized_database_url
         os.environ["DATABASE_URL"] = "not-a-postgres-url"
         self.assertEqual(_normalized_database_url(), "")
+
+    def test_modo_padrao_e_github_gratuito(self):
+        from bankroll import persistence_mode, github_persistence_primary
+        os.environ.pop("PERSISTENCE_MODE", None)
+        self.assertEqual(persistence_mode(), "github")
+        self.assertTrue(github_persistence_primary())
 
 
 class TestRuntimeCities(unittest.TestCase):
@@ -1692,10 +1703,21 @@ class TestDecisionLog(unittest.TestCase):
 
 
 class TestOperationalHealth(unittest.TestCase):
+    def setUp(self):
+        self._orig_persistence_mode = os.environ.get("PERSISTENCE_MODE")
+        os.environ.pop("PERSISTENCE_MODE", None)
+
+    def tearDown(self):
+        if self._orig_persistence_mode is None:
+            os.environ.pop("PERSISTENCE_MODE", None)
+        else:
+            os.environ["PERSISTENCE_MODE"] = self._orig_persistence_mode
+
     def test_loop_ativo_sem_entradas_fica_degraded_com_db_fallback(self):
         from datetime import datetime, timezone
         from operational_health import build_operational_health
 
+        os.environ["PERSISTENCE_MODE"] = "auto"
         now = datetime(2026, 8, 17, 1, 55, tzinfo=timezone.utc)
         data = {
             "balance": 634.13,
@@ -1722,6 +1744,28 @@ class TestOperationalHealth(unittest.TestCase):
         self.assertEqual(health["dominant_block_reason"], "price_yes_baixo")
         self.assertEqual(health["decision_counts"]["recorded"], 0)
         self.assertEqual(health["open_count"], 0)
+
+    def test_github_primary_nao_degrada_sem_postgres(self):
+        from datetime import datetime, timezone
+        from operational_health import build_operational_health
+
+        os.environ["PERSISTENCE_MODE"] = "github"
+        now = datetime(2026, 8, 17, 1, 55, tzinfo=timezone.utc)
+        decisions = [
+            {"ts": "2026-08-17T01:52:00+00:00", "status": "blocked", "reason": "guardrail_failed"},
+        ]
+
+        health = build_operational_health(
+            {"balance": 634.13, "seq": 154, "history": []},
+            None,
+            decision_events=decisions,
+            now=now,
+        )
+
+        self.assertEqual(health["status"], "ok_no_entries")
+        self.assertEqual(health["data_source"], "github")
+        self.assertTrue(health["db_ok"])
+        self.assertTrue(health["bot_active"])
 
     def test_decision_log_velho_marca_stale(self):
         from datetime import datetime, timezone
