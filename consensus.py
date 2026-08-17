@@ -37,6 +37,7 @@ from datetime import datetime, timezone
 from typing import Optional, Dict, List
 
 import requests
+from model import delta_to_celsius, to_celsius
 
 from config import (
     CONSENSUS_MAX_DIFF_RANGE2,
@@ -169,6 +170,30 @@ class ConsensusBiasTracker:
 _bias_tracker = ConsensusBiasTracker()
 
 
+def _bucket_contains_temp(
+    temp_c: float,
+    condition: str,
+    target: Optional[float],
+    unit: str,
+    target_lo=None,
+    target_hi=None,
+) -> Optional[bool]:
+    cond = str(condition).upper()
+    if cond not in ("EXACT", "RANGE2") or target is None:
+        return None
+    unit = str(unit or "C").upper()
+    target_c = to_celsius(float(target), unit)
+    if cond == "RANGE2" and target_lo is not None and target_hi is not None:
+        lo_c = to_celsius(float(target_lo), unit)
+        hi_c = to_celsius(float(target_hi), unit)
+    else:
+        half = delta_to_celsius(0.5 if cond == "EXACT" else 1.0, unit)
+        lo_c, hi_c = target_c - half, target_c + half
+    if lo_c > hi_c:
+        lo_c, hi_c = hi_c, lo_c
+    return lo_c <= float(temp_c) <= hi_c
+
+
 class ConsensusEngine:
     def __init__(self, weatherapi_key: Optional[str] = None):
         self.weatherapi_key = weatherapi_key or os.environ.get("WEATHERAPI_KEY", "").strip()
@@ -213,6 +238,10 @@ class ConsensusEngine:
         condition: str = "ABOVE",
         threshold: float = None,
         city: Optional[str] = None,
+        target: Optional[float] = None,
+        unit: str = "C",
+        target_lo=None,
+        target_hi=None,
     ) -> Dict:
         """
         Verifica consenso entre Open-Meteo e WeatherAPI, descontando o
@@ -274,13 +303,28 @@ class ConsensusEngine:
         result["raw_diff"] = round(signed_diff, 2)
         result["bias_removed"] = round(bias, 2)
 
+        primary_in_bucket = _bucket_contains_temp(
+            temp_openmeteo, condition, target, unit, target_lo, target_hi
+        )
+        secondary_in_bucket = _bucket_contains_temp(
+            temp2, condition, target, unit, target_lo, target_hi
+        )
+
         detail = (
             f"OM={temp_openmeteo:.1f}°C WA={temp2:.1f}°C "
             f"(bruta {signed_diff:+.1f}°C, viés {bias:+.1f}°C n={n_bias}, "
             f"resíduo {corrected_diff:.1f}°C)"
         )
 
-        if corrected_diff <= threshold:
+        if (
+            primary_in_bucket is not None
+            and secondary_in_bucket is not None
+            and primary_in_bucket == secondary_in_bucket
+        ):
+            result["consensus"] = True
+            outcome = "dentro" if primary_in_bucket else "fora"
+            result["reason"] = f"Consenso OK por bucket: ambas fontes {outcome}; {detail}"
+        elif corrected_diff <= threshold:
             result["consensus"] = True
             result["reason"] = f"Consenso OK: {detail} ≤ {threshold}°C"
         else:
