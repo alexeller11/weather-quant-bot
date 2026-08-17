@@ -131,3 +131,67 @@ def build_operational_health(
         },
         "execution": execution,
     }
+
+
+def _metric_value(value: Any) -> str:
+    if isinstance(value, bool):
+        return "1" if value else "0"
+    if value is None:
+        return "0"
+    try:
+        return str(float(value))
+    except Exception:
+        return "0"
+
+
+def _label_value(value: Any) -> str:
+    text = str(value or "")
+    return text.replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ")
+
+
+def _gauge(name: str, help_text: str, value: Any, labels: Optional[Dict[str, Any]] = None) -> list:
+    label_text = ""
+    if labels:
+        parts = [f'{k}="{_label_value(v)}"' for k, v in sorted(labels.items())]
+        label_text = "{" + ",".join(parts) + "}"
+    return [
+        f"# HELP {name} {help_text}",
+        f"# TYPE {name} gauge",
+        f"{name}{label_text} {_metric_value(value)}",
+    ]
+
+
+def build_prometheus_metrics(health: Dict[str, Any]) -> str:
+    """
+    Render a compact Prometheus exposition from build_operational_health().
+    """
+    decisions = health.get("decision_counts", {}) if isinstance(health, dict) else {}
+    execution = health.get("execution", {}) if isinstance(health, dict) else {}
+    status = health.get("status", "unknown")
+    dominant = health.get("dominant_block_reason") or "none"
+
+    lines = []
+    lines += _gauge("bot_health_status", "1 for the current bot health status label.", 1, {"status": status})
+    lines += _gauge("bot_active", "1 when the trading loop has recent decision telemetry.", health.get("bot_active"))
+    lines += _gauge("bot_db_ok", "1 when PostgreSQL is the current data source.", health.get("db_ok"))
+    lines += _gauge(
+        "bot_last_decision_age_seconds",
+        "Age in seconds of the latest decision-log event.",
+        health.get("last_decision_age_seconds"),
+    )
+    lines += _gauge("bot_open_trades", "Number of currently open trades.", health.get("open_count"))
+    lines += _gauge("bot_balance", "Current bankroll balance.", health.get("balance"))
+    lines += _gauge("bot_decisions_total", "Recent decision-log events.", decisions.get("total", 0))
+    lines += _gauge("bot_decisions_blocked", "Recent blocked decisions.", decisions.get("blocked", 0))
+    lines += _gauge("bot_decisions_recorded", "Recent recorded trades.", decisions.get("recorded", 0))
+    lines += _gauge("bot_decisions_signal", "Recent signal-only decisions.", decisions.get("signal", 0))
+    lines += _gauge("bot_decisions_error", "Recent decision errors.", decisions.get("error", 0))
+    lines += _gauge(
+        "bot_dominant_block_reason",
+        "Dominant recent block reason, encoded as a labeled gauge.",
+        1,
+        {"reason": dominant},
+    )
+    lines += _gauge("bot_paper_orderbook_trades", "Trades simulated against order book.", execution.get("paper_orderbook", 0))
+    lines += _gauge("bot_live_trades", "Trades with live execution identifiers.", execution.get("live", 0))
+    return "\n".join(lines) + "\n"

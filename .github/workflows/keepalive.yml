@@ -7,29 +7,35 @@ name: Keep Render instance awake
 # 2026-08-01/02: gaps de 3h01min e 5h05min entre ciclos, exatamente
 # quando ninguem acessou o dashboard por um tempo.
 #
-# Este workflow bate no endpoint de health check a cada 10 minutos —
+# Este workflow bate no endpoint operacional a cada ~10 minutos —
 # confortavelmente abaixo do limite de inatividade do Render — para o
-# servico nunca dormir.
+# servico nunca dormir e para falhar quando o loop estiver sem telemetria
+# recente. GitHub Actions schedule e best-effort; por isso os minutos ficam
+# fora de :00/:10/:20, que costumam concentrar carga.
 
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "3,13,23,33,43,53 * * * *"
   workflow_dispatch: {}
 
 jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping /healthz (com retry para cold start)
+      - name: Ping /api/health (com retry para cold start)
         run: |
-          URL="https://weather-quant-bot.onrender.com/healthz"
-          for i in 1 2; do
-            if curl -fsS --max-time 60 "$URL"; then
-              echo "ok — instancia respondeu"
+          URL="https://weather-quant-bot.onrender.com/api/health"
+          for i in 1 2 3; do
+            BODY="$(mktemp)"
+            if curl -fsS --max-time 60 "$URL" -o "$BODY"; then
+              cat "$BODY"
+              echo
+              echo "ok — instancia respondeu e health operacional passou"
               exit 0
             fi
             echo "tentativa $i falhou, nova tentativa em 10s (pode ser cold start)..."
+            cat "$BODY" || true
             sleep 10
           done
-          echo "::error::Health check falhou duas vezes seguidas — instancia pode estar fora do ar, nao so dormindo"
+          echo "::error::Health operacional falhou tres vezes — instancia pode estar fora do ar ou loop sem telemetria recente"
           exit 1

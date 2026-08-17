@@ -1651,6 +1651,77 @@ class TestOperationalHealth(unittest.TestCase):
         self.assertFalse(health["bot_active"])
         self.assertGreater(health["last_decision_age_seconds"], health["stale_after_seconds"])
 
+    def test_prometheus_metrics_incluem_status_e_motivo(self):
+        from operational_health import build_prometheus_metrics
+
+        metrics = build_prometheus_metrics({
+            "status": "ok_no_entries",
+            "bot_active": True,
+            "db_ok": True,
+            "last_decision_age_seconds": 42,
+            "open_count": 0,
+            "balance": 634.13,
+            "dominant_block_reason": "price_yes_baixo",
+            "decision_counts": {
+                "total": 3,
+                "blocked": 3,
+                "recorded": 0,
+                "signal": 0,
+                "error": 0,
+            },
+            "execution": {"paper_orderbook": 22, "live": 0},
+        })
+
+        self.assertIn('bot_health_status{status="ok_no_entries"} 1.0', metrics)
+        self.assertIn('bot_dominant_block_reason{reason="price_yes_baixo"} 1.0', metrics)
+        self.assertIn("bot_last_decision_age_seconds 42.0", metrics)
+
+    def test_cli_health_retorna_codigo_zero_quando_nao_stale(self):
+        import contextlib
+        import io
+        import cli
+
+        old_local_health = cli._local_health
+        try:
+            cli._local_health = lambda: {
+                "status": "ok_no_entries",
+                "summary": "loop ativo",
+                "bot_active": True,
+                "db_ok": True,
+                "data_source": "postgresql",
+                "last_decision_age_seconds": 5,
+                "dominant_block_reason": "price_yes_baixo",
+                "open_count": 0,
+                "balance": 634.13,
+            }
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(cli.main(["health"]), 0)
+        finally:
+            cli._local_health = old_local_health
+
+    def test_cli_health_retorna_codigo_dois_quando_stale(self):
+        import contextlib
+        import io
+        import cli
+
+        old_local_health = cli._local_health
+        try:
+            cli._local_health = lambda: {
+                "status": "stale",
+                "summary": "loop sem decisoes recentes",
+                "bot_active": False,
+                "db_ok": True,
+                "data_source": "postgresql",
+                "last_decision_age_seconds": 9999,
+                "dominant_block_reason": None,
+                "open_count": 0,
+                "balance": 634.13,
+            }
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(cli.main(["health", "--json"]), 2)
+        finally:
+            cli._local_health = old_local_health
+
 
 class TestFetchMarketsHorizonte(unittest.TestCase):
     """

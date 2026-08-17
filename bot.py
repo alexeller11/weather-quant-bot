@@ -605,6 +605,51 @@ def settlement_cycle():
         logger.error(f"Liquidação: {e}", exc_info=True)
 
 
+_last_health_alert = {"signature": None, "ts": 0.0}
+
+
+def health_alert_cycle():
+    """
+    Envia alerta Telegram quando a saude operacional indica problema.
+    Usa throttle por assinatura para nao repetir o mesmo aviso sem parar.
+    """
+    try:
+        from dashboard import load_data
+        from operational_health import build_operational_health
+        from notificador import enviar_mensagem
+
+        data, warning = load_data()
+        health = build_operational_health(data or {}, warning)
+        status = health.get("status")
+        if status not in ("degraded", "stale", "unknown"):
+            return
+
+        reason = health.get("dominant_block_reason") or "none"
+        signature = f"{status}|{reason}|{health.get('data_source')}"
+        now = time.time()
+        if (
+            _last_health_alert["signature"] == signature
+            and now - _last_health_alert["ts"] < 6 * 3600
+        ):
+            return
+
+        _last_health_alert["signature"] = signature
+        _last_health_alert["ts"] = now
+        enviar_mensagem(
+            "<b>ALERTA OPERACIONAL</b>\n\n"
+            f"Status: <b>{status}</b>\n"
+            f"Resumo: {health.get('summary')}\n"
+            f"DB ok: {health.get('db_ok')} ({health.get('data_source')})\n"
+            f"Ultima decisao: {health.get('last_decision_ts')}\n"
+            f"Idade decisao: {health.get('last_decision_age_seconds')}s\n"
+            f"Motivo dominante: {reason}\n"
+            f"Abertos: {health.get('open_count')} | "
+            f"Saldo: ${float(health.get('balance') or 0):.2f}"
+        )
+    except Exception as e:
+        logger.warning(f"health_alert_cycle: {e}")
+
+
 def scheduled_trading():
     logger.info(f"Ciclo de trading: {datetime.now():%H:%M:%S}")
 
@@ -723,10 +768,12 @@ def run():
 
     schedule.every(1).hours.do(scheduled_trading)
     schedule.every(1).hours.do(settlement_cycle)
+    schedule.every(30).minutes.do(health_alert_cycle)
     schedule.every().sunday.at("08:00").do(weekly_report_cycle)
     # Trading PRIMEIRO, settlement DEPOIS — evita race condition onde
     # settlement fecha trades que acabaram de ser abertos no mesmo ciclo.
     scheduled_trading()
+    health_alert_cycle()
     logger.info("Aguardando 120s antes da primeira liquidação...")
     time.sleep(120)
     settlement_cycle()
