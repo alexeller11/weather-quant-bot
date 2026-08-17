@@ -141,6 +141,10 @@ REQUIRE_CONSENSUS = _parse_bool_env("REQUIRE_CONSENSUS", "0")
 CONSENSUS_MAX_DIFF_RANGE2 = float(os.getenv("CONSENSUS_MAX_DIFF_RANGE2", "1.5"))
 CONSENSUS_MAX_DIFF_EXACT = float(os.getenv("CONSENSUS_MAX_DIFF_EXACT", "1.5"))
 CONSENSUS_MAX_DIFF_DEFAULT = float(os.getenv("CONSENSUS_MAX_DIFF_DEFAULT", "2.5"))
+# Sanidade da fonte secundaria antes do bias tracker. Divergencia bruta
+# acima disso costuma ser dado quebrado/API errada, nao forecast discordante
+# (ex.: London em agosto OM~25C e WeatherAPI~-0.5C).
+CONSENSUS_MAX_RAW_DIFF = float(os.getenv("CONSENSUS_MAX_RAW_DIFF", "12.0"))
 
 # Viés sistemático WeatherAPI-menos-OpenMeteo, por cidade. Descoberto em
 # produção em 2026-08-03: WA reporta consistentemente ~2-3°C mais quente

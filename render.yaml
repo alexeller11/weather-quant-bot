@@ -14,6 +14,9 @@ services:
       - key: MIN_PRICE_YES_FOR_NO_RANGE2
         value: "0.20"
 
+      - key: CONSENSUS_MAX_RAW_DIFF
+        value: "12.0"
+
       # Modo gratuito: o Postgres Free do Render expira. Com github, o bot
       # usa bankroll.json na branch GITHUB_BRANCH como persistencia principal.
       - key: PERSISTENCE_MODE

@@ -1176,6 +1176,15 @@ class TestConsensusBias(unittest.TestCase):
         self.assertTrue(r["consensus"])
         self.assertIsNone(r["temp_secondary"])
 
+    def test_weatherapi_absurda_e_descartada_sem_contaminar_bias(self):
+        """London em producao veio OM~25C e WA~-0.5C; isso e dado quebrado."""
+        eng = self._engine_with_fake_wa([(25.3, -0.5)])
+        r = eng.consensus_temperature(1, 1, "2026-08-17", 25.3, condition="EXACT", city="London")
+        self.assertTrue(r["consensus"])
+        self.assertIsNone(r["temp_secondary"])
+        self.assertIn("descartada", r["reason"])
+        self.assertEqual(self.consensus._bias_tracker.data, {})
+
     def test_get_bias_tem_shrinkage_com_poucas_amostras(self):
         from consensus import _bias_tracker
         for d in [3.0, 3.0, 3.0]:  # so 3 amostras, MIN_SAMPLES=5
