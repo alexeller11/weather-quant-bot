@@ -42,6 +42,7 @@ from config import (
     CONSENSUS_MAX_DIFF_RANGE2,
     CONSENSUS_MAX_DIFF_EXACT,
     CONSENSUS_MAX_DIFF_DEFAULT,
+    CONSENSUS_MAX_RAW_DIFF,
     CONSENSUS_BIAS_WINDOW,
     CONSENSUS_BIAS_MIN_SAMPLES,
     CONSENSUS_BIAS_SHRINK_K,
@@ -251,6 +252,18 @@ class ConsensusEngine:
             return result
 
         signed_diff = temp2 - temp_openmeteo  # WA - OM
+        if abs(signed_diff) > CONSENSUS_MAX_RAW_DIFF:
+            result["temp_secondary"] = None
+            result["raw_diff"] = round(signed_diff, 2)
+            result["reason"] = (
+                "WeatherAPI descartada por divergência bruta absurda: "
+                f"OM={temp_openmeteo:.1f}°C WA={temp2:.1f}°C "
+                f"(bruta {signed_diff:+.1f}°C > {CONSENSUS_MAX_RAW_DIFF:.1f}°C) — "
+                "usando só Open-Meteo"
+            )
+            logger.warning(f"[consensus] {result['reason']}")
+            return result
+
         bias, n_bias = _bias_tracker.get_bias(city)
         _bias_tracker.record(city, signed_diff)
 
