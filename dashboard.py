@@ -32,7 +32,7 @@ try:
 except ImportError:
     ThreadingHTTPServer = HTTPServer
 
-from bankroll import dedupe_history_by_market, check_balance_invariant
+from bankroll import dedupe_history_by_market, check_balance_invariant, _normalized_database_url
 from decision_log import load_decisions, summarize_decisions, trade_execution_summary
 from operational_health import build_operational_health, build_prometheus_metrics
 from validacao import (
@@ -53,10 +53,7 @@ PORT = int(os.environ.get("PORT", 8765))
 
 def load_data():
     errors = []
-    raw_db_url = os.environ.get("DATABASE_URL", "")
-    # Sanitiza: Render injeta aspas/espaços
-    u = raw_db_url.strip().strip('"'"'"'"')
-    db_url = u if (u.startswith("postgres://") or u.startswith("postgresql://")) else ""
+    db_url = _normalized_database_url()
     if db_url and db_url.strip():
         try:
             import psycopg2
@@ -68,13 +65,17 @@ def load_data():
             if row: return row[0], None
             errors.append("PostgreSQL: sem registros")
         except Exception as e:
-            errors.append(f"PostgreSQL: {str(e)[:80]}")
+            errors.append(f"PostgreSQL: {str(e)[:120]}")
     else:
         errors.append("DATABASE_URL n\u00e3o configurada")
     try:
         token  = os.environ.get("GITHUB_TOKEN","").strip()
         repo   = os.environ.get("GITHUB_REPO","").strip()
-        branch = os.environ.get("GITHUB_BRANCH","main")
+        try:
+            from github_sync import _safe_branch
+            branch = _safe_branch(os.environ.get("GITHUB_BRANCH", "data-backup"))
+        except Exception:
+            branch = os.environ.get("GITHUB_BRANCH", "data-backup")
         if token and repo:
             import requests as req
             r = req.get(
@@ -83,7 +84,8 @@ def load_data():
                 params={"ref":branch},timeout=10)
             if r.status_code == 200:
                 data = json.loads(base64.b64decode(r.json()["content"]).decode())
-                return data,"\u26a0 GitHub fallback (PostgreSQL indispon\u00edvel)"
+                detail = " | ".join(errors) if errors else "PostgreSQL indispon\u00edvel"
+                return data, f"\u26a0 GitHub fallback ({detail})"
             errors.append(f"GitHub HTTP {r.status_code}")
         else:
             errors.append("GITHUB_TOKEN/REPO n\u00e3o configurados")

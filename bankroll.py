@@ -376,7 +376,7 @@ def bankroll_lock():
 # ──────────────────────────────────────────────────────────────
 
 def _get_db():
-    url = os.environ.get("DATABASE_URL", "")
+    url = _normalized_database_url()
     if not url:
         return None
     try:
@@ -386,6 +386,15 @@ def _get_db():
     except Exception as e:
         logger.warning(f"  [db] conexão falhou: {e}")
         return None
+
+
+def _normalized_database_url() -> str:
+    """DATABASE_URL sanitizada para env vars copiadas com aspas/espaços."""
+    raw = os.environ.get("DATABASE_URL", "")
+    url = raw.strip().strip("'\"").strip()
+    if url.startswith("postgres://") or url.startswith("postgresql://"):
+        return url
+    return ""
 
 
 def _ensure_table(conn):
