@@ -1,5 +1,5 @@
 {
-    "seq": 163,
+    "seq": 164,
     "balance": 616.3943,
     "history": [
         {
@@ -4430,7 +4430,7 @@
             "market_date": "2026-08-18",
             "event_slug": "highest-temperature-in-london-on-august-18-2026",
             "entry_time": "2026-08-18T08:19:55.937500+00:00",
-            "exit_time": null,
+            "exit_time": "2026-08-18T23:01:54.608570+00:00",
             "type": "EXACT",
             "side": "NO",
             "unit": "C",
@@ -4447,11 +4447,11 @@
             "edge": 0.2114,
             "ev": 0.2645,
             "stake": 4.0,
-            "result": "OPEN",
-            "pnl": 0,
+            "result": "LOSS",
+            "pnl": -4.0,
             "fee": 0.0,
             "forecast_day": 1,
-            "real_temp_c": null,
+            "real_temp_c": 23.8,
             "paper_execution": true,
             "paper_execution_ok": true,
             "paper_execution_reason": "filled",
@@ -4463,7 +4463,8 @@
             "slippage": 0.0,
             "fill_ratio": 1.0,
             "book_levels_used": 1,
-            "orderbook_ts": 1787041195.9371588
+            "orderbook_ts": 1787041195.9371588,
+            "market_yes": true
         },
         {
             "market_id": "milan|2026-08-20|EXACT|25|C_NO",
@@ -4513,7 +4514,7 @@
             "orderbook_ts": 1787071056.235232
         }
     ],
-    "saved_at": "2026-08-18T16:37:37.043710+00:00",
+    "saved_at": "2026-08-18T23:01:54.608631+00:00",
     "created_at": "2026-06-01T00:00:00+00:00",
     "override_note": "Correcao 08/06/2026 — restaura Madrid Jun-8 perdido por override reaplicado",
     "start_balance": 200.0,
