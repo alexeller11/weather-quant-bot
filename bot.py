@@ -59,6 +59,9 @@ from config import (
     MAX_TOTAL_EXPOSURE,
     MAX_POSITION,
     MAX_FORECAST_DAY,
+    MIN_EDGE,
+    MIN_EDGE_EXACT,
+    MIN_EDGE_RANGE2,
     MIN_EDGE_NO,
     MIN_TRADE_STAKE,
     REQUIRE_CONSENSUS,
@@ -86,6 +89,25 @@ logger.info(
     f"Weather Quant Bot | {len(cities)} cidades ativas | "
     f"Trading: {'ON' if TRADING_ENABLED else 'OFF (observação)'}"
 )
+
+
+def _min_edge_after_execution(condition: str, side: str) -> float:
+    condition = str(condition or "").upper()
+    side = str(side or "YES").upper()
+    if side == "NO":
+        return MIN_EDGE_NO
+    if condition == "EXACT":
+        return MIN_EDGE_EXACT
+    if condition == "RANGE2":
+        return MIN_EDGE_RANGE2
+    return MIN_EDGE
+
+
+def _edge_after_execution(side: str, prob: float, entry_price: float) -> float:
+    side = str(side or "YES").upper()
+    if side == "NO":
+        return (1.0 - float(prob)) - float(entry_price)
+    return float(prob) - float(entry_price)
 
 
 def _get_open_trades(history):
@@ -506,10 +528,21 @@ def _execute_trade(
     else:
         ev_net = expected_value(prob, entry_price)
 
-    if side == "NO":
-        edge = (1.0 - prob) - entry_price
-    else:
-        edge = prob - entry_price
+    edge = _edge_after_execution(side, prob, entry_price)
+    min_edge_after_execution = _min_edge_after_execution(condition, side)
+    if edge < min_edge_after_execution:
+        record_decision(
+            "blocked", "post_execution_edge_insuficiente",
+            city=name, market=m, side=side, prob=prob, edge=edge,
+            entry_price=entry_price, minimo=min_edge_after_execution,
+            requested_stake=(execution.requested_stake if execution is not None else stake),
+            filled_stake=stake,
+        )
+        logger.info(
+            f"Edge pós-execução {edge:.3f} < mínimo {min_edge_after_execution:.3f} "
+            f"({side} @ {entry_price:.3f}) — pulando"
+        )
+        return
 
     trade = dict(
         market_id      = trade_id,
