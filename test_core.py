@@ -1802,6 +1802,21 @@ class TestPaperExecution(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertIn("fill insuficiente", result.reason)
 
+    def test_no_edge_is_rechecked_after_orderbook_execution_price(self):
+        from bot import _edge_after_execution, _min_edge_after_execution
+        from config import MIN_EDGE_NO
+
+        final_edge = _edge_after_execution("NO", prob=0.0579, entry_price=0.98)
+        self.assertLess(final_edge, 0)
+        self.assertEqual(_min_edge_after_execution("EXACT", "NO"), MIN_EDGE_NO)
+        self.assertLess(final_edge, _min_edge_after_execution("EXACT", "NO"))
+
+    def test_no_edge_after_execution_can_still_pass_when_price_is_fair(self):
+        from bot import _edge_after_execution, _min_edge_after_execution
+
+        final_edge = _edge_after_execution("NO", prob=0.0579, entry_price=0.73)
+        self.assertGreaterEqual(final_edge, _min_edge_after_execution("EXACT", "NO"))
+
 
 class TestDecisionLog(unittest.TestCase):
     def test_records_and_summarizes_decisions(self):
