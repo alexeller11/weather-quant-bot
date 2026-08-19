@@ -1,6 +1,6 @@
 {
-    "seq": 166,
-    "balance": 617.2943,
+    "seq": 168,
+    "balance": 410.5818,
     "history": [
         {
             "pnl": -3.92,
@@ -13,7 +13,8 @@
             "target": 25.0,
             "market_id": "2399701_NO",
             "entry_price": 0.435,
-            "market_date": "2026-06-02"
+            "market_date": "2026-06-02",
+            "resolution_source": "unverified"
         },
         {
             "pnl": 0.42,
@@ -26,7 +27,8 @@
             "target": 66.0,
             "market_id": "2406992",
             "entry_price": 0.875,
-            "market_date": "2026-06-03"
+            "market_date": "2026-06-03",
+            "resolution_source": "unverified"
         },
         {
             "pnl": 0.42,
@@ -39,7 +41,8 @@
             "target": 66.0,
             "market_id": "2406992_YES",
             "entry_price": 0.875,
-            "market_date": "2026-06-03"
+            "market_date": "2026-06-03",
+            "resolution_source": "unverified"
         },
         {
             "pnl": -3.94,
@@ -52,7 +55,8 @@
             "target": 85.0,
             "market_id": "2407026_NO",
             "entry_price": 0.0805,
-            "market_date": "2026-06-03"
+            "market_date": "2026-06-03",
+            "resolution_source": "unverified"
         },
         {
             "pnl": 14.63,
@@ -65,7 +69,8 @@
             "target": 28.0,
             "market_id": "2406981_NO",
             "entry_price": 0.21,
-            "market_date": "2026-06-03"
+            "market_date": "2026-06-03",
+            "resolution_source": "unverified"
         },
         {
             "pnl": 8.84,
@@ -78,7 +83,8 @@
             "target": 74.0,
             "market_id": "2416309_YES",
             "entry_price": 0.3,
-            "market_date": "2026-06-04"
+            "market_date": "2026-06-04",
+            "resolution_source": "unverified"
         },
         {
             "pnl": 39.16,
@@ -91,7 +97,8 @@
             "target": 27.0,
             "market_id": "2415990_YES",
             "entry_price": 0.09,
-            "market_date": "2026-06-04"
+            "market_date": "2026-06-04",
+            "resolution_source": "unverified"
         },
         {
             "pnl": -3.65,
@@ -104,7 +111,8 @@
             "target": 29.0,
             "market_id": "2416182_NO",
             "entry_price": 0.405,
-            "market_date": "2026-06-04"
+            "market_date": "2026-06-04",
+            "resolution_source": "unverified"
         },
         {
             "pnl": 4.28,
@@ -117,7 +125,8 @@
             "target": 22.0,
             "market_id": "2416128_NO",
             "entry_price": 0.445,
-            "market_date": "2026-06-04"
+            "market_date": "2026-06-04",
+            "resolution_source": "unverified"
         },
         {
             "pnl": 9.87,
@@ -130,7 +139,8 @@
             "target": 23.0,
             "market_id": "2416129_NO",
             "entry_price": 0.275,
-            "market_date": "2026-06-04"
+            "market_date": "2026-06-04",
+            "resolution_source": "unverified"
         },
         {
             "pnl": 13.68,
@@ -143,7 +153,8 @@
             "target": 26.0,
             "market_id": "2415989_NO",
             "entry_price": 0.22,
-            "market_date": "2026-06-04"
+            "market_date": "2026-06-04",
+            "resolution_source": "unverified"
         },
         {
             "pnl": 12.6491,
@@ -156,7 +167,8 @@
             "target": 74.0,
             "market_id": "2424766_YES",
             "entry_price": 0.235,
-            "market_date": "2026-06-05"
+            "market_date": "2026-06-05",
+            "resolution_source": "unverified"
         },
         {
             "pnl": 8.04,
@@ -169,7 +181,8 @@
             "target": 30.0,
             "market_id": "2424458_NO",
             "entry_price": 0.31,
-            "market_date": "2026-06-05"
+            "market_date": "2026-06-05",
+            "resolution_source": "unverified"
         },
         {
             "pnl": -3.85,
@@ -182,7 +195,8 @@
             "target": 21.0,
             "market_id": "2424584_NO",
             "entry_price": 0.35,
-            "market_date": "2026-06-05"
+            "market_date": "2026-06-05",
+            "resolution_source": "unverified"
         },
         {
             "pnl": 48.973,
@@ -195,7 +209,8 @@
             "target": 20.0,
             "market_id": "2424583_NO",
             "entry_price": 0.074,
-            "market_date": "2026-06-05"
+            "market_date": "2026-06-05",
+            "resolution_source": "unverified"
         },
         {
             "pnl": 33.25,
@@ -208,7 +223,8 @@
             "target": 23.0,
             "market_id": "2424443_NO",
             "entry_price": 0.105,
-            "market_date": "2026-06-05"
+            "market_date": "2026-06-05",
+            "resolution_source": "unverified"
         },
         {
             "pnl": -3.87,
@@ -221,7 +237,8 @@
             "target": 29.0,
             "market_id": "2424641_NO",
             "entry_price": 0.43,
-            "market_date": "2026-06-05"
+            "market_date": "2026-06-05",
+            "resolution_source": "unverified"
         },
         {
             "pnl": 5.1821,
@@ -234,7 +251,8 @@
             "target": 19.0,
             "market_id": "2424407_NO",
             "entry_price": 0.405,
-            "market_date": "2026-06-05"
+            "market_date": "2026-06-05",
+            "resolution_source": "unverified"
         },
         {
             "pnl": 4.9884,
@@ -249,7 +267,8 @@
             "market_id": "2440972_NO",
             "entry_price": 0.425,
             "market_date": "2026-06-06",
-            "real_temp_c": 30.0
+            "real_temp_c": 30.0,
+            "resolution_source": "unverified"
         },
         {
             "pnl": -3.96,
@@ -264,7 +283,8 @@
             "market_id": "2440781_YES",
             "entry_price": 0.055,
             "market_date": "2026-06-06",
-            "real_temp_c": 26.8
+            "real_temp_c": 26.8,
+            "resolution_source": "unverified"
         },
         {
             "pnl": 5.95,
@@ -279,7 +299,8 @@
             "market_id": "2440915_NO",
             "entry_price": 0.385,
             "market_date": "2026-06-06",
-            "real_temp_c": 23.0
+            "real_temp_c": 23.0,
+            "resolution_source": "unverified"
         },
         {
             "pnl": 5.13,
@@ -294,7 +315,8 @@
             "market_id": "2440776_NO",
             "entry_price": 0.41,
             "market_date": "2026-06-06",
-            "real_temp_c": 28.2
+            "real_temp_c": 28.2,
+            "resolution_source": "unverified"
         },
         {
             "pnl": 45.0,
@@ -309,7 +331,8 @@
             "market_id": "2440777_YES",
             "entry_price": 0.08,
             "market_date": "2026-06-06",
-            "real_temp_c": 28.2
+            "real_temp_c": 28.2,
+            "resolution_source": "unverified"
         },
         {
             "fee": 0.0,
@@ -325,7 +348,8 @@
             "market_id": "2450061_YES",
             "entry_price": 0.09,
             "market_date": "2026-06-07",
-            "real_temp_c": 23.6
+            "real_temp_c": 23.6,
+            "resolution_source": "unverified"
         },
         {
             "fee": 0.0,
@@ -341,7 +365,8 @@
             "market_id": "2450066_YES",
             "entry_price": 0.085,
             "market_date": "2026-06-07",
-            "real_temp_c": 23.6
+            "real_temp_c": 23.6,
+            "resolution_source": "unverified"
         },
         {
             "fee": 0.0,
@@ -357,7 +382,8 @@
             "market_id": "2450067_YES",
             "entry_price": 0.055,
             "market_date": "2026-06-07",
-            "real_temp_c": 23.6
+            "real_temp_c": 23.6,
+            "resolution_source": "unverified"
         },
         {
             "ev": 1.1135,
@@ -385,7 +411,8 @@
             "real_temp_c": 33.2,
             "sigma_total": 4.0,
             "forecast_day": 1,
-            "market_price": 0.565
+            "market_price": 0.565,
+            "resolution_source": "unverified"
         },
         {
             "ev": 1.5028,
@@ -413,19 +440,20 @@
             "real_temp_c": 21.8,
             "sigma_total": 4.0,
             "forecast_day": 1,
-            "market_price": 0.64
+            "market_price": 0.64,
+            "resolution_source": "unverified"
         },
         {
             "ev": 3.8692,
-            "fee": 0.0,
-            "pnl": -3.88,
+            "fee": 1.05,
+            "pnl": 16.07,
             "city": "Mexico City",
             "edge": 0.7158,
             "side": "NO",
             "type": "EXACT",
             "unit": "C",
             "stake": 3.88,
-            "result": "LOSS",
+            "result": "WIN",
             "shares": 21,
             "target": 24.0,
             "question": "Will the highest temperature in Mexico City be 24°C on June 10?",
@@ -445,19 +473,23 @@
             "forecast_day": 1,
             "market_price": 0.815,
             "gamma_event_id": "574678",
-            "gamma_market_id": "2475386"
+            "gamma_market_id": "2475386",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 1.5581,
-            "fee": 0.2197,
-            "pnl": 6.8662,
+            "fee": 0.0,
+            "pnl": -3.9,
             "city": "Tokyo",
             "edge": 0.5531,
             "side": "NO",
             "type": "EXACT",
             "unit": "C",
             "stake": 3.9,
-            "result": "WIN",
+            "result": "LOSS",
             "shares": 11,
             "target": 26.0,
             "question": "Will the highest temperature in Tokyo be 26°C on June 11?",
@@ -477,19 +509,23 @@
             "forecast_day": 1,
             "market_price": 0.645,
             "gamma_event_id": "575048",
-            "gamma_market_id": "2476234"
+            "gamma_market_id": "2476234",
+            "market_yes": true,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"1\", \"0\"]"
         },
         {
             "ev": 1.2128,
-            "fee": 0.18,
-            "pnl": 5.13,
+            "fee": 0.0,
+            "pnl": -3.69,
             "city": "Seoul",
             "edge": 0.4972,
             "side": "NO",
             "type": "EXACT",
             "unit": "C",
             "stake": 3.69,
-            "result": "WIN",
+            "result": "LOSS",
             "shares": 9,
             "target": 23.0,
             "question": "Will the highest temperature in Seoul be 23°C on June 11?",
@@ -509,12 +545,16 @@
             "forecast_day": 1,
             "market_price": 0.59,
             "gamma_event_id": "575039",
-            "gamma_market_id": "2476204"
+            "gamma_market_id": "2476204",
+            "market_yes": true,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"1\", \"0\"]"
         },
         {
             "ev": 1.1368,
-            "fee": 0.1798,
-            "pnl": 4.9884,
+            "fee": 0.45,
+            "pnl": 4.73,
             "city": "Madrid",
             "edge": 0.4831,
             "side": "NO",
@@ -541,12 +581,16 @@
             "forecast_day": 1,
             "market_price": 0.575,
             "gamma_event_id": "575222",
-            "gamma_market_id": "2476951"
+            "gamma_market_id": "2476951",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 1.0023,
-            "fee": 0.16,
-            "pnl": 4.24,
+            "fee": 0.4,
+            "pnl": 4.0,
             "city": "São Paulo",
             "edge": 0.451,
             "side": "NO",
@@ -573,19 +617,23 @@
             "forecast_day": 1,
             "market_price": 0.55,
             "gamma_event_id": "578262",
-            "gamma_market_id": "2487000"
+            "gamma_market_id": "2487000",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 1.4171,
-            "fee": 0.2,
-            "pnl": 6.05,
+            "fee": 0.0,
+            "pnl": -3.75,
             "city": "São Paulo",
             "edge": 0.5314,
             "side": "NO",
             "type": "EXACT",
             "unit": "C",
             "stake": 3.75,
-            "result": "WIN",
+            "result": "LOSS",
             "shares": 10,
             "target": 20.0,
             "question": "Will the highest temperature in Sao Paulo be 20°C on June 11?",
@@ -605,7 +653,11 @@
             "forecast_day": 1,
             "market_price": 0.625,
             "gamma_event_id": "578262",
-            "gamma_market_id": "2486999"
+            "gamma_market_id": "2486999",
+            "market_yes": true,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"1\", \"0\"]"
         },
         {
             "ev": 3.5065,
@@ -637,12 +689,16 @@
             "forecast_day": 1,
             "market_price": 0.8,
             "gamma_event_id": "575222",
-            "gamma_market_id": "2476950"
+            "gamma_market_id": "2476950",
+            "market_yes": true,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"1\", \"0\"]"
         },
         {
             "ev": 1.1822,
-            "fee": 0.1798,
-            "pnl": 5.0782,
+            "fee": 0.45,
+            "pnl": 4.82,
             "city": "Mexico City",
             "edge": 0.4906,
             "side": "NO",
@@ -669,19 +725,23 @@
             "forecast_day": 1,
             "market_price": 0.585,
             "gamma_event_id": "578275",
-            "gamma_market_id": "2487145"
+            "gamma_market_id": "2487145",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 1.1037,
-            "fee": 0.18,
-            "pnl": 4.9,
+            "fee": 0.0,
+            "pnl": -3.92,
             "city": "Madrid",
             "edge": 0.4801,
             "side": "NO",
             "type": "EXACT",
             "unit": "C",
             "stake": 3.92,
-            "result": "WIN",
+            "result": "LOSS",
             "shares": 9,
             "target": 34.0,
             "question": "Will the highest temperature in Madrid be 34°C on June 12?",
@@ -701,12 +761,16 @@
             "forecast_day": 2,
             "market_price": 0.565,
             "gamma_event_id": "578861",
-            "gamma_market_id": "2488610"
+            "gamma_market_id": "2488610",
+            "market_yes": true,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"1\", \"0\"]"
         },
         {
             "ev": 1.5105,
-            "fee": 0.22,
-            "pnl": 6.88,
+            "fee": 0.55,
+            "pnl": 6.55,
             "city": "London",
             "edge": 0.5544,
             "side": "NO",
@@ -733,19 +797,23 @@
             "forecast_day": 1,
             "market_price": 0.645,
             "gamma_event_id": "578854",
-            "gamma_market_id": "2488536"
+            "gamma_market_id": "2488536",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 1.0091,
-            "fee": 0.16,
-            "pnl": 4.28,
+            "fee": 0.0,
+            "pnl": -3.56,
             "city": "Madrid",
             "edge": 0.4673,
             "side": "NO",
             "type": "EXACT",
             "unit": "C",
             "stake": 3.56,
-            "result": "WIN",
+            "result": "LOSS",
             "shares": 8,
             "target": 34.0,
             "question": "Will the highest temperature in Madrid be 34°C on June 13?",
@@ -765,19 +833,23 @@
             "forecast_day": 2,
             "market_price": 0.555,
             "gamma_event_id": "582438",
-            "gamma_market_id": "2502569"
+            "gamma_market_id": "2502569",
+            "market_yes": true,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"1\", \"0\"]"
         },
         {
             "ev": 4.2088,
-            "fee": 0.0,
-            "pnl": -3.91,
+            "fee": 1.15,
+            "pnl": 17.94,
             "city": "Paris",
             "edge": 0.7336,
             "side": "NO",
             "type": "EXACT",
             "unit": "C",
             "stake": 3.91,
-            "result": "LOSS",
+            "result": "WIN",
             "shares": 23,
             "target": 25.0,
             "question": "Will the highest temperature in Paris be 25°C on June 12?",
@@ -797,19 +869,23 @@
             "forecast_day": 1,
             "market_price": 0.83,
             "gamma_event_id": "578855",
-            "gamma_market_id": "2488549"
+            "gamma_market_id": "2488549",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 1.0294,
-            "fee": 0.0,
-            "pnl": -3.92,
+            "fee": 0.45,
+            "pnl": 4.63,
             "city": "Toronto",
             "edge": 0.4658,
             "side": "NO",
             "type": "EXACT",
             "unit": "C",
             "stake": 3.92,
-            "result": "LOSS",
+            "result": "WIN",
             "shares": 9,
             "target": 27.0,
             "question": "Will the highest temperature in Toronto be 27°C on June 12?",
@@ -829,19 +905,23 @@
             "forecast_day": 1,
             "market_price": 0.565,
             "gamma_event_id": "581981",
-            "gamma_market_id": "2501591"
+            "gamma_market_id": "2501591",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 1.0101,
-            "fee": 0.18,
-            "pnl": 4.86,
+            "fee": 0.0,
+            "pnl": -3.96,
             "city": "Mexico City",
             "edge": 0.4625,
             "side": "NO",
             "type": "EXACT",
             "unit": "C",
             "stake": 3.96,
-            "result": "WIN",
+            "result": "LOSS",
             "shares": 9,
             "target": 25.0,
             "question": "Will the highest temperature in Mexico City be 25°C on June 12?",
@@ -861,12 +941,16 @@
             "forecast_day": 1,
             "market_price": 0.56,
             "gamma_event_id": "582000",
-            "gamma_market_id": "2501732"
+            "gamma_market_id": "2501732",
+            "market_yes": true,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"1\", \"0\"]"
         },
         {
             "ev": 2.6881,
-            "fee": 0.32,
-            "pnl": 11.74,
+            "fee": 0.8,
+            "pnl": 11.26,
             "city": "Mexico City",
             "edge": 0.6798,
             "side": "NO",
@@ -893,19 +977,23 @@
             "forecast_day": 1,
             "market_price": 0.754,
             "gamma_event_id": "589059",
-            "gamma_market_id": "2527102"
+            "gamma_market_id": "2527102",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 3.1508,
-            "fee": 0.34,
-            "pnl": 12.83,
+            "fee": 0.0,
+            "pnl": -3.83,
             "city": "Houston",
             "edge": 0.728,
             "side": "NO",
             "type": "RANGE2",
             "unit": "F",
             "stake": 3.83,
-            "result": "WIN",
+            "result": "LOSS",
             "shares": 17,
             "target": 88.5,
             "question": "Will the highest temperature in Houston be between 88-89°F on June 17?",
@@ -925,19 +1013,23 @@
             "forecast_day": 1,
             "market_price": 0.775,
             "gamma_event_id": "599390",
-            "gamma_market_id": "2559506"
+            "gamma_market_id": "2559506",
+            "market_yes": true,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"1\", \"0\"]"
         },
         {
             "ev": 0.7536,
-            "fee": 0.14,
-            "pnl": 3.11,
+            "fee": 0.0,
+            "pnl": -3.75,
             "city": "Denver",
             "edge": 0.4223,
             "side": "NO",
             "type": "RANGE2",
             "unit": "F",
             "stake": 3.75,
-            "result": "WIN",
+            "result": "LOSS",
             "shares": 7,
             "target": 92.5,
             "question": "Will the highest temperature in Denver be between 92-93°F on June 17?",
@@ -957,12 +1049,16 @@
             "forecast_day": 1,
             "market_price": 0.465,
             "gamma_event_id": "599389",
-            "gamma_market_id": "2559492"
+            "gamma_market_id": "2559492",
+            "market_yes": true,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"1\", \"0\"]"
         },
         {
             "ev": 0.7404,
-            "fee": 0.14,
-            "pnl": 3.08,
+            "fee": 0.35,
+            "pnl": 2.87,
             "city": "Los Angeles",
             "edge": 0.419,
             "side": "NO",
@@ -989,19 +1085,23 @@
             "forecast_day": 2,
             "market_price": 0.46,
             "gamma_event_id": "606692",
-            "gamma_market_id": "2590642"
+            "gamma_market_id": "2590642",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 1.0505,
-            "fee": 0.16,
-            "pnl": 4.2,
+            "fee": 0.0,
+            "pnl": -3.64,
             "city": "New York",
             "edge": 0.497,
             "side": "NO",
             "type": "RANGE2",
             "unit": "F",
             "stake": 3.64,
-            "result": "WIN",
+            "result": "LOSS",
             "shares": 8,
             "target": 82.5,
             "question": "Will the highest temperature in New York City be between 82-83°F on June 19?",
@@ -1021,12 +1121,16 @@
             "forecast_day": 1,
             "market_price": 0.545,
             "gamma_event_id": "606677",
-            "gamma_market_id": "2590546"
+            "gamma_market_id": "2590546",
+            "market_yes": true,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"1\", \"0\"]"
         },
         {
             "ev": 0.7394,
-            "fee": 0.14,
-            "pnl": 3.08,
+            "fee": 0.35,
+            "pnl": 2.87,
             "city": "Los Angeles",
             "edge": 0.4185,
             "side": "NO",
@@ -1053,12 +1157,16 @@
             "forecast_day": 2,
             "market_price": 0.46,
             "gamma_event_id": "610238",
-            "gamma_market_id": "2602389"
+            "gamma_market_id": "2602389",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 0.7571,
-            "fee": 0.14,
-            "pnl": 3.29,
+            "fee": 0.35,
+            "pnl": 3.08,
             "city": "London",
             "edge": 0.4044,
             "side": "NO",
@@ -1085,19 +1193,23 @@
             "forecast_day": 1,
             "market_price": 0.49,
             "gamma_event_id": "603706",
-            "gamma_market_id": "2576888"
+            "gamma_market_id": "2576888",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 0.6887,
-            "fee": 0.14,
-            "pnl": 3.15,
+            "fee": 0.0,
+            "pnl": -3.71,
             "city": "Tokyo",
             "edge": 0.3833,
             "side": "NO",
             "type": "EXACT",
             "unit": "C",
             "stake": 3.71,
-            "result": "WIN",
+            "result": "LOSS",
             "shares": 7,
             "target": 24.0,
             "question": "Will the highest temperature in Tokyo be 24°C on June 20?",
@@ -1117,12 +1229,16 @@
             "forecast_day": 1,
             "market_price": 0.47,
             "gamma_event_id": "607139",
-            "gamma_market_id": "2592046"
+            "gamma_market_id": "2592046",
+            "market_yes": true,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"1\", \"0\"]"
         },
         {
             "ev": 2.586,
-            "fee": 0.3,
-            "pnl": 10.79,
+            "fee": 0.75,
+            "pnl": 10.34,
             "city": "Austin",
             "edge": 0.6927,
             "side": "NO",
@@ -1149,12 +1265,16 @@
             "forecast_day": 1,
             "market_price": 0.7395,
             "gamma_event_id": "606689",
-            "gamma_market_id": "2590605"
+            "gamma_market_id": "2590605",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 0.7701,
-            "fee": 0.14,
-            "pnl": 3.11,
+            "fee": 0.35,
+            "pnl": 2.9,
             "city": "Los Angeles",
             "edge": 0.4313,
             "side": "NO",
@@ -1181,12 +1301,16 @@
             "forecast_day": 2,
             "market_price": 0.465,
             "gamma_event_id": "613660",
-            "gamma_market_id": "2613731"
+            "gamma_market_id": "2613731",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 1.1616,
-            "fee": 0.18,
-            "pnl": 4.9,
+            "fee": 0.45,
+            "pnl": 4.63,
             "city": "Miami",
             "edge": 0.5245,
             "side": "NO",
@@ -1213,12 +1337,16 @@
             "forecast_day": 2,
             "market_price": 0.565,
             "gamma_event_id": "613655",
-            "gamma_market_id": "2613677"
+            "gamma_market_id": "2613677",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 0.6709,
-            "fee": 0.14,
-            "pnl": 3.11,
+            "fee": 0.35,
+            "pnl": 2.9,
             "city": "Seoul",
             "edge": 0.3772,
             "side": "NO",
@@ -1245,12 +1373,16 @@
             "forecast_day": 1,
             "market_price": 0.465,
             "gamma_event_id": "610659",
-            "gamma_market_id": "2603504"
+            "gamma_market_id": "2603504",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 3.1834,
-            "fee": 0.48,
-            "pnl": 19.52,
+            "fee": 1.2,
+            "pnl": 18.8,
             "city": "Toronto",
             "edge": 0.5442,
             "side": "YES",
@@ -1277,19 +1409,23 @@
             "forecast_day": 2,
             "market_price": 0.1665,
             "gamma_event_id": "617098",
-            "gamma_market_id": "2624305"
+            "gamma_market_id": "2624305",
+            "market_yes": true,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"1\", \"0\"]"
         },
         {
             "ev": 0.8665,
-            "fee": 0.14,
-            "pnl": 3.32,
+            "fee": 0.0,
+            "pnl": -3.54,
             "city": "Miami",
             "edge": 0.4568,
             "side": "NO",
             "type": "RANGE2",
             "unit": "F",
             "stake": 3.54,
-            "result": "WIN",
+            "result": "LOSS",
             "shares": 7,
             "target": 92.5,
             "question": "Will the highest temperature in Miami be between 92-93°F on June 22?",
@@ -1309,19 +1445,23 @@
             "forecast_day": 2,
             "market_price": 0.495,
             "gamma_event_id": "617103",
-            "gamma_market_id": "2624364"
+            "gamma_market_id": "2624364",
+            "market_yes": true,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"1\", \"0\"]"
         },
         {
             "ev": 0.7489,
-            "fee": 0.14,
-            "pnl": 3.08,
+            "fee": 0.0,
+            "pnl": -3.78,
             "city": "Los Angeles",
             "edge": 0.4237,
             "side": "NO",
             "type": "RANGE2",
             "unit": "F",
             "stake": 3.78,
-            "result": "WIN",
+            "result": "LOSS",
             "shares": 7,
             "target": 70.5,
             "question": "Will the highest temperature in Los Angeles be between 70-71°F on June 22?",
@@ -1341,19 +1481,23 @@
             "forecast_day": 2,
             "market_price": 0.46,
             "gamma_event_id": "617108",
-            "gamma_market_id": "2624420"
+            "gamma_market_id": "2624420",
+            "market_yes": true,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"1\", \"0\"]"
         },
         {
             "ev": 3.7194,
-            "fee": 0.02,
-            "pnl": 0.78,
+            "fee": 0.0,
+            "pnl": -0.2,
             "city": "Los Angeles",
             "edge": 0.7631,
             "side": "NO",
             "type": "RANGE2",
             "unit": "F",
             "stake": 0.2,
-            "result": "WIN",
+            "result": "LOSS",
             "shares": 1,
             "target": 70.5,
             "question": "Will the highest temperature in Los Angeles be between 70-71°F on June 21?",
@@ -1373,19 +1517,23 @@
             "forecast_day": 1,
             "market_price": 0.8,
             "gamma_event_id": "613660",
-            "gamma_market_id": "2613732"
+            "gamma_market_id": "2613732",
+            "market_yes": true,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"1\", \"0\"]"
         },
         {
             "ev": 1.0487,
-            "fee": 0.16,
-            "pnl": 4.2,
+            "fee": 0.0,
+            "pnl": -3.64,
             "city": "Houston",
             "edge": 0.4962,
             "side": "NO",
             "type": "RANGE2",
             "unit": "F",
             "stake": 3.64,
-            "result": "WIN",
+            "result": "LOSS",
             "shares": 8,
             "target": 92.5,
             "question": "Will the highest temperature in Houston be between 92-93°F on June 22?",
@@ -1405,19 +1553,23 @@
             "forecast_day": 1,
             "market_price": 0.545,
             "gamma_event_id": "617107",
-            "gamma_market_id": "2624410"
+            "gamma_market_id": "2624410",
+            "market_yes": true,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"1\", \"0\"]"
         },
         {
             "ev": 0.8031,
-            "fee": 0.14,
-            "pnl": 3.15,
+            "fee": 0.0,
+            "pnl": -3.71,
             "city": "Los Angeles",
             "edge": 0.4451,
             "side": "NO",
             "type": "RANGE2",
             "unit": "F",
             "stake": 3.71,
-            "result": "WIN",
+            "result": "LOSS",
             "shares": 7,
             "target": 70.5,
             "question": "Will the highest temperature in Los Angeles be between 70-71°F on June 23?",
@@ -1437,12 +1589,16 @@
             "forecast_day": 2,
             "market_price": 0.47,
             "gamma_event_id": "620496",
-            "gamma_market_id": "2635183"
+            "gamma_market_id": "2635183",
+            "market_yes": true,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"1\", \"0\"]"
         },
         {
             "ev": 1.0854,
-            "fee": 0.16,
-            "pnl": 4.2,
+            "fee": 0.4,
+            "pnl": 3.96,
             "city": "Miami",
             "edge": 0.5132,
             "side": "NO",
@@ -1469,19 +1625,23 @@
             "forecast_day": 2,
             "market_price": 0.545,
             "gamma_event_id": "620484",
-            "gamma_market_id": "2635120"
+            "gamma_market_id": "2635120",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 1.1828,
-            "fee": 0.18,
-            "pnl": 4.9,
+            "fee": 0.0,
+            "pnl": -3.92,
             "city": "Chicago",
             "edge": 0.5339,
             "side": "NO",
             "type": "RANGE2",
             "unit": "F",
             "stake": 3.92,
-            "result": "WIN",
+            "result": "LOSS",
             "shares": 9,
             "target": 72.5,
             "question": "Will the highest temperature in Chicago be between 72-73°F on June 22?",
@@ -1501,7 +1661,11 @@
             "forecast_day": 1,
             "market_price": 0.565,
             "gamma_event_id": "617104",
-            "gamma_market_id": "2624378"
+            "gamma_market_id": "2624378",
+            "market_yes": true,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"1\", \"0\"]"
         },
         {
             "ev": 0.1602,
@@ -1533,7 +1697,11 @@
             "forecast_day": 1,
             "market_price": 0.114,
             "gamma_event_id": "642575",
-            "gamma_market_id": "2714268"
+            "gamma_market_id": "2714268",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 0.4268,
@@ -1565,12 +1733,16 @@
             "forecast_day": 2,
             "market_price": 0.095,
             "gamma_event_id": "646284",
-            "gamma_market_id": "2725313"
+            "gamma_market_id": "2725313",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 1.0016,
-            "fee": 0.0005,
-            "pnl": 0.0133,
+            "fee": 0.0012,
+            "pnl": 0.0126,
             "city": "Los Angeles",
             "edge": 0.4378,
             "side": "NO",
@@ -1611,19 +1783,23 @@
             "requested_stake": 0.01,
             "book_levels_used": 1,
             "paper_execution_ok": true,
-            "paper_execution_reason": "filled"
+            "paper_execution_reason": "filled",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 0.4856,
-            "fee": 0.0004,
-            "pnl": 0.0075,
+            "fee": 0.0,
+            "pnl": -0.01,
             "city": "Los Angeles",
             "edge": 0.2889,
             "side": "NO",
             "type": "RANGE2",
             "unit": "F",
             "stake": 0.01,
-            "result": "WIN",
+            "result": "LOSS",
             "shares": 0.0179,
             "target": 70.5,
             "best_ask": 0.56,
@@ -1657,7 +1833,11 @@
             "requested_stake": 0.01,
             "book_levels_used": 1,
             "paper_execution_ok": true,
-            "paper_execution_reason": "filled"
+            "paper_execution_reason": "filled",
+            "market_yes": true,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"1\", \"0\"]"
         },
         {
             "ev": 0.7265,
@@ -1703,19 +1883,23 @@
             "requested_stake": 4.0,
             "book_levels_used": 1,
             "paper_execution_ok": true,
-            "paper_execution_reason": "filled"
+            "paper_execution_reason": "filled",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 0.4326,
-            "fee": 0.1449,
-            "pnl": 3.1015,
+            "fee": 0.0,
+            "pnl": -4.0,
             "city": "Milan",
             "edge": 0.2549,
             "side": "NO",
             "type": "BELOW",
             "unit": "C",
             "stake": 4.0,
-            "result": "WIN",
+            "result": "LOSS",
             "shares": 7.2464,
             "target": 30.0,
             "best_ask": 0.55,
@@ -1749,12 +1933,16 @@
             "requested_stake": 4.0,
             "book_levels_used": 2,
             "paper_execution_ok": true,
-            "paper_execution_reason": "filled"
+            "paper_execution_reason": "filled",
+            "market_yes": true,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"1\", \"0\"]"
         },
         {
             "ev": 0.9076,
-            "fee": 0.1633,
-            "pnl": 4.0,
+            "fee": 0.4082,
+            "pnl": 3.7551,
             "city": "New York",
             "edge": 0.4638,
             "side": "NO",
@@ -1795,12 +1983,16 @@
             "requested_stake": 4.0,
             "book_levels_used": 1,
             "paper_execution_ok": true,
-            "paper_execution_reason": "filled"
+            "paper_execution_reason": "filled",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 0.5108,
-            "fee": 0.1509,
-            "pnl": 3.3963,
+            "fee": 0.3774,
+            "pnl": 3.1698,
             "city": "Los Angeles",
             "edge": 0.2871,
             "side": "NO",
@@ -1841,19 +2033,23 @@
             "requested_stake": 4.0,
             "book_levels_used": 1,
             "paper_execution_ok": true,
-            "paper_execution_reason": "filled"
+            "paper_execution_reason": "filled",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 2.4992,
-            "fee": 0.2986,
-            "pnl": 10.6324,
+            "fee": 0.0,
+            "pnl": -4.0,
             "city": "New York",
             "edge": 0.6887,
             "side": "NO",
             "type": "RANGE2",
             "unit": "F",
             "stake": 4.0,
-            "result": "WIN",
+            "result": "LOSS",
             "shares": 14.931,
             "target": 92.5,
             "best_ask": 0.24,
@@ -1887,7 +2083,11 @@
             "requested_stake": 4.0,
             "book_levels_used": 3,
             "paper_execution_ok": true,
-            "paper_execution_reason": "filled"
+            "paper_execution_reason": "filled",
+            "market_yes": true,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"1\", \"0\"]"
         },
         {
             "ev": 1.9526,
@@ -1933,19 +2133,23 @@
             "requested_stake": 4.0,
             "book_levels_used": 3,
             "paper_execution_ok": true,
-            "paper_execution_reason": "filled"
+            "paper_execution_reason": "filled",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 0.8271,
-            "fee": 0.0,
-            "pnl": -4.0,
+            "fee": 0.3846,
+            "pnl": 3.3077,
             "city": "Chicago",
             "edge": 0.4495,
             "side": "NO",
             "type": "RANGE2",
             "unit": "F",
             "stake": 4.0,
-            "result": "LOSS",
+            "result": "WIN",
             "shares": 7.6923,
             "target": 90.5,
             "best_ask": 0.52,
@@ -1979,12 +2183,16 @@
             "requested_stake": 4.0,
             "book_levels_used": 1,
             "paper_execution_ok": true,
-            "paper_execution_reason": "filled"
+            "paper_execution_reason": "filled",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 0.8784,
-            "fee": 0.2051,
-            "pnl": 6.0513,
+            "fee": 0.5128,
+            "pnl": 5.7436,
             "city": "Toronto",
             "edge": 0.3575,
             "side": "YES",
@@ -2025,7 +2233,11 @@
             "requested_stake": 4.0,
             "book_levels_used": 1,
             "paper_execution_ok": true,
-            "paper_execution_reason": "filled"
+            "paper_execution_reason": "filled",
+            "market_yes": true,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"1\", \"0\"]"
         },
         {
             "ev": 0.3457,
@@ -2071,12 +2283,16 @@
             "requested_stake": 4.0,
             "book_levels_used": 1,
             "paper_execution_ok": true,
-            "paper_execution_reason": "filled"
+            "paper_execution_reason": "filled",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 0.6399,
-            "fee": 0.1404,
-            "pnl": 2.8771,
+            "fee": 0.3509,
+            "pnl": 2.6666,
             "city": "Seattle",
             "edge": 0.3838,
             "side": "NO",
@@ -2117,19 +2333,23 @@
             "requested_stake": 4.0,
             "book_levels_used": 1,
             "paper_execution_ok": true,
-            "paper_execution_reason": "filled"
+            "paper_execution_reason": "filled",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 0.7716,
-            "fee": 0.1481,
-            "pnl": 3.2593,
+            "fee": 0.0,
+            "pnl": -4.0,
             "city": "Los Angeles",
             "edge": 0.4362,
             "side": "NO",
             "type": "RANGE2",
             "unit": "F",
             "stake": 4.0,
-            "result": "WIN",
+            "result": "LOSS",
             "shares": 7.4074,
             "target": 74.5,
             "best_ask": 0.54,
@@ -2163,19 +2383,23 @@
             "requested_stake": 4.0,
             "book_levels_used": 1,
             "paper_execution_ok": true,
-            "paper_execution_reason": "filled"
+            "paper_execution_reason": "filled",
+            "market_yes": true,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"1\", \"0\"]"
         },
         {
             "ev": 0.8452,
-            "fee": 0.1538,
-            "pnl": 3.5385,
+            "fee": 0.0,
+            "pnl": -4.0,
             "city": "Los Angeles",
             "edge": 0.4591,
             "side": "NO",
             "type": "RANGE2",
             "unit": "F",
             "stake": 4.0,
-            "result": "WIN",
+            "result": "LOSS",
             "shares": 7.6923,
             "target": 74.5,
             "best_ask": 0.52,
@@ -2209,7 +2433,11 @@
             "requested_stake": 4.0,
             "book_levels_used": 1,
             "paper_execution_ok": true,
-            "paper_execution_reason": "filled"
+            "paper_execution_reason": "filled",
+            "market_yes": true,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"1\", \"0\"]"
         },
         {
             "ev": 0.6594,
@@ -2255,7 +2483,11 @@
             "requested_stake": 4.0,
             "book_levels_used": 1,
             "paper_execution_ok": true,
-            "paper_execution_reason": "filled"
+            "paper_execution_reason": "filled",
+            "market_yes": true,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"1\", \"0\"]"
         },
         {
             "ev": 1.982,
@@ -2301,19 +2533,23 @@
             "requested_stake": 4.0,
             "book_levels_used": 1,
             "paper_execution_ok": true,
-            "paper_execution_reason": "filled"
+            "paper_execution_reason": "filled",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 0.7394,
-            "fee": 0.1481,
-            "pnl": 3.2593,
+            "fee": 0.0,
+            "pnl": -4.0,
             "city": "Houston",
             "edge": 0.4185,
             "side": "NO",
             "type": "RANGE2",
             "unit": "F",
             "stake": 4.0,
-            "result": "WIN",
+            "result": "LOSS",
             "shares": 7.4074,
             "target": 96.5,
             "best_ask": 0.54,
@@ -2347,19 +2583,23 @@
             "requested_stake": 4.0,
             "book_levels_used": 1,
             "paper_execution_ok": true,
-            "paper_execution_reason": "filled"
+            "paper_execution_reason": "filled",
+            "market_yes": true,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"1\", \"0\"]"
         },
         {
             "ev": 0.6975,
-            "fee": 0.1429,
-            "pnl": 3.0,
+            "fee": 0.0,
+            "pnl": -4.0,
             "city": "Chicago",
             "edge": 0.41,
             "side": "NO",
             "type": "RANGE2",
             "unit": "F",
             "stake": 4.0,
-            "result": "WIN",
+            "result": "LOSS",
             "shares": 7.1429,
             "target": 78.5,
             "best_ask": 0.56,
@@ -2393,12 +2633,16 @@
             "requested_stake": 4.0,
             "book_levels_used": 1,
             "paper_execution_ok": true,
-            "paper_execution_reason": "filled"
+            "paper_execution_reason": "filled",
+            "market_yes": true,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"1\", \"0\"]"
         },
         {
             "ev": -0.2811,
-            "fee": 0.0851,
-            "pnl": 0.1702,
+            "fee": 0.2128,
+            "pnl": 0.0425,
             "city": "Los Angeles",
             "edge": -0.2505,
             "side": "NO",
@@ -2440,7 +2684,11 @@
             "requested_stake": 4.0,
             "book_levels_used": 1,
             "paper_execution_ok": true,
-            "paper_execution_reason": "filled"
+            "paper_execution_reason": "filled",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": -0.0468,
@@ -2487,12 +2735,16 @@
             "requested_stake": 4.0,
             "book_levels_used": 1,
             "paper_execution_ok": true,
-            "paper_execution_reason": "filled"
+            "paper_execution_reason": "filled",
+            "market_yes": true,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"1\", \"0\"]"
         },
         {
             "ev": -0.2946,
-            "fee": 0.0801,
-            "pnl": -0.0761,
+            "fee": 0.2002,
+            "pnl": -0.1962,
             "city": "Madrid",
             "edge": -0.28,
             "side": "NO",
@@ -2534,19 +2786,23 @@
             "requested_stake": 4.0,
             "book_levels_used": 1,
             "paper_execution_ok": true,
-            "paper_execution_reason": "filled"
+            "paper_execution_reason": "filled",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 0.7126,
-            "fee": 0.1455,
-            "pnl": 3.1272,
+            "fee": 0.0,
+            "pnl": -4.0,
             "city": "Chicago",
             "edge": 0.4111,
             "side": "NO",
             "type": "RANGE2",
             "unit": "F",
             "stake": 4.0,
-            "result": "WIN",
+            "result": "LOSS",
             "shares": 7.2727,
             "target": 84.5,
             "best_ask": 0.55,
@@ -2581,19 +2837,23 @@
             "requested_stake": 4.0,
             "book_levels_used": 1,
             "paper_execution_ok": true,
-            "paper_execution_reason": "filled"
+            "paper_execution_reason": "filled",
+            "market_yes": true,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"1\", \"0\"]"
         },
         {
             "ev": 1.0049,
-            "fee": 0.16,
-            "pnl": 4.0,
+            "fee": 0.0,
+            "pnl": -3.84,
             "city": "Los Angeles",
             "edge": 0.502,
             "side": "NO",
             "type": "RANGE2",
             "unit": "F",
             "stake": 3.84,
-            "result": "WIN",
+            "result": "LOSS",
             "shares": 8,
             "target": 74.5,
             "question": "Will the highest temperature in Los Angeles be between 74-75°F on July 13?",
@@ -2616,19 +2876,23 @@
             "yes_token_id": "",
             "forecast_c_raw": 29.6,
             "gamma_event_id": "693387",
-            "gamma_market_id": "2887997"
+            "gamma_market_id": "2887997",
+            "market_yes": true,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"1\", \"0\"]"
         },
         {
             "ev": 0.9039,
-            "fee": 0.14,
-            "pnl": 3.325,
+            "fee": 0.0,
+            "pnl": -3.535,
             "city": "Los Angeles",
             "edge": 0.4761,
             "side": "NO",
             "type": "RANGE2",
             "unit": "F",
             "stake": 3.535,
-            "result": "WIN",
+            "result": "LOSS",
             "shares": 7,
             "target": 76.5,
             "question": "Will the highest temperature in Los Angeles be between 76-77°F on July 14?",
@@ -2651,12 +2915,16 @@
             "yes_token_id": "",
             "forecast_c_raw": 30.5,
             "gamma_event_id": "697082",
-            "gamma_market_id": "2901260"
+            "gamma_market_id": "2901260",
+            "market_yes": true,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"1\", \"0\"]"
         },
         {
             "ev": 1.5578,
-            "fee": 0.02,
-            "pnl": 0.605,
+            "fee": 0.05,
+            "pnl": 0.575,
             "city": "Los Angeles",
             "edge": 0.6038,
             "side": "NO",
@@ -2686,19 +2954,23 @@
             "yes_token_id": "",
             "forecast_c_raw": 29.0,
             "gamma_event_id": "697082",
-            "gamma_market_id": "2901259"
+            "gamma_market_id": "2901259",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 1.0683,
-            "fee": 0.16,
-            "pnl": 4.08,
+            "fee": 0.0,
+            "pnl": -3.76,
             "city": "Los Angeles",
             "edge": 0.5219,
             "side": "NO",
             "type": "RANGE2",
             "unit": "F",
             "stake": 3.76,
-            "result": "WIN",
+            "result": "LOSS",
             "shares": 8,
             "target": 80.5,
             "question": "Will the highest temperature in Los Angeles be between 80-81°F on July 15?",
@@ -2721,12 +2993,16 @@
             "yes_token_id": "",
             "forecast_c_raw": 35.0,
             "gamma_event_id": "701171",
-            "gamma_market_id": "2916060"
+            "gamma_market_id": "2916060",
+            "market_yes": true,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"1\", \"0\"]"
         },
         {
             "ev": 0.8152,
-            "fee": 0.14,
-            "pnl": 3.115,
+            "fee": 0.35,
+            "pnl": 2.905,
             "city": "Los Angeles",
             "edge": 0.4559,
             "side": "NO",
@@ -2756,7 +3032,11 @@
             "yes_token_id": "",
             "forecast_c_raw": 34.8,
             "gamma_event_id": "704735",
-            "gamma_market_id": "2929525"
+            "gamma_market_id": "2929525",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 0.4691,
@@ -2791,7 +3071,11 @@
             "yes_token_id": "",
             "forecast_c_raw": 35.1,
             "gamma_event_id": "701171",
-            "gamma_market_id": "2916058"
+            "gamma_market_id": "2916058",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 0.7061,
@@ -2826,7 +3110,11 @@
             "yes_token_id": "",
             "forecast_c_raw": 34.8,
             "gamma_event_id": "704735",
-            "gamma_market_id": "2929527"
+            "gamma_market_id": "2929527",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 0.2304,
@@ -2861,12 +3149,16 @@
             "yes_token_id": "",
             "forecast_c_raw": 30.9,
             "gamma_event_id": "708378",
-            "gamma_market_id": "2941537"
+            "gamma_market_id": "2941537",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 1.1662,
-            "fee": 0.18,
-            "pnl": 5.013,
+            "fee": 0.45,
+            "pnl": 4.743,
             "city": "Toronto",
             "edge": 0.512,
             "side": "NO",
@@ -2896,19 +3188,23 @@
             "yes_token_id": "",
             "forecast_c_raw": 28.7,
             "gamma_event_id": "711999",
-            "gamma_market_id": "2954161"
+            "gamma_market_id": "2954161",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 0.7631,
-            "fee": 0.14,
-            "pnl": 3.01,
+            "fee": 0.0,
+            "pnl": -3.85,
             "city": "Los Angeles",
             "edge": 0.4395,
             "side": "NO",
             "type": "RANGE2",
             "unit": "F",
             "stake": 3.85,
-            "result": "WIN",
+            "result": "LOSS",
             "shares": 7,
             "target": 78.5,
             "question": "Will the highest temperature in Los Angeles be between 78-79°F on July 18?",
@@ -2931,19 +3227,23 @@
             "yes_token_id": "",
             "forecast_c_raw": 31.9,
             "gamma_event_id": "712009",
-            "gamma_market_id": "2954275"
+            "gamma_market_id": "2954275",
+            "market_yes": true,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"1\", \"0\"]"
         },
         {
             "ev": 1.31,
-            "fee": 0.18,
-            "pnl": 5.04,
+            "fee": 0.0,
+            "pnl": -3.78,
             "city": "Los Angeles",
             "edge": 0.57,
             "side": "NO",
             "type": "RANGE2",
             "unit": "F",
             "stake": 3.78,
-            "result": "WIN",
+            "result": "LOSS",
             "shares": 9,
             "target": 76.5,
             "question": "Will the highest temperature in Los Angeles be between 76-77°F on July 19?",
@@ -2966,7 +3266,11 @@
             "yes_token_id": "",
             "forecast_c_raw": 31.2,
             "gamma_event_id": "715767",
-            "gamma_market_id": "2967402"
+            "gamma_market_id": "2967402",
+            "market_yes": true,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"1\", \"0\"]"
         },
         {
             "ev": 1.941,
@@ -3001,7 +3305,11 @@
             "yes_token_id": "",
             "forecast_c_raw": 31.2,
             "gamma_event_id": "715767",
-            "gamma_market_id": "2967401"
+            "gamma_market_id": "2967401",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 4.0099,
@@ -3036,7 +3344,11 @@
             "yes_token_id": "",
             "forecast_c_raw": 31.2,
             "gamma_event_id": "715767",
-            "gamma_market_id": "2967404"
+            "gamma_market_id": "2967404",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 3.8384,
@@ -3071,7 +3383,11 @@
             "yes_token_id": "",
             "forecast_c_raw": 31.2,
             "gamma_event_id": "719619",
-            "gamma_market_id": "2979268"
+            "gamma_market_id": "2979268",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 0.2281,
@@ -3106,19 +3422,23 @@
             "yes_token_id": "",
             "forecast_c_raw": 34.0,
             "gamma_event_id": "723601",
-            "gamma_market_id": "2995483"
+            "gamma_market_id": "2995483",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 0.9024,
-            "fee": 0.04,
-            "pnl": 0.94,
+            "fee": 0.0,
+            "pnl": -1.02,
             "city": "Los Angeles",
             "edge": 0.48,
             "side": "NO",
             "type": "RANGE2",
             "unit": "F",
             "stake": 1.02,
-            "result": "WIN",
+            "result": "LOSS",
             "shares": 2,
             "target": 80.5,
             "question": "Will the highest temperature in Los Angeles be between 80-81°F on July 21?",
@@ -3141,12 +3461,16 @@
             "yes_token_id": "",
             "forecast_c_raw": 34.0,
             "gamma_event_id": "723601",
-            "gamma_market_id": "2995484"
+            "gamma_market_id": "2995484",
+            "market_yes": true,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"1\", \"0\"]"
         },
         {
             "ev": 1.1857,
-            "fee": 0.18,
-            "pnl": 4.905,
+            "fee": 0.45,
+            "pnl": 4.635,
             "city": "Chicago",
             "edge": 0.5352,
             "side": "NO",
@@ -3176,19 +3500,23 @@
             "yes_token_id": "",
             "forecast_c_raw": 31.0,
             "gamma_event_id": "719615",
-            "gamma_market_id": "2979221"
+            "gamma_market_id": "2979221",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 0.8168,
-            "fee": 0.0,
-            "pnl": -3.64,
+            "fee": 0.35,
+            "pnl": 3.01,
             "city": "Chicago",
             "edge": 0.444,
             "side": "NO",
             "type": "RANGE2",
             "unit": "F",
             "stake": 3.64,
-            "result": "LOSS",
+            "result": "WIN",
             "shares": 7,
             "target": 84.5,
             "question": "Will the highest temperature in Chicago be between 84-85°F on July 21?",
@@ -3211,12 +3539,16 @@
             "yes_token_id": "",
             "forecast_c_raw": 30.1,
             "gamma_event_id": "723597",
-            "gamma_market_id": "2995439"
+            "gamma_market_id": "2995439",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 0.7939,
-            "fee": 0.14,
-            "pnl": 3.318,
+            "fee": 0.35,
+            "pnl": 3.108,
             "city": "London",
             "edge": 0.4202,
             "side": "NO",
@@ -3246,12 +3578,16 @@
             "yes_token_id": "",
             "forecast_c_raw": 24.1,
             "gamma_event_id": "720225",
-            "gamma_market_id": "2980690"
+            "gamma_market_id": "2980690",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 1.2173,
-            "fee": 0.18,
-            "pnl": 4.905,
+            "fee": 0.45,
+            "pnl": 4.635,
             "city": "Los Angeles",
             "edge": 0.5492,
             "side": "NO",
@@ -3281,7 +3617,11 @@
             "yes_token_id": "",
             "forecast_c_raw": 30.1,
             "gamma_event_id": "727282",
-            "gamma_market_id": "3009120"
+            "gamma_market_id": "3009120",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 1.1981,
@@ -3316,7 +3656,11 @@
             "yes_token_id": "",
             "forecast_c_raw": 35.0,
             "gamma_event_id": "731117",
-            "gamma_market_id": "3024005"
+            "gamma_market_id": "3024005",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 4.1279,
@@ -3351,19 +3695,23 @@
             "yes_token_id": "",
             "forecast_c_raw": 34.3,
             "gamma_event_id": "731117",
-            "gamma_market_id": "3024008"
+            "gamma_market_id": "3024008",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 0.1801,
-            "fee": 0.0,
-            "pnl": -3.5,
+            "fee": 0.7,
+            "pnl": 9.8,
             "city": "Los Angeles",
             "edge": 0.0511,
             "side": "YES",
             "type": "RANGE2",
             "unit": "F",
             "stake": 3.5,
-            "result": "LOSS",
+            "result": "WIN",
             "shares": 14,
             "target": 78.5,
             "question": "Will the highest temperature in Los Angeles be between 78-79°F on July 24?",
@@ -3386,7 +3734,11 @@
             "yes_token_id": "",
             "forecast_c_raw": 36.7,
             "gamma_event_id": "735887",
-            "gamma_market_id": "3048623"
+            "gamma_market_id": "3048623",
+            "market_yes": true,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"1\", \"0\"]"
         },
         {
             "ev": 0.2138,
@@ -3421,7 +3773,11 @@
             "yes_token_id": "",
             "forecast_c_raw": 36.7,
             "gamma_event_id": "735887",
-            "gamma_market_id": "3048625"
+            "gamma_market_id": "3048625",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 1.2665,
@@ -3456,19 +3812,23 @@
             "yes_token_id": "",
             "forecast_c_raw": 36.4,
             "gamma_event_id": "741274",
-            "gamma_market_id": "3074211"
+            "gamma_market_id": "3074211",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 0.8839,
-            "fee": 0.14,
-            "pnl": 3.255,
+            "fee": 0.0,
+            "pnl": -3.605,
             "city": "Los Angeles",
             "edge": 0.475,
             "side": "NO",
             "type": "RANGE2",
             "unit": "F",
             "stake": 3.605,
-            "result": "WIN",
+            "result": "LOSS",
             "shares": 7,
             "target": 78.5,
             "question": "Will the highest temperature in Los Angeles be between 78-79°F on July 26?",
@@ -3491,19 +3851,23 @@
             "yes_token_id": "",
             "forecast_c_raw": 32.9,
             "gamma_event_id": "745865",
-            "gamma_market_id": "3094881"
+            "gamma_market_id": "3094881",
+            "market_yes": true,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"1\", \"0\"]"
         },
         {
             "ev": 0.9568,
-            "fee": 0.16,
-            "pnl": 3.88,
+            "fee": 0.0,
+            "pnl": -3.96,
             "city": "Los Angeles",
             "edge": 0.4934,
             "side": "NO",
             "type": "RANGE2",
             "unit": "F",
             "stake": 3.96,
-            "result": "WIN",
+            "result": "LOSS",
             "shares": 8,
             "target": 78.5,
             "question": "Will the highest temperature in Los Angeles be between 78-79°F on July 27?",
@@ -3526,19 +3890,23 @@
             "yes_token_id": "",
             "forecast_c_raw": 31.8,
             "gamma_event_id": "750588",
-            "gamma_market_id": "3108671"
+            "gamma_market_id": "3108671",
+            "market_yes": true,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"1\", \"0\"]"
         },
         {
             "ev": 0.9547,
-            "fee": 0.16,
-            "pnl": 3.88,
+            "fee": 0.0,
+            "pnl": -3.96,
             "city": "Los Angeles",
             "edge": 0.4923,
             "side": "NO",
             "type": "RANGE2",
             "unit": "F",
             "stake": 3.96,
-            "result": "WIN",
+            "result": "LOSS",
             "shares": 8,
             "target": 78.5,
             "question": "Will the highest temperature in Los Angeles be between 78-79°F on July 28?",
@@ -3561,19 +3929,23 @@
             "yes_token_id": "",
             "forecast_c_raw": 31.7,
             "gamma_event_id": "753896",
-            "gamma_market_id": "3122574"
+            "gamma_market_id": "3122574",
+            "market_yes": true,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"1\", \"0\"]"
         },
         {
             "ev": 1.0194,
-            "fee": 0.16,
-            "pnl": 4.12,
+            "fee": 0.0,
+            "pnl": -3.72,
             "city": "Miami",
             "edge": 0.4932,
             "side": "NO",
             "type": "RANGE2",
             "unit": "F",
             "stake": 3.72,
-            "result": "WIN",
+            "result": "LOSS",
             "shares": 8,
             "target": 90.5,
             "question": "Will the highest temperature in Miami be between 90-91°F on July 27?",
@@ -3596,7 +3968,11 @@
             "yes_token_id": "",
             "forecast_c_raw": 29.5,
             "gamma_event_id": "750583",
-            "gamma_market_id": "3108614"
+            "gamma_market_id": "3108614",
+            "market_yes": true,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"1\", \"0\"]"
         },
         {
             "ev": 6.4539,
@@ -3631,12 +4007,16 @@
             "yes_token_id": "",
             "forecast_c_raw": 32.6,
             "gamma_event_id": "750588",
-            "gamma_market_id": "3108670"
+            "gamma_market_id": "3108670",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 0.8334,
-            "fee": 0.14,
-            "pnl": 3.255,
+            "fee": 0.35,
+            "pnl": 3.045,
             "city": "Chicago",
             "edge": 0.4485,
             "side": "NO",
@@ -3666,19 +4046,23 @@
             "yes_token_id": "",
             "forecast_c_raw": 24.3,
             "gamma_event_id": "753892",
-            "gamma_market_id": "3122530"
+            "gamma_market_id": "3122530",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 0.8954,
-            "fee": 0.14,
-            "pnl": 3.29,
+            "fee": 0.0,
+            "pnl": -3.57,
             "city": "Los Angeles",
             "edge": 0.4764,
             "side": "NO",
             "type": "RANGE2",
             "unit": "F",
             "stake": 3.57,
-            "result": "WIN",
+            "result": "LOSS",
             "shares": 7,
             "target": 78.5,
             "question": "Will the highest temperature in Los Angeles be between 78-79°F on July 29?",
@@ -3701,12 +4085,16 @@
             "yes_token_id": "",
             "forecast_c_raw": 31.5,
             "gamma_event_id": "758588",
-            "gamma_market_id": "3142046"
+            "gamma_market_id": "3142046",
+            "market_yes": true,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"1\", \"0\"]"
         },
         {
             "ev": 0.801,
-            "fee": 0.14,
-            "pnl": 3.185,
+            "fee": 0.35,
+            "pnl": 2.975,
             "city": "Miami",
             "edge": 0.4398,
             "side": "NO",
@@ -3736,12 +4124,16 @@
             "yes_token_id": "",
             "forecast_c_raw": 29.8,
             "gamma_event_id": "753891",
-            "gamma_market_id": "3122521"
+            "gamma_market_id": "3122521",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 0.7762,
-            "fee": 0.14,
-            "pnl": 3.255,
+            "fee": 0.35,
+            "pnl": 3.045,
             "city": "Mexico City",
             "edge": 0.4184,
             "side": "NO",
@@ -3771,7 +4163,11 @@
             "yes_token_id": "",
             "forecast_c_raw": 21.6,
             "gamma_event_id": "758590",
-            "gamma_market_id": "3142070"
+            "gamma_market_id": "3142070",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 0.1516,
@@ -3806,7 +4202,11 @@
             "yes_token_id": "",
             "forecast_c_raw": 32.1,
             "gamma_event_id": "758588",
-            "gamma_market_id": "3142045"
+            "gamma_market_id": "3142045",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 3.1053,
@@ -3841,7 +4241,11 @@
             "yes_token_id": "",
             "forecast_c_raw": 32.1,
             "gamma_event_id": "758588",
-            "gamma_market_id": "3142047"
+            "gamma_market_id": "3142047",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 1.1694,
@@ -3876,19 +4280,23 @@
             "yes_token_id": "",
             "forecast_c_raw": 30.2,
             "gamma_event_id": "766074",
-            "gamma_market_id": "3194919"
+            "gamma_market_id": "3194919",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 0.7938,
-            "fee": 0.16,
-            "pnl": 3.96,
+            "fee": 0.0,
+            "pnl": -3.88,
             "city": "Chicago",
             "edge": 0.4027,
             "side": "NO",
             "type": "RANGE2",
             "unit": "F",
             "stake": 3.88,
-            "result": "WIN",
+            "result": "LOSS",
             "shares": 8,
             "target": 86.5,
             "question": "Will the highest temperature in Chicago be between 86-87°F on July 30?",
@@ -3911,7 +4319,11 @@
             "yes_token_id": "",
             "forecast_c_raw": 24.8,
             "gamma_event_id": "766070",
-            "gamma_market_id": "3194877"
+            "gamma_market_id": "3194877",
+            "market_yes": true,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"1\", \"0\"]"
         },
         {
             "ev": 1.2515,
@@ -3946,19 +4358,23 @@
             "yes_token_id": "",
             "forecast_c_raw": 24.8,
             "gamma_event_id": "766070",
-            "gamma_market_id": "3194879"
+            "gamma_market_id": "3194879",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 0.7307,
-            "fee": 0.0,
-            "pnl": -3.815,
+            "fee": 0.35,
+            "pnl": 2.835,
             "city": "Miami",
             "edge": 0.4175,
             "side": "NO",
             "type": "RANGE2",
             "unit": "F",
             "stake": 3.815,
-            "result": "LOSS",
+            "result": "WIN",
             "shares": 7,
             "target": 94.5,
             "question": "Will the highest temperature in Miami be between 94-95°F on July 31?",
@@ -3981,12 +4397,16 @@
             "yes_token_id": "",
             "forecast_c_raw": 31.4,
             "gamma_event_id": "770658",
-            "gamma_market_id": "3215538"
+            "gamma_market_id": "3215538",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 1.5038,
-            "fee": 0.2,
-            "pnl": 6.05,
+            "fee": 0.5,
+            "pnl": 5.75,
             "city": "Denver",
             "edge": 0.5831,
             "side": "NO",
@@ -4016,19 +4436,23 @@
             "yes_token_id": "",
             "forecast_c_raw": 36.6,
             "gamma_event_id": "766072",
-            "gamma_market_id": "3194903"
+            "gamma_market_id": "3194903",
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "ev": 1.3772,
-            "fee": 0.18,
-            "pnl": 5.175,
+            "fee": 0.0,
+            "pnl": -3.645,
             "city": "Los Angeles",
             "edge": 0.5774,
             "side": "NO",
             "type": "RANGE2",
             "unit": "F",
             "stake": 3.645,
-            "result": "WIN",
+            "result": "LOSS",
             "shares": 9,
             "target": 78.5,
             "question": "Will the highest temperature in Los Angeles be between 78-79°F on July 31?",
@@ -4051,7 +4475,11 @@
             "yes_token_id": "",
             "forecast_c_raw": 32.2,
             "gamma_event_id": "770663",
-            "gamma_market_id": "3215593"
+            "gamma_market_id": "3215593",
+            "market_yes": true,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"1\", \"0\"]"
         },
         {
             "ev": 1.0858,
@@ -4223,11 +4651,14 @@
             "ev": 0.3126,
             "stake": 3.6,
             "result": "WIN",
-            "pnl": 1.3,
-            "fee": 0.1,
+            "pnl": 1.15,
+            "fee": 0.25,
             "forecast_day": 2,
             "real_temp_c": 36.4,
-            "market_yes": false
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "market_id": "new-york|2026-08-17|RANGE2|80-81|F_NO",
@@ -4258,11 +4689,11 @@
             "edge": 0.1541,
             "ev": 0.1664,
             "stake": 4.0,
-            "result": "WIN",
-            "pnl": 0.8395,
-            "fee": 0.0988,
+            "result": "LOSS",
+            "pnl": -4.0,
+            "fee": 0.0,
             "forecast_day": 1,
-            "real_temp_c": 29.2,
+            "real_temp_c": 26.8,
             "paper_execution": true,
             "paper_execution_ok": true,
             "paper_execution_reason": "filled",
@@ -4275,7 +4706,11 @@
             "fill_ratio": 1.0,
             "book_levels_used": 1,
             "orderbook_ts": 1786975907.5053394,
-            "market_yes": false
+            "market_yes": true,
+            "resolution_source": "polymarket_gamma",
+            "audit_note": "Polymarket resolves NYC highs by Wunderground KLGA; station-coordinate Open-Meteo max was ~80.2F, inside 80-81F, so NO loses.",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"1\", \"0\"]"
         },
         {
             "market_id": "paris|2026-08-19|EXACT|23|C_NO",
@@ -4354,8 +4789,8 @@
             "ev": 0.2248,
             "stake": 4.0,
             "result": "WIN",
-            "pnl": 1.0256,
-            "fee": 0.1026,
+            "pnl": 0.8718,
+            "fee": 0.2564,
             "forecast_day": 1,
             "real_temp_c": 30.9,
             "paper_execution": true,
@@ -4370,7 +4805,10 @@
             "fill_ratio": 1.0,
             "book_levels_used": 1,
             "orderbook_ts": 1787005508.793146,
-            "market_yes": false
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "market_id": "seattle|2026-08-19|RANGE2|76-77|F_NO",
@@ -4448,9 +4886,9 @@
             "edge": 0.2114,
             "ev": 0.2645,
             "stake": 4.0,
-            "result": "LOSS",
-            "pnl": -4.0,
-            "fee": 0.0,
+            "result": "WIN",
+            "pnl": 1.2198,
+            "fee": 0.2747,
             "forecast_day": 1,
             "real_temp_c": 23.8,
             "paper_execution": true,
@@ -4465,7 +4903,10 @@
             "fill_ratio": 1.0,
             "book_levels_used": 1,
             "orderbook_ts": 1787041195.9371588,
-            "market_yes": true
+            "market_yes": false,
+            "resolution_source": "polymarket_gamma",
+            "reliquidado_em": "2026-08-19T13:52:29.737673+00:00",
+            "official_outcomePrices": "[\"0\", \"1\"]"
         },
         {
             "market_id": "milan|2026-08-20|EXACT|25|C_NO",
@@ -4562,9 +5003,19 @@
             "orderbook_ts": 1787118865.4466078
         }
     ],
-    "saved_at": "2026-08-19T05:54:26.166811+00:00",
+    "saved_at": "2026-08-19T13:52:29.737673+00:00",
     "created_at": "2026-06-01T00:00:00+00:00",
     "override_note": "Correcao 08/06/2026 — restaura Madrid Jun-8 perdido por override reaplicado",
     "start_balance": 200.0,
-    "override_applied_at": "2026-06-08T12:30:00.000000+00:00"
+    "override_applied_at": "2026-06-08T12:30:00.000000+00:00",
+    "audit_note": "Corrected New York 2026-08-17 settlement to station-based Polymarket resolution assumption (KLGA).",
+    "reliquidacao_note": "Closed trades verified against Polymarket Gamma outcomePrices; unverified trades marked resolution_source=unverified.",
+    "reliquidacao_stats": {
+        "checked": 104,
+        "confirmed": 26,
+        "changed": 78,
+        "unresolved": 28,
+        "old_seq": 167,
+        "new_seq": 168
+    }
 }
