@@ -891,6 +891,23 @@ class TestCidadesAtivas(unittest.TestCase):
         self.assertEqual(resolution_coords(city), (33.9416, -118.4085))
         self.assertEqual(resolution_coords({"lat": 1.0, "lon": 2.0}), (1.0, 2.0))
 
+    def test_cidades_recentes_usam_estacoes_de_resolucao(self):
+        import config
+
+        expected = {
+            "new-york": (40.7769, -73.874),
+            "london": (51.5053, 0.0553),
+            "paris": (48.9694, 2.4414),
+            "seoul": (37.4602, 126.4407),
+            "milan": (45.6306, 8.7281),
+            "seattle": (47.4502, -122.3088),
+            "miami": (25.7959, -80.287),
+            "madrid": (40.4722, -3.5608),
+        }
+        by_slug = {c["slug"]: c for c in config.ALL_CITIES}
+        for slug, coords in expected.items():
+            self.assertEqual(config.resolution_coords(by_slug[slug]), coords)
+
 
 class TestEstacoesDoAno(unittest.TestCase):
     def test_hemisferio_norte(self):
@@ -1577,19 +1594,19 @@ class TestSettlementCityLookup(unittest.TestCase):
         from settlement import _get_city_coordinates
         lat, lon = _get_city_coordinates("new-york")
         self.assertIsNotNone(lat)
-        self.assertAlmostEqual(lat, 40.7128, places=2)
+        self.assertAlmostEqual(lat, 40.7769, places=2)
 
     def test_lookup_by_display(self):
         from settlement import _get_city_coordinates
         lat, lon = _get_city_coordinates("New York")
         self.assertIsNotNone(lat)
-        self.assertAlmostEqual(lat, 40.7128, places=2)
+        self.assertAlmostEqual(lat, 40.7769, places=2)
 
     def test_lookup_by_alias(self):
         from settlement import _get_city_coordinates
         lat, lon = _get_city_coordinates("nyc")
         self.assertIsNotNone(lat)
-        self.assertAlmostEqual(lat, 40.7128, places=2)
+        self.assertAlmostEqual(lat, 40.7769, places=2)
 
     def test_unknown_city_returns_none(self):
         from settlement import _get_city_coordinates
