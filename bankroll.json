@@ -1,6 +1,6 @@
 {
-    "seq": 171,
-    "balance": 407.4215,
+    "seq": 172,
+    "balance": 412.1444,
     "history": [
         {
             "pnl": -3.92,
@@ -4823,7 +4823,7 @@
             "market_date": "2026-08-19",
             "event_slug": "highest-temperature-in-seattle-on-august-19-2026",
             "entry_time": "2026-08-18T02:54:31.404355+00:00",
-            "exit_time": null,
+            "exit_time": "2026-08-20T07:17:53.784963+00:00",
             "type": "RANGE2",
             "side": "NO",
             "unit": "F",
@@ -4840,11 +4840,11 @@
             "edge": 0.1372,
             "ev": 0.142,
             "stake": 4.0,
-            "result": "OPEN",
-            "pnl": 0,
-            "fee": 0.0,
+            "result": "WIN",
+            "pnl": 0.7229,
+            "fee": 0.0964,
             "forecast_day": 3,
-            "real_temp_c": null,
+            "real_temp_c": 28.3,
             "paper_execution": true,
             "paper_execution_ok": true,
             "paper_execution_reason": "filled",
@@ -4856,7 +4856,8 @@
             "slippage": 0.0,
             "fill_ratio": 1.0,
             "book_levels_used": 1,
-            "orderbook_ts": 1787021671.4031186
+            "orderbook_ts": 1787021671.4031186,
+            "market_yes": false
         },
         {
             "market_id": "london|2026-08-18|EXACT|24|C_NO",
@@ -5098,7 +5099,7 @@
             "orderbook_ts": 1787187438.9620128
         }
     ],
-    "saved_at": "2026-08-20T00:57:19.314022+00:00",
+    "saved_at": "2026-08-20T07:17:53.785157+00:00",
     "created_at": "2026-06-01T00:00:00+00:00",
     "override_note": "Correcao 08/06/2026 — restaura Madrid Jun-8 perdido por override reaplicado",
     "start_balance": 200.0,
