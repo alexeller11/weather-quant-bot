@@ -1,6 +1,6 @@
 {
-    "seq": 235,
-    "balance": 435.0436,
+    "seq": 236,
+    "balance": 449.0497,
     "history": [
         {
             "pnl": -3.92,
@@ -6410,7 +6410,7 @@
             "market_date": "2026-08-31",
             "event_slug": "highest-temperature-in-houston-on-august-31-2026",
             "entry_time": "2026-08-29T15:10:06.756341+00:00",
-            "exit_time": null,
+            "exit_time": "2026-09-01T06:43:28.539854+00:00",
             "type": "RANGE2",
             "side": "NO",
             "unit": "F",
@@ -6427,11 +6427,11 @@
             "edge": 0.2378,
             "ev": 0.2992,
             "stake": 4.0,
-            "result": "OPEN",
-            "pnl": 0,
-            "fee": 0.0,
+            "result": "WIN",
+            "pnl": 1.3699,
+            "fee": 0.1096,
             "forecast_day": 3,
-            "real_temp_c": null,
+            "real_temp_c": 32.7,
             "paper_execution": true,
             "paper_execution_ok": true,
             "paper_execution_reason": "filled",
@@ -6443,7 +6443,8 @@
             "slippage": 0.0,
             "fill_ratio": 1.0,
             "book_levels_used": 1,
-            "orderbook_ts": 1788016206.756131
+            "orderbook_ts": 1788016206.756131,
+            "market_yes": false
         },
         {
             "market_id": "miami|2026-08-30|RANGE2|92-93|F_NO",
@@ -6505,7 +6506,7 @@
             "market_date": "2026-08-31",
             "event_slug": "highest-temperature-in-sao-paulo-on-august-31-2026",
             "entry_time": "2026-08-30T12:19:52.778737+00:00",
-            "exit_time": null,
+            "exit_time": "2026-09-01T06:43:28.539936+00:00",
             "type": "BELOW",
             "side": "NO",
             "unit": "C",
@@ -6522,11 +6523,11 @@
             "edge": 0.3874,
             "ev": 0.8165,
             "stake": 3.9999,
-            "result": "OPEN",
-            "pnl": 0,
-            "fee": 0.0,
+            "result": "WIN",
+            "pnl": 4.6363,
+            "fee": 0.1762,
             "forecast_day": 2,
-            "real_temp_c": null,
+            "real_temp_c": 33.6,
             "paper_execution": true,
             "paper_execution_ok": true,
             "paper_execution_reason": "filled",
@@ -6538,7 +6539,8 @@
             "slippage": 0.0039,
             "fill_ratio": 1.0,
             "book_levels_used": 2,
-            "orderbook_ts": 1788092392.7785497
+            "orderbook_ts": 1788092392.7785497,
+            "market_yes": false
         },
         {
             "market_id": "tokyo|2026-08-31|EXACT|28|C_NO",
@@ -6730,7 +6732,7 @@
             "orderbook_ts": 1788217152.2166233
         }
     ],
-    "saved_at": "2026-08-31T22:59:12.928544+00:00",
+    "saved_at": "2026-09-01T06:43:28.540037+00:00",
     "created_at": "2026-06-01T00:00:00+00:00",
     "override_note": "Correcao 08/06/2026 — restaura Madrid Jun-8 perdido por override reaplicado",
     "start_balance": 200.0,
