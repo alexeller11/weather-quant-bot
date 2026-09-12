@@ -1,6 +1,6 @@
 {
-    "seq": 284,
-    "balance": 485.665,
+    "seq": 285,
+    "balance": 490.7971,
     "history": [
         {
             "pnl": -3.92,
@@ -8089,7 +8089,7 @@
             "market_date": "2026-09-12",
             "event_slug": "highest-temperature-in-tokyo-on-september-12-2026",
             "entry_time": "2026-09-11T18:41:09.928541+00:00",
-            "exit_time": null,
+            "exit_time": "2026-09-12T16:35:08.820223+00:00",
             "type": "EXACT",
             "side": "NO",
             "unit": "C",
@@ -8106,11 +8106,11 @@
             "edge": 0.1844,
             "ev": 0.2166,
             "stake": 3.9999,
-            "result": "OPEN",
-            "pnl": 0,
-            "fee": 0.0,
+            "result": "WIN",
+            "pnl": 1.1322,
+            "fee": 0.1047,
             "forecast_day": 1,
-            "real_temp_c": null,
+            "real_temp_c": 24.9,
             "paper_execution": true,
             "paper_execution_ok": true,
             "paper_execution_reason": "filled",
@@ -8122,7 +8122,8 @@
             "slippage": 0.0038,
             "fill_ratio": 1.0,
             "book_levels_used": 2,
-            "orderbook_ts": 1789152069.9281712
+            "orderbook_ts": 1789152069.9281712,
+            "market_yes": false
         },
         {
             "market_id": "sao-paulo|2026-09-13|EXACT|16|C_NO",
@@ -8172,7 +8173,7 @@
             "orderbook_ts": 1789230610.1311429
         }
     ],
-    "saved_at": "2026-09-12T16:30:10.683730+00:00",
+    "saved_at": "2026-09-12T16:35:08.820282+00:00",
     "created_at": "2026-06-01T00:00:00+00:00",
     "override_note": "Correcao 08/06/2026 — restaura Madrid Jun-8 perdido por override reaplicado",
     "start_balance": 200.0,
