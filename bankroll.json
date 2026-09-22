@@ -1,6 +1,6 @@
 {
-    "seq": 329,
-    "balance": 497.2146,
+    "seq": 330,
+    "balance": 502.1758,
     "history": [
         {
             "pnl": -3.92,
@@ -9290,7 +9290,7 @@
             "market_date": "2026-09-21",
             "event_slug": "highest-temperature-in-miami-on-september-21-2026",
             "entry_time": "2026-09-20T14:09:53.832067+00:00",
-            "exit_time": null,
+            "exit_time": "2026-09-22T06:15:57.168946+00:00",
             "type": "RANGE2",
             "side": "NO",
             "unit": "F",
@@ -9307,11 +9307,11 @@
             "edge": 0.1752,
             "ev": 0.1973,
             "stake": 3.9999,
-            "result": "OPEN",
-            "pnl": 0,
-            "fee": 0.0,
+            "result": "WIN",
+            "pnl": 0.9613,
+            "fee": 0.1013,
             "forecast_day": 2,
-            "real_temp_c": null,
+            "real_temp_c": 28.4,
             "paper_execution": true,
             "paper_execution_ok": true,
             "paper_execution_reason": "filled",
@@ -9323,7 +9323,8 @@
             "slippage": 0.0001,
             "fill_ratio": 1.0,
             "book_levels_used": 2,
-            "orderbook_ts": 1789913393.831459
+            "orderbook_ts": 1789913393.831459,
+            "market_yes": false
         },
         {
             "market_id": "tokyo|2026-09-22|EXACT|31|C_NO",
@@ -9514,7 +9515,7 @@
             "orderbook_ts": 1790057570.930843
         }
     ],
-    "saved_at": "2026-09-22T06:12:51.973153+00:00",
+    "saved_at": "2026-09-22T06:15:57.169112+00:00",
     "created_at": "2026-06-01T00:00:00+00:00",
     "override_note": "Correcao 08/06/2026 — restaura Madrid Jun-8 perdido por override reaplicado",
     "start_balance": 200.0,
