@@ -1,6 +1,6 @@
 {
-    "seq": 385,
-    "balance": 524.0867,
+    "seq": 386,
+    "balance": 534.0996,
     "history": [
         {
             "pnl": -3.92,
@@ -10921,7 +10921,7 @@
             "market_date": "2026-10-05",
             "event_slug": "highest-temperature-in-austin-on-october-5-2026",
             "entry_time": "2026-10-04T11:09:00.191784+00:00",
-            "exit_time": null,
+            "exit_time": "2026-10-06T08:18:26.313063+00:00",
             "type": "RANGE2",
             "side": "NO",
             "unit": "F",
@@ -10938,11 +10938,11 @@
             "edge": 0.193,
             "ev": 0.2225,
             "stake": 4.0,
-            "result": "OPEN",
-            "pnl": 0,
-            "fee": 0.0,
+            "result": "WIN",
+            "pnl": 1.0256,
+            "fee": 0.1026,
             "forecast_day": 2,
-            "real_temp_c": null,
+            "real_temp_c": 29.3,
             "paper_execution": true,
             "paper_execution_ok": true,
             "paper_execution_reason": "filled",
@@ -10954,7 +10954,8 @@
             "slippage": 0.0,
             "fill_ratio": 1.0,
             "book_levels_used": 1,
-            "orderbook_ts": 1791112140.191074
+            "orderbook_ts": 1791112140.191074,
+            "market_yes": false
         },
         {
             "market_id": "chicago|2026-10-05|RANGE2|70-71|F_NO",
@@ -10968,7 +10969,7 @@
             "market_date": "2026-10-05",
             "event_slug": "highest-temperature-in-chicago-on-october-5-2026",
             "entry_time": "2026-10-04T18:52:12.051384+00:00",
-            "exit_time": null,
+            "exit_time": "2026-10-06T08:18:26.313121+00:00",
             "type": "RANGE2",
             "side": "NO",
             "unit": "F",
@@ -10985,11 +10986,11 @@
             "edge": 0.1893,
             "ev": 0.216,
             "stake": 4.0,
-            "result": "OPEN",
-            "pnl": 0,
-            "fee": 0.0,
+            "result": "WIN",
+            "pnl": 0.9873,
+            "fee": 0.1018,
             "forecast_day": 2,
-            "real_temp_c": null,
+            "real_temp_c": 18.5,
             "paper_execution": true,
             "paper_execution_ok": true,
             "paper_execution_reason": "filled",
@@ -11001,7 +11002,8 @@
             "slippage": 0.0,
             "fill_ratio": 1.0,
             "book_levels_used": 1,
-            "orderbook_ts": 1791139932.0511413
+            "orderbook_ts": 1791139932.0511413,
+            "market_yes": false
         },
         {
             "market_id": "sao-paulo|2026-10-07|EXACT|28|C_NO",
@@ -11098,7 +11100,7 @@
             "orderbook_ts": 1791236678.9767854
         }
     ],
-    "saved_at": "2026-10-05T21:44:40.101414+00:00",
+    "saved_at": "2026-10-06T08:18:26.313186+00:00",
     "created_at": "2026-06-01T00:00:00+00:00",
     "override_note": "Correcao 08/06/2026 — restaura Madrid Jun-8 perdido por override reaplicado",
     "start_balance": 200.0,
