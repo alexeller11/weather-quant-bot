@@ -1,6 +1,6 @@
 {
-    "seq": 400,
-    "balance": 534.075,
+    "seq": 401,
+    "balance": 539.1659,
     "history": [
         {
             "pnl": -3.92,
@@ -11258,7 +11258,7 @@
             "market_date": "2026-10-09",
             "event_slug": "highest-temperature-in-sao-paulo-on-october-9-2026",
             "entry_time": "2026-10-08T15:57:12.465361+00:00",
-            "exit_time": null,
+            "exit_time": "2026-10-10T09:10:46.040937+00:00",
             "type": "EXACT",
             "side": "NO",
             "unit": "C",
@@ -11275,11 +11275,11 @@
             "edge": 0.2266,
             "ev": 0.2684,
             "stake": 4.0,
-            "result": "OPEN",
-            "pnl": 0,
-            "fee": 0.0,
+            "result": "WIN",
+            "pnl": 1.0909,
+            "fee": 0.1039,
             "forecast_day": 2,
-            "real_temp_c": null,
+            "real_temp_c": 19.8,
             "paper_execution": true,
             "paper_execution_ok": true,
             "paper_execution_reason": "filled",
@@ -11291,7 +11291,8 @@
             "slippage": 0.0,
             "fill_ratio": 1.0,
             "book_levels_used": 1,
-            "orderbook_ts": 1791475032.4649904
+            "orderbook_ts": 1791475032.4649904,
+            "market_yes": false
         },
         {
             "market_id": "sao-paulo|2026-10-10|EXACT|30|C_NO",
@@ -11530,7 +11531,7 @@
             "orderbook_ts": 1791588726.05733
         }
     ],
-    "saved_at": "2026-10-09T23:32:06.573229+00:00",
+    "saved_at": "2026-10-10T09:10:46.041147+00:00",
     "created_at": "2026-06-01T00:00:00+00:00",
     "override_note": "Correcao 08/06/2026 — restaura Madrid Jun-8 perdido por override reaplicado",
     "start_balance": 200.0,
