@@ -1,6 +1,6 @@
 {
-    "seq": 518,
-    "balance": 588.8525,
+    "seq": 519,
+    "balance": 594.297,
     "history": [
         {
             "pnl": -3.92,
@@ -14759,7 +14759,7 @@
             "market_date": "2026-11-10",
             "event_slug": "highest-temperature-in-milan-on-november-10-2026",
             "entry_time": "2026-11-09T21:26:30.235290+00:00",
-            "exit_time": null,
+            "exit_time": "2026-11-11T00:04:21.438412+00:00",
             "type": "EXACT",
             "side": "NO",
             "unit": "C",
@@ -14776,11 +14776,11 @@
             "edge": 0.2173,
             "ev": 0.2757,
             "stake": 4.0,
-            "result": "OPEN",
-            "pnl": 0,
-            "fee": 0.0,
+            "result": "WIN",
+            "pnl": 1.4445,
+            "fee": 0.1111,
             "forecast_day": 2,
-            "real_temp_c": null,
+            "real_temp_c": 12.7,
             "paper_execution": true,
             "paper_execution_ok": true,
             "paper_execution_reason": "filled",
@@ -14792,7 +14792,8 @@
             "slippage": 0.0,
             "fill_ratio": 1.0,
             "book_levels_used": 1,
-            "orderbook_ts": 1794259590.2349808
+            "orderbook_ts": 1794259590.2349808,
+            "market_yes": false
         },
         {
             "market_id": "tokyo|2026-11-12|EXACT|18|C_NO",
@@ -14842,7 +14843,7 @@
             "orderbook_ts": 1794336983.8571208
         }
     ],
-    "saved_at": "2026-11-10T18:56:24.877711+00:00",
+    "saved_at": "2026-11-11T00:04:21.438463+00:00",
     "created_at": "2026-06-01T00:00:00+00:00",
     "override_note": "Correcao 08/06/2026 — restaura Madrid Jun-8 perdido por override reaplicado",
     "start_balance": 200.0,
