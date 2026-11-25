@@ -1,5 +1,5 @@
 {
-    "seq": 576,
+    "seq": 577,
     "balance": 640.9494,
     "history": [
         {
@@ -16106,7 +16106,7 @@
             "market_date": "2026-11-24",
             "event_slug": "highest-temperature-in-london-on-november-24-2026",
             "entry_time": "2026-11-22T23:50:40.155153+00:00",
-            "exit_time": null,
+            "exit_time": "2026-11-25T04:41:13.101971+00:00",
             "type": "EXACT",
             "side": "NO",
             "unit": "C",
@@ -16123,11 +16123,11 @@
             "edge": 0.215,
             "ev": 0.2686,
             "stake": 4.0,
-            "result": "OPEN",
-            "pnl": 0,
+            "result": "LOSS",
+            "pnl": -4.0,
             "fee": 0.0,
             "forecast_day": 3,
-            "real_temp_c": null,
+            "real_temp_c": 6.0,
             "paper_execution": true,
             "paper_execution_ok": true,
             "paper_execution_reason": "filled",
@@ -16139,7 +16139,8 @@
             "slippage": 0.0,
             "fill_ratio": 1.0,
             "book_levels_used": 1,
-            "orderbook_ts": 1795391440.1547496
+            "orderbook_ts": 1795391440.1547496,
+            "market_yes": true
         },
         {
             "market_id": "new-york|2026-11-23|RANGE2|70-71|F_NO",
@@ -16284,7 +16285,7 @@
             "orderbook_ts": 1795556030.7805266
         }
     ],
-    "saved_at": "2026-11-24T21:41:32.151891+00:00",
+    "saved_at": "2026-11-25T04:41:13.102051+00:00",
     "created_at": "2026-06-01T00:00:00+00:00",
     "override_note": "Correcao 08/06/2026 — restaura Madrid Jun-8 perdido por override reaplicado",
     "start_balance": 200.0,
