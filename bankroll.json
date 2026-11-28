@@ -1,6 +1,6 @@
 {
-    "seq": 589,
-    "balance": 637.2681,
+    "seq": 590,
+    "balance": 642.2922,
     "history": [
         {
             "pnl": -3.92,
@@ -16442,7 +16442,7 @@
             "market_date": "2026-11-27",
             "event_slug": "highest-temperature-in-london-on-november-27-2026",
             "entry_time": "2026-11-26T15:28:30.845007+00:00",
-            "exit_time": null,
+            "exit_time": "2026-11-28T00:46:05.335002+00:00",
             "type": "EXACT",
             "side": "NO",
             "unit": "C",
@@ -16459,11 +16459,11 @@
             "edge": 0.1679,
             "ev": 0.1909,
             "stake": 3.9998,
-            "result": "OPEN",
-            "pnl": 0,
-            "fee": 0.0,
+            "result": "WIN",
+            "pnl": 1.0243,
+            "fee": 0.1025,
             "forecast_day": 2,
-            "real_temp_c": null,
+            "real_temp_c": 5.3,
             "paper_execution": true,
             "paper_execution_ok": true,
             "paper_execution_reason": "filled",
@@ -16475,7 +16475,8 @@
             "slippage": 0.0002,
             "fill_ratio": 1.0,
             "book_levels_used": 2,
-            "orderbook_ts": 1795706910.8448098
+            "orderbook_ts": 1795706910.8448098,
+            "market_yes": false
         },
         {
             "market_id": "sao-paulo|2026-11-27|EXACT|21|C_NO",
@@ -16619,7 +16620,7 @@
             "orderbook_ts": 1795826560.502642
         }
     ],
-    "saved_at": "2026-11-28T00:42:41.037563+00:00",
+    "saved_at": "2026-11-28T00:46:05.335174+00:00",
     "created_at": "2026-06-01T00:00:00+00:00",
     "override_note": "Correcao 08/06/2026 — restaura Madrid Jun-8 perdido por override reaplicado",
     "start_balance": 200.0,
